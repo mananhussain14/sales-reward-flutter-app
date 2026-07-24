@@ -160,6 +160,20 @@ void main() {
       expect(find.text('Not signed in'), findsOneWidget);
       expect(find.textContaining('Sign-in is not built yet'), findsOneWidget);
     });
+
+    testWidgets('states the role\'s provenance, not just the role', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, salesStaffRole);
+
+      await tester.tap(find.bySemanticsLabel('Account'));
+      await tester.pumpAndSettle();
+
+      // A locally previewed role must never read as a resolved one, on the one
+      // surface a user goes to in order to ask "who am I?".
+      expect(find.text('Sales Staff · preview'), findsOneWidget);
+      expect(find.text('Sales Staff'), findsNothing);
+    });
   });
 }
 

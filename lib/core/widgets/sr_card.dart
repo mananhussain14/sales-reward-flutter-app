@@ -55,10 +55,7 @@ class SrCard extends StatelessWidget {
       _ => sr.surface,
     };
     final Color borderColor = switch (variant) {
-      SrCardVariant.highlighted =>
-        sr.brandSoft == sr.surface
-            ? sr.border
-            : sr.onBrandSoft.withValues(alpha: 0.35),
+      SrCardVariant.highlighted => sr.highlightBorder,
       _ => sr.border,
     };
     final List<BoxShadow> shadow = switch (variant) {
@@ -90,10 +87,11 @@ class SrCard extends StatelessWidget {
         border: Border.all(color: borderColor),
         boxShadow: shadow,
       ),
+      // The 1px inner ring the `highlighted` variant adds on top of its border.
       foregroundDecoration: variant == SrCardVariant.highlighted
           ? BoxDecoration(
               borderRadius: radius,
-              border: Border.all(color: sr.brandSoft),
+              border: Border.all(color: sr.highlightRing),
             )
           : null,
       child: ClipRRect(borderRadius: radius, child: content),

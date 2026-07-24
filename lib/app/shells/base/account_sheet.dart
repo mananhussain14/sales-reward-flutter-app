@@ -20,7 +20,9 @@ import '../../theme/cubit/theme_cubit.dart';
 /// is a genuinely device-local preference and needs no backend at all.
 ///
 /// Nothing here is fabricated: because authentication is not implemented, the
-/// identity block says so rather than showing a placeholder name.
+/// identity block says so rather than showing a placeholder name, and the role
+/// row states its **provenance** rather than presenting a preview selection as
+/// if the backend had returned it.
 class AccountSheet extends StatelessWidget {
   const AccountSheet({super.key, required this.role, required this.portalName});
 
@@ -86,6 +88,14 @@ class AccountSheet extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                // The role in effect, and — crucially — where it came from. A
+                // locally previewed role must never read as a resolved one.
+                SrBadge(
+                  label: role.isServerResolved
+                      ? role.role.displayName
+                      : '${role.role.displayName} · preview',
+                  tone: role.isServerResolved ? SrTone.emerald : SrTone.amber,
                 ),
               ],
             ),

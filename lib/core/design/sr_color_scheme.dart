@@ -128,6 +128,8 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     required this.navActiveFill,
     required this.navActiveLabel,
     required this.navActiveRail,
+    required this.highlightBorder,
+    required this.highlightRing,
     required this.skeletonBase,
     required this.skeletonHighlight,
     required this.scrim,
@@ -250,6 +252,12 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
   /// is a *shape* as well as a hue.
   final Color navActiveRail;
 
+  /// The `highlighted` card variant's border — `indigo-200` in light (§ 3.5).
+  final Color highlightBorder;
+
+  /// The 1px inner ring that variant adds — `indigo-100` in light.
+  final Color highlightRing;
+
   // Feedback ------------------------------------------------------------------
 
   final Color skeletonBase;
@@ -335,6 +343,8 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     navActiveFill: SrPalette.indigo50,
     navActiveLabel: SrPalette.indigo700,
     navActiveRail: SrPalette.indigo600,
+    highlightBorder: SrPalette.indigo200,
+    highlightRing: SrPalette.indigo100,
     skeletonBase: SrPalette.slate200,
     skeletonHighlight: SrPalette.white.withValues(alpha: 0.65),
     scrim: SrPalette.slate900.withValues(alpha: 0.4),
@@ -344,51 +354,51 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     elevatedShadow: _shadow(SrPalette.slate900, _elevatedStops),
     modalShadow: _shadow(SrPalette.slate900, _modalStops),
     subtleShadow: _shadow(SrPalette.black, _subtleStops),
-    emerald: const SrToneColors(
+    emerald: SrToneColors(
       fill: SrPalette.emerald50,
       foreground: SrPalette.emerald700,
-      ring: Color(0x33009966),
+      ring: SrPalette.emerald600.withValues(alpha: 0.2),
       border: SrPalette.emerald200,
       alertText: SrPalette.emerald900,
       discFill: SrPalette.emerald100,
     ),
-    amber: const SrToneColors(
+    amber: SrToneColors(
       fill: SrPalette.amber50,
       foreground: SrPalette.amber700,
-      ring: Color(0x33E17100),
+      ring: SrPalette.amber600.withValues(alpha: 0.2),
       border: SrPalette.amber200,
       alertText: SrPalette.amber900,
       discFill: SrPalette.amber100,
     ),
-    red: const SrToneColors(
+    red: SrToneColors(
       fill: SrPalette.red50,
       foreground: SrPalette.red700,
-      ring: Color(0x33E7000B),
+      ring: SrPalette.red600.withValues(alpha: 0.2),
       border: SrPalette.red200,
       // red-800, the one documented exception, for contrast on red-50.
       alertText: SrPalette.red800,
       discFill: SrPalette.red100,
     ),
-    blue: const SrToneColors(
+    blue: SrToneColors(
       fill: SrPalette.blue50,
       foreground: SrPalette.blue700,
-      ring: Color(0x33155DFC),
+      ring: SrPalette.blue600.withValues(alpha: 0.2),
       border: SrPalette.blue200,
       alertText: SrPalette.blue900,
       discFill: SrPalette.blue100,
     ),
-    indigo: const SrToneColors(
+    indigo: SrToneColors(
       fill: SrPalette.indigo50,
       foreground: SrPalette.indigo700,
-      ring: Color(0x334F39F6),
+      ring: SrPalette.indigo600.withValues(alpha: 0.2),
       border: SrPalette.indigo200,
       alertText: SrPalette.indigo900,
       discFill: SrPalette.indigo100,
     ),
-    slate: const SrToneColors(
+    slate: SrToneColors(
       fill: SrPalette.slate100,
       foreground: SrPalette.slate600,
-      ring: Color(0x3362748E),
+      ring: SrPalette.slate500.withValues(alpha: 0.2),
       border: SrPalette.slate200,
       alertText: SrPalette.slate900,
       discFill: SrPalette.slate100,
@@ -449,6 +459,8 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     navActiveFill: SrPalette.indigo950,
     navActiveLabel: SrPalette.indigo300,
     navActiveRail: SrPalette.indigo400,
+    highlightBorder: SrPalette.indigo800,
+    highlightRing: SrPalette.indigo900,
     skeletonBase: SrPalette.slate800,
     skeletonHighlight: SrPalette.white.withValues(alpha: 0.08),
     scrim: SrPalette.black.withValues(alpha: 0.6),
@@ -461,50 +473,50 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     elevatedShadow: _shadow(SrPalette.black, _elevatedStops, alphaScale: 2.5),
     modalShadow: _shadow(SrPalette.black, _modalStops, alphaScale: 1.8),
     subtleShadow: _shadow(SrPalette.black, _subtleStops, alphaScale: 2),
-    emerald: const SrToneColors(
+    emerald: SrToneColors(
       fill: SrPalette.emerald950,
       foreground: SrPalette.emerald300,
-      ring: Color(0x4D00D492),
+      ring: SrPalette.emerald400.withValues(alpha: 0.3),
       border: SrPalette.emerald900,
       alertText: SrPalette.emerald100,
       discFill: SrPalette.emerald900,
     ),
-    amber: const SrToneColors(
+    amber: SrToneColors(
       fill: SrPalette.amber950,
       foreground: SrPalette.amber300,
-      ring: Color(0x4DFFB900),
+      ring: SrPalette.amber400.withValues(alpha: 0.3),
       border: SrPalette.amber900,
       alertText: SrPalette.amber100,
       discFill: SrPalette.amber900,
     ),
-    red: const SrToneColors(
+    red: SrToneColors(
       fill: SrPalette.red950,
       foreground: SrPalette.red300,
-      ring: Color(0x4DFF6467),
+      ring: SrPalette.red400.withValues(alpha: 0.3),
       border: SrPalette.red900,
       alertText: SrPalette.red200,
       discFill: SrPalette.red900,
     ),
-    blue: const SrToneColors(
+    blue: SrToneColors(
       fill: SrPalette.blue950,
       foreground: SrPalette.blue300,
-      ring: Color(0x4D51A2FF),
+      ring: SrPalette.blue400.withValues(alpha: 0.3),
       border: SrPalette.blue900,
       alertText: SrPalette.blue200,
       discFill: SrPalette.blue900,
     ),
-    indigo: const SrToneColors(
+    indigo: SrToneColors(
       fill: SrPalette.indigo950,
       foreground: SrPalette.indigo300,
-      ring: Color(0x4D7C86FF),
+      ring: SrPalette.indigo400.withValues(alpha: 0.3),
       border: SrPalette.indigo900,
       alertText: SrPalette.indigo200,
       discFill: SrPalette.indigo900,
     ),
-    slate: const SrToneColors(
+    slate: SrToneColors(
       fill: SrPalette.slate800,
       foreground: SrPalette.slate300,
-      ring: Color(0x4D90A1B9),
+      ring: SrPalette.slate400.withValues(alpha: 0.3),
       border: SrPalette.slate700,
       alertText: SrPalette.slate100,
       discFill: SrPalette.slate800,
@@ -549,6 +561,13 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
     ];
   }
 
+  /// Returns `this`.
+  ///
+  /// [ThemeExtension] requires the method, but this extension is a **closed
+  /// palette**: the two instances are the design system, and no caller may
+  /// derive a third by overriding individual tokens — that is precisely how a
+  /// design system drifts. Selecting a palette is `AppTheme.light` or
+  /// `AppTheme.dark`; there is no third option to copy toward.
   @override
   SrColorScheme copyWith() => this;
 
@@ -608,6 +627,8 @@ class SrColorScheme extends ThemeExtension<SrColorScheme> {
       navActiveFill: c(navActiveFill, other.navActiveFill),
       navActiveLabel: c(navActiveLabel, other.navActiveLabel),
       navActiveRail: c(navActiveRail, other.navActiveRail),
+      highlightBorder: c(highlightBorder, other.highlightBorder),
+      highlightRing: c(highlightRing, other.highlightRing),
       skeletonBase: c(skeletonBase, other.skeletonBase),
       skeletonHighlight: c(skeletonHighlight, other.skeletonHighlight),
       scrim: c(scrim, other.scrim),

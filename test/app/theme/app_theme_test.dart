@@ -386,6 +386,34 @@ void main() {
       expect(SrSpacing.compactMaxWidth, 448);
     });
 
+    test('status rings derive from the palette rather than restating it', () {
+      // The rings were hardcoded hex literals that duplicated palette steps —
+      // two places to change, one of which would eventually be missed.
+      expect(
+        SrColorScheme.light.tone(SrTone.emerald).ring,
+        SrPalette.emerald600.withValues(alpha: 0.2),
+      );
+      expect(
+        SrColorScheme.light.tone(SrTone.red).ring,
+        SrPalette.red600.withValues(alpha: 0.2),
+      );
+      expect(
+        SrColorScheme.dark.tone(SrTone.amber).ring,
+        SrPalette.amber400.withValues(alpha: 0.3),
+      );
+    });
+
+    test('every tone ring is translucent, so the inset reads as a ring', () {
+      for (final SrColorScheme scheme in <SrColorScheme>[
+        SrColorScheme.light,
+        SrColorScheme.dark,
+      ]) {
+        for (final SrTone tone in SrTone.values) {
+          expect(scheme.tone(tone).ring.a, lessThan(1.0));
+        }
+      }
+    });
+
     test('shadow-card is the documented two-stop recipe', () {
       final List<BoxShadow> card = SrColorScheme.light.cardShadow;
       expect(card, hasLength(2));

@@ -154,9 +154,47 @@ class SrPageBody extends StatelessWidget {
       ),
     );
 
-    if (!scrollable) {
-      return Padding(padding: gutter, child: content);
-    }
-    return SingleChildScrollView(padding: gutter, child: content);
+    final Widget body = scrollable
+        ? SingleChildScrollView(padding: gutter, child: content)
+        : Padding(padding: gutter, child: content);
+
+    return _FadeIn(child: body);
+  }
+}
+
+/// The web's `sr-animate-fade-in`, applied to `<main>` on every route: 220 ms
+/// ease-out, opacity 0→1 with a 4px upward settle (§ 2.12).
+///
+/// A [TweenAnimationBuilder] rather than a controller — it plays once on mount,
+/// needs no `State` to dispose, and costs nothing after it settles.
+///
+/// Under reduced motion the duration collapses to zero, so the content simply
+/// appears. The end state is identical either way; only the transition differs.
+class _FadeIn extends StatelessWidget {
+  const _FadeIn({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: SrMotion.respects(context) ? SrMotion.medium : Duration.zero,
+      curve: SrMotion.standard,
+      builder: (BuildContext context, double t, Widget? child) {
+        if (t == 1) {
+          // Settled: drop the wrappers so nothing composites afterwards.
+          return child!;
+        }
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 4 * (1 - t)),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
   }
 }

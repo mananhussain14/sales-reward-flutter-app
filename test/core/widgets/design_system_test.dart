@@ -191,6 +191,29 @@ void main() {
       });
     });
 
+    testWidgets('the highlighted variant uses its own tokens', (tester) async {
+      // It previously improvised a border from brandSoft/onBrandSoft, which
+      // rendered a near-invisible ring in light. § 3.5 specifies indigo-200
+      // border + indigo-100 ring, so the scheme carries both explicitly.
+      for (final SrColorScheme scheme in <SrColorScheme>[
+        SrColorScheme.light,
+        SrColorScheme.dark,
+      ]) {
+        expect(scheme.highlightBorder, isNot(scheme.border));
+        expect(scheme.highlightRing, isNot(scheme.highlightBorder));
+      }
+
+      await pumpThemed(
+        tester,
+        const SrCard(
+          variant: SrCardVariant.highlighted,
+          child: Text('featured'),
+        ),
+      );
+      expect(find.text('featured'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a section card shows its title, description and body', (
       tester,
     ) async {
@@ -482,6 +505,46 @@ void main() {
         expect(copy.description.toLowerCase(), isNot(contains(forbidden)));
       }
       expect(copy.retryable, isTrue);
+    });
+  });
+
+  group('page entrance motion', () {
+    testWidgets('content settles to full opacity', (tester) async {
+      await pumpThemed(
+        tester,
+        const SrPageBody(children: <Widget>[Text('arrived')]),
+      );
+
+      // Mid-flight the content is partially transparent…
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(find.text('arrived'), findsOneWidget);
+
+      // …and settles fully, with the transform dropped afterwards.
+      await tester.pumpAndSettle();
+      expect(find.text('arrived'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reduced motion shows the settled state immediately', (
+      tester,
+    ) async {
+      useSurface(tester, phoneSurface);
+      await tester.pumpWidget(
+        const MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: MaterialApp(
+            home: Scaffold(
+              body: SrPageBody(children: <Widget>[Text('arrived')]),
+            ),
+          ),
+        ),
+      );
+      // One frame, no settling: the end state is already on screen.
+      await tester.pump();
+
+      expect(find.text('arrived'), findsOneWidget);
+      expect(find.byType(Opacity), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 

@@ -143,7 +143,7 @@ lib/
 │   │   ├── failure.dart                  the sealed Failure union
 │   │   ├── failure_mapper.dart           the ONLY inspector of a backend error
 │   │   └── errors.dart                   barrel
-│   └── widgets/                          the design system (13 files)
+│   └── widgets/                          the design system (14 files)
 │
 └── features/                             organised by business feature
     ├── auth/
@@ -378,7 +378,6 @@ handoff and re-expressed in Dart, with the source section recorded in the file.
 | `admin/stat-card.tsx` | `SrStatCard` — `null` → "Unavailable", never `0` | 3.5 |
 | `brand.tsx` | `SrBrandMark`, `SrBrandLockup`, `SrInitialsAvatar` | 1, 3.19 |
 | Vendor dashboard grids | `SrCardGrid`, `SrShortcutCard` | 4.5 |
-| Route progress bar | `SrRouteProgressBar` — static under reduced motion | 3.10 |
 
 ### Type scale
 
@@ -579,7 +578,7 @@ isolated from production routing by construction:
 
 ## 11. Tests
 
-`flutter test` — **237 passing**, 12 files.
+`flutter test` — **243 passing**, 12 files.
 
 | File | Covers |
 | --- | --- |

@@ -65,9 +65,6 @@ abstract final class SrSpacing {
   /// Tailwind `sm`. Below it the phone layout applies.
   static const double breakpointSm = 640;
 
-  /// Tailwind `md`. The web swaps its card lists for tables here.
-  static const double breakpointMd = 768;
-
   /// Tailwind `lg`. The web's drawer becomes a permanent sidebar here.
   static const double breakpointLg = 1024;
 }
