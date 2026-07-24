@@ -84,6 +84,11 @@ class FakeAuthRepository implements AuthRepository {
 
 /// A [PortalContextRepository] fake that returns a scripted result and counts
 /// its calls — so a test can assert "resolved exactly once".
+///
+/// For race tests, set [manualCompletion] and each `resolve()` returns a future
+/// the test completes by hand via [completeNext]. That makes "an older RPC
+/// finishes after a newer state was emitted" a deterministic, timing-free
+/// scenario rather than a sleep-and-hope.
 class FakePortalContextRepository implements PortalContextRepository {
   FakePortalContextRepository(this.result);
 
@@ -94,9 +99,30 @@ class FakePortalContextRepository implements PortalContextRepository {
   /// can be attempted and shown to be collapsed.
   Duration delay = Duration.zero;
 
+  /// When true, every `resolve()` stays pending until [completeNext] is called.
+  bool manualCompletion = false;
+
+  final List<Completer<PortalContextResult>> _pending =
+      <Completer<PortalContextResult>>[];
+
+  /// How many `resolve()` calls are still awaiting a manual completion.
+  int get pendingCount => _pending.length;
+
+  /// Completes the oldest pending `resolve()` with [override] (or [result]),
+  /// in FIFO order — so a test can finish an older request after a newer one.
+  void completeNext([PortalContextResult? override]) {
+    _pending.removeAt(0).complete(override ?? result);
+  }
+
   @override
   Future<PortalContextResult> resolve() async {
     resolveCallCount++;
+    if (manualCompletion) {
+      final Completer<PortalContextResult> completer =
+          Completer<PortalContextResult>();
+      _pending.add(completer);
+      return completer.future;
+    }
     if (delay != Duration.zero) {
       await Future<void>.delayed(delay);
     }

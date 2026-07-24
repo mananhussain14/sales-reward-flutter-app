@@ -148,24 +148,58 @@ stream alone would race restoration against the first frame. The two paths are
 made idempotent by the coordinator's dedupe, so a replayed event after the
 direct read changes nothing.
 
-### The four coordinator rules
+### The coordinator: a request-generation state machine
 
 The whole reason authentication and portal resolution are joined in one BLoC is
-so these can be stated and tested once:
+so their interaction can be made correct and tested once.
 
-1. **Never resolve without a session.** Checked at startup *and* on every retry.
-   The RPC is `authenticated`-only; calling it signed-out would misreport as
-   "unavailable".
-2. **A token refresh changes nothing.** `tokenRefreshed` for the same user is
-   ignored outright — no re-resolution, no state change, no bounce to login.
-   This is the bug that otherwise logs users out hourly.
-3. **A different user discards the previous context first.** On a genuine user
-   switch the old context is cleared (`SessionInitial`) *before* the new resolve
-   begins, so one person's shell can never render against another's session.
-   Arriving from signed-out emits no spurious clear.
-4. **One resolution at a time.** A re-entrancy guard collapses duplicate auth
-   events and repeated retry taps, so router rebuilds cannot produce two
-   concurrent RPC calls.
+**The problem a boolean cannot solve.** Portal resolution is asynchronous, and
+authentication can change *while a resolution is in flight*. An early version
+awaited the RPC inside each event handler and guarded it with a shared
+`_resolving` boolean. That was raced two ways: a stale resolution could commit
+`SessionActive` after a newer sign-out had already emitted `SessionUnauthenticated`
+(the awaiting handler resumed and clobbered the newer state), and a mid-flight
+user switch was *dropped* because the boolean was still set — so User A's result
+later activated instead of User B's.
+
+**The fix — validate at the commit point.** Every resolution captures two facts
+when it starts: a monotonic **generation** and the **user id** that owns it. Any
+newer intent — sign-out, user switch, fresh retry — bumps the generation and
+updates the current user. Handlers are **synchronous**: none awaits the RPC.
+Instead `resolve()` is fired and its result re-enters the bloc as an internal
+`_SessionResolutionSettled(generation, userId, result)` event. The commit handler
+emits the result **only if `generation` is still current *and* `userId` still
+matches the currently authenticated user** — otherwise it is silently dropped.
+The RPC cannot be un-called, but its result can be, and is.
+
+This yields the eight required invariants:
+
+1. **A result commits only for the user that initiated it** — generation + owner
+   check at the commit point.
+2. **Sign-out during a resolution ends unauthenticated;** the old result never
+   reactivates a shell (its generation is stale).
+3. **A→B switch mid-flight** discards A's visible context immediately
+   (`SessionInitial`), never emits A's result, resolves B exactly once, and
+   finishes with B.
+4. **A retry superseded by sign-out** does not emit its result.
+5. **A retry superseded by a different user** does not emit the old result.
+6. **Duplicate events for the same user are deduplicated** — a settled duplicate
+   sign-in returns early; a redundant same-user request while one is already
+   pending is dropped, so repeated retry taps produce at most one applicable
+   request.
+7. **A token refresh for the same user changes nothing** — no re-resolution, no
+   state change, no bounce to login (the bug that otherwise logs users out
+   hourly).
+8. **No authenticated shell flashes after logout or during a user change** —
+   the terminal state is emitted synchronously and any late resolution is
+   dropped by the generation check.
+
+Because handlers are synchronous they cannot interleave their state transitions
+across event types (the pitfall of independent `on<E>` buckets); the generation
+check is the safety net, and it holds even if ordering were ever perturbed.
+Never resolving without a session is checked at startup and on every retry — the
+RPC is `authenticated`-only, so a signed-out call would misreport as
+"unavailable".
 
 ---
 
@@ -193,7 +227,7 @@ table. It is the whole guard.
   shell whose every query was refused.
 
 Duplicate RPC calls from router rebuilds are avoided two ways: the coordinator's
-re-entrancy guard, and `refreshListenable` firing only on genuine session-state
+generation-based dedupe, and `refreshListenable` firing only on genuine session-state
 changes.
 
 ---
@@ -255,17 +289,17 @@ the backend re-decides the operation regardless.
 
 ## 8. Tests
 
-`flutter test` — **265 passing**, 17 files. New this milestone:
+`flutter test` — **271 passing**, 17 files. New this milestone:
 
 | File | Covers |
 | --- | --- |
 | `features/auth/portal_context_parser_test.dart` | Every valid kind, vendor/owner/manager/staff, capability values, `NONE`; and every fail-safe rejection — unknown kind, unsupported version, malformed UUID, incoherent block |
-| `features/auth/session_bloc_test.dart` | Startup (no session / restored / NONE / failure), sign-in, sign-out, **token refresh does not log out**, user change clears context, duplicate events don't double-resolve, retry, retry-after-expiry → login |
+| `features/auth/session_bloc_test.dart` | Behavioural sequences (startup / sign-in / sign-out / token refresh / user switch / dedup) **plus seven deterministic race regressions** driven by a controllable `Completer`: sign-out mid-resolution, A→B switch mid-resolution, stale-A-after-B-active, sign-out mid-retry, user-switch mid-retry, repeated-retry-taps → one request, token-refresh-mid-resolution. Each asserts emitted states **and** RPC ownership/counts |
 | `features/auth/portal_context_repository_test.dart` | RPC name, **zero-argument invocation**, called once, resolved / denied / failure classification, malformed → failure |
 | `features/auth/login_cubit_test.dart` | Validation, trimmed email, generic rejection, unavailable ≠ rejected, no duplicate submit |
 | `features/auth/logout_cubit_test.dart` | Sign-out call, failure surfaced, no duplicate |
 | `features/auth/login_page_test.dart` | No overflow at 360×640 and 390×844, keyboard-safe, both themes, visibility toggle, no sign-up/forgot/social affordances |
-| `app/auth_flow_test.dart` | Full widget flow: each kind → its shell, NONE → denied, failure → retry, **no shell flash**, login success, invalid-credentials stays, logout clears shell, token refresh keeps shell, cross-role URL denied, retry succeeds |
+| `app/auth_flow_test.dart` | Full widget flow: each kind → its shell, NONE → denied, failure → retry, **no shell flash**, login success, invalid-credentials stays, logout clears shell, token refresh keeps shell, cross-role URL denied, retry succeeds, **plus two logout/user-switch race cases** proving a stale resolution completing after logout or a user switch never restores the previous shell |
 | `app/router/routing_state_machine_test.dart` | `sessionHome` and `redirectFor` as a full truth table |
 
 Updated: navigation (capability filtering), shells (context caption, capability

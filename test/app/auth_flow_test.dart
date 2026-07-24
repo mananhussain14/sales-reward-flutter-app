@@ -7,6 +7,7 @@ import 'package:sale_reward/app/shells/sales_staff/sales_staff_shell.dart';
 import 'package:sale_reward/app/app.dart';
 import 'package:sale_reward/app/shells/vendor/vendor_shell.dart';
 import 'package:sale_reward/core/widgets/widgets.dart';
+import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/auth_repository.dart';
 import 'package:sale_reward/features/auth/presentation/pages/login_page.dart';
@@ -205,5 +206,73 @@ void main() {
       expect(find.byType(RetailerManagerShell), findsOneWidget);
       expect(find.byType(UnavailablePage), findsNothing);
     });
+  });
+  group('logout race (invariant 8)', () {
+    testWidgets(
+      'a stale resolution completing after logout never restores the shell',
+      (tester) async {
+        // Startup resolution is held pending, so the app sits on the splash.
+        final FakeAuthRepository auth = FakeAuthRepository(
+          initialUser: testUser,
+        );
+        final FakePortalContextRepository portal = FakePortalContextRepository(
+          resolvedResult(PortalKind.vendorSuperAdmin),
+        )..manualCompletion = true;
+        addTearDown(auth.dispose);
+
+        useSurface(tester, phoneSurface);
+        await tester.pumpWidget(
+          SaleRewardApp(authRepository: auth, portalContextRepository: portal),
+        );
+        await tester.pump();
+        expect(find.byType(SplashPage), findsOneWidget);
+
+        // Sign out while the resolution is still in flight.
+        auth.emitSignedOut();
+        await tester.pumpAndSettle();
+        expect(find.byType(LoginPage), findsOneWidget);
+
+        // The stale resolution now completes — the Vendor shell must NOT appear.
+        portal.completeNext();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(VendorShell), findsNothing);
+        expect(find.byType(LoginPage), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a stale A resolution completing after switching to B never shows A',
+      (tester) async {
+        final FakeAuthRepository auth = FakeAuthRepository(
+          initialUser: testUser, // user A
+        );
+        final FakePortalContextRepository portal = FakePortalContextRepository(
+          resolvedResult(PortalKind.vendorSuperAdmin),
+        )..manualCompletion = true;
+        addTearDown(auth.dispose);
+
+        useSurface(tester, phoneSurface);
+        await tester.pumpWidget(
+          SaleRewardApp(authRepository: auth, portalContextRepository: portal),
+        );
+        await tester.pump();
+
+        // User B signs in while A is pending.
+        auth.emitSignedIn(const AuthUser(id: 'user-B', email: 'b@example.com'));
+        await tester.pump();
+
+        // A completes first (stale), then B.
+        portal.completeNext(resolvedResult(PortalKind.vendorSuperAdmin)); // A
+        await tester.pump();
+        expect(find.byType(VendorShell), findsNothing);
+
+        portal.completeNext(resolvedResult(PortalKind.salesStaff)); // B
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SalesStaffShell), findsOneWidget);
+        expect(find.byType(VendorShell), findsNothing);
+      },
+    );
   });
 }

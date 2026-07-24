@@ -16,36 +16,50 @@ part 'session_state.dart';
 /// The session coordinator: the single owner of "is anyone signed in, and which
 /// experience are they in?".
 ///
-/// It is the only place that joins authentication to portal resolution, which is
-/// what lets the four rules below be stated once and tested once instead of
-/// being scattered across the router, the login screen and four shells.
+/// ## Why a request-generation state machine, not a boolean
 ///
-/// ## The four rules
+/// Portal resolution is asynchronous, and authentication can change *while a
+/// resolution is in flight*. A shared `_resolving` flag cannot make that safe:
+/// it both drops a legitimately new resolution (a user switch mid-flight) and
+/// fails to stop a stale one from committing (an older RPC completing after a
+/// newer sign-out already emitted). The commit point is where correctness lives,
+/// so that is where it is enforced.
 ///
-/// 1. **Never resolve without a session.** `get_my_portal_context()` is granted
-///    to `authenticated` and revoked from `anon`, so calling it signed-out
-///    yields a transport refusal that would be misreported as "unavailable".
-///    The coordinator checks for a session first, every time, including on retry.
+/// Every resolution carries two facts captured at the moment it starts: a
+/// monotonic [_generation] and the [_currentUserId] that owns it. Any newer
+/// intent — a sign-out, a user switch, a fresh retry — bumps [_generation] and
+/// updates [_currentUserId]. When a resolution finally settles it arrives back
+/// as an internal [_SessionResolutionSettled] event, and its result is committed
+/// **only if it is still the current generation and still belongs to the
+/// currently authenticated user**. Anything else is silently dropped. The RPC
+/// cannot be un-called, but its result can be — and is — discarded.
 ///
-/// 2. **A token refresh changes nothing.** GoTrue emits `tokenRefreshed`
-///    roughly hourly. It is neither a sign-in nor a sign-out, so it is ignored
-///    outright — no re-resolution, no state change, and above all no bounce to
-///    the login screen.
+/// ## Why the handlers are synchronous
 ///
-/// 3. **A different user discards the previous context first.** When the
-///    signed-in id changes, the old context is cleared *before* the new one is
-///    requested, so there is no window in which one person's shell is rendered
-///    against another person's session.
+/// No handler `await`s the RPC. Each handler mutates state and, where a
+/// resolution is needed, kicks off `resolve()` as a fire-and-forget future that
+/// re-enters the bloc as [_SessionResolutionSettled]. Because the handlers never
+/// suspend, two events can never interleave their state transitions — which is
+/// the interleaving the reviewer found. The generation check is the safety net;
+/// the synchronous handlers are the mechanism that makes ordering deterministic.
 ///
-/// 4. **One resolution at a time.** Duplicate auth events and repeated retry
-///    taps are collapsed, so router rebuilds and impatient users cannot produce
-///    two concurrent RPC calls.
+/// ## The invariants, all enforced here
+///
+/// 1. A result commits only for the user that initiated it (generation + owner).
+/// 2. Sign-out during a resolution ends in [SessionUnauthenticated]; the old
+///    result never reactivates a shell.
+/// 3. A→B switch mid-flight discards A immediately, never emits A's result,
+///    resolves B once, and finishes with B.
+/// 4. A retry superseded by sign-out does not emit its result.
+/// 5. A retry superseded by a different user does not emit the old result.
+/// 6. Duplicate events for the same user are deduplicated.
+/// 7. A token refresh for the same user changes nothing.
+/// 8. No authenticated shell flashes after logout or during a user change.
 ///
 /// ## What it is not
 ///
 /// It is not an authorization service. It produces a hint about which shell to
-/// build. Supabase remains the only authority on what the caller may do, and
-/// re-decides on every call regardless of what this BLoC last emitted.
+/// build. Supabase remains the only authority on what the caller may do.
 class SessionBloc extends Bloc<SessionEvent, SessionState> {
   SessionBloc({
     required AuthRepository authRepository,
@@ -56,6 +70,7 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
     on<SessionStarted>(_onStarted);
     on<SessionContextRequested>(_onContextRequested);
     on<SessionAuthChanged>(_onAuthChanged);
+    on<_SessionResolutionSettled>(_onResolutionSettled);
   }
 
   final AuthRepository _auth;
@@ -63,126 +78,170 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
 
   StreamSubscription<AuthChange>? _authSubscription;
 
-  /// The user the current state belongs to, so a change of person can be
-  /// distinguished from a change of token.
-  String? _userId;
+  /// Bumped on every new intent. A resolution may only commit at the generation
+  /// that started it, so any newer intent invalidates an in-flight resolution.
+  int _generation = 0;
 
-  /// Rule 4. Set for the whole duration of a resolution, including its await.
-  bool _resolving = false;
+  /// The user the current state and any in-flight resolution belong to. Null
+  /// when signed out.
+  String? _currentUserId;
 
-  Future<void> _onStarted(
-    SessionStarted event,
-    Emitter<SessionState> emit,
-  ) async {
+  /// The generation of the resolution currently in flight, or null when none is
+  /// pending. Used only to deduplicate redundant same-user requests; it is
+  /// never the thing that authorizes a commit.
+  int? _inFlightGeneration;
+
+  void _onStarted(SessionStarted event, Emitter<SessionState> emit) {
     _authSubscription ??= _auth.changes.listen(
       (AuthChange change) => add(SessionAuthChanged(change)),
     );
 
     // Evaluate the restored session directly rather than waiting for the
-    // stream. `onAuthStateChange` replays `initialSession` to its first
-    // listener, but relying on that alone would leave startup racing against
-    // restoration — and a missed event would strand the app on a blank gate.
-    // The dedupe in _onAuthChanged makes the two paths idempotent.
+    // stream's replayed `initialSession`, which would race startup. The dedupe
+    // below makes the two paths idempotent.
     final AuthUser? user = _auth.currentUser;
     if (user == null) {
-      _userId = null;
-      emit(const SessionUnauthenticated());
+      _goUnauthenticated(emit);
       return;
     }
-
-    _userId = user.id;
-    await _resolve(emit);
+    _beginResolution(user.id, emit);
   }
 
-  Future<void> _onContextRequested(
+  void _onContextRequested(
     SessionContextRequested event,
     Emitter<SessionState> emit,
-  ) async {
+  ) {
     // Retry step 1: a session must still exist. A user whose token expired
-    // while the failure screen was on display belongs on the login screen, not
-    // in another doomed RPC call.
+    // while the failure screen was up belongs on the login screen, not in
+    // another doomed RPC call.
     final AuthUser? user = _auth.currentUser;
     if (user == null) {
-      _userId = null;
-      emit(const SessionUnauthenticated());
+      _goUnauthenticated(emit);
       return;
     }
-
-    _userId = user.id;
-    await _resolve(emit);
+    _beginResolution(user.id, emit);
   }
 
-  Future<void> _onAuthChanged(
-    SessionAuthChanged event,
-    Emitter<SessionState> emit,
-  ) async {
+  void _onAuthChanged(SessionAuthChanged event, Emitter<SessionState> emit) {
     switch (event.change) {
       case AuthSignedOut():
-        _userId = null;
-        // Rule 3, sign-out edition: the context goes before the screen does.
-        emit(const SessionUnauthenticated());
+        _goUnauthenticated(emit);
 
       case AuthSignedIn(:final AuthUser user):
-        final String? previousUserId = _userId;
-        final bool sameUser = user.id == previousUserId;
-        if (sameUser && !_isIndeterminate) {
-          // A duplicate event for the person already resolved. Ignoring it is
-          // what stops a router rebuild from triggering a second RPC.
+        final bool sameUser = user.id == _currentUserId;
+        if (sameUser && !state.isIndeterminate) {
+          // Rule 6: a duplicate event for the person already settled. Ignoring
+          // it stops a router rebuild or a replayed session from re-resolving.
           return;
         }
-        if (previousUserId != null && previousUserId != user.id) {
-          // Rule 3: a genuine switch of person. Discard the previous context
-          // before asking for the new one, so nothing downstream can read a
-          // stale pairing. (There is nothing to clear when arriving from a
-          // signed-out state, so no spurious clear is emitted then.)
-          emit(const SessionInitial());
-        }
-        _userId = user.id;
-        await _resolve(emit);
+        _beginResolution(user.id, emit);
 
       case AuthTokenRefreshed(:final AuthUser user):
-        // Rule 2. The same person with a fresh token needs nothing at all.
-        if (user.id == _userId) {
+        // Rule 7: the same person with a fresh token needs nothing at all.
+        if (user.id == _currentUserId) {
           return;
         }
-        // A refresh that names a different person is not something GoTrue
-        // should produce; treat it as a user change rather than trusting it.
-        _userId = user.id;
-        emit(const SessionInitial());
-        await _resolve(emit);
+        // A refresh naming a different person is not something GoTrue should
+        // produce; treat it as a user change rather than trusting it.
+        _beginResolution(user.id, emit);
     }
   }
 
-  /// True while the session has no settled answer, so a repeat sign-in event
-  /// for the same user is worth acting on rather than ignoring.
-  bool get _isIndeterminate =>
-      state is SessionInitial || state is SessionUnauthenticated;
-
-  Future<void> _resolve(Emitter<SessionState> emit) async {
-    if (_resolving) {
+  /// Commits a settled resolution, but only if it is still current.
+  void _onResolutionSettled(
+    _SessionResolutionSettled event,
+    Emitter<SessionState> emit,
+  ) {
+    // The three-part ownership check that is the whole point of this rewrite.
+    final bool superseded = event.generation != _generation;
+    final bool wrongOwner = event.userId != _currentUserId;
+    final bool userChangedUnderneath = _auth.currentUser?.id != event.userId;
+    if (superseded || wrongOwner || userChangedUnderneath) {
       return;
     }
-    _resolving = true;
-    try {
-      emit(const SessionResolving());
 
-      final PortalContextResult result = await _portalContext.resolve();
-      if (emit.isDone) {
-        return;
-      }
+    _inFlightGeneration = null;
+    emit(switch (event.result) {
+      PortalContextResolved(:final PortalContext context) => SessionActive(
+        context,
+      ),
+      PortalContextDenied() => const SessionDenied(),
+      PortalContextFailed(:final Failure failure) => SessionUnavailable(
+        failure,
+      ),
+    });
+  }
 
-      emit(switch (result) {
-        PortalContextResolved(:final PortalContext context) => SessionActive(
-          context,
-        ),
-        PortalContextDenied() => const SessionDenied(),
-        PortalContextFailed(:final Failure failure) => SessionUnavailable(
-          failure,
-        ),
-      });
-    } finally {
-      _resolving = false;
+  /// Moves to the signed-out state, invalidating any in-flight resolution.
+  void _goUnauthenticated(Emitter<SessionState> emit) {
+    _generation++;
+    _inFlightGeneration = null;
+    _currentUserId = null;
+    emit(const SessionUnauthenticated());
+  }
+
+  /// Starts (or declines to restart) a resolution for [userId].
+  ///
+  /// Synchronous: it sets up the new generation, emits the interim state, and
+  /// fires the RPC without awaiting it. The result returns as
+  /// [_SessionResolutionSettled].
+  void _beginResolution(String userId, Emitter<SessionState> emit) {
+    final bool isUserChange =
+        _currentUserId != null && userId != _currentUserId;
+
+    // Rule 6 (in-flight edition): a redundant request for the SAME user while
+    // one is already pending is dropped, so repeated retries and replayed
+    // sign-ins produce at most one applicable request. A user *change* is never
+    // dropped — it must supersede.
+    if (!isUserChange &&
+        _inFlightGeneration != null &&
+        userId == _currentUserId) {
+      return;
     }
+
+    if (isUserChange) {
+      // Rules 3 & 8: discard the previous user's visible context immediately,
+      // before the new resolution even begins.
+      emit(const SessionInitial());
+    }
+
+    final int generation = ++_generation;
+    _currentUserId = userId;
+    _inFlightGeneration = generation;
+
+    emit(const SessionResolving());
+
+    // Fire and forget. The generation and owner are captured here and validated
+    // at the commit point; the future is never awaited inside a handler.
+    _portalContext
+        .resolve()
+        .then((PortalContextResult result) {
+          if (isClosed) {
+            return;
+          }
+          add(
+            _SessionResolutionSettled(
+              generation: generation,
+              userId: userId,
+              result: result,
+            ),
+          );
+        })
+        .catchError((Object _) {
+          // The repository is contractually non-throwing, so this is pure
+          // defence: a thrown resolve() becomes an operational failure, never a
+          // role and never a swallowed error.
+          if (isClosed) {
+            return;
+          }
+          add(
+            _SessionResolutionSettled(
+              generation: generation,
+              userId: userId,
+              result: const PortalContextFailed(UnavailableFailure()),
+            ),
+          );
+        });
   }
 
   @override

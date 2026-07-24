@@ -34,3 +34,26 @@ final class SessionAuthChanged extends SessionEvent {
   @override
   List<Object?> get props => <Object?>[change];
 }
+
+/// An in-flight resolution has finished — internal only.
+///
+/// Feeding the RPC result back as an event, rather than committing it from
+/// inside the handler that awaited it, is what lets the commit be validated
+/// against the *current* generation and user. It carries the [generation] and
+/// [userId] captured when the resolution started; [SessionBloc] commits the
+/// [result] only if both are still current. It is never added by anything
+/// outside the bloc.
+final class _SessionResolutionSettled extends SessionEvent {
+  const _SessionResolutionSettled({
+    required this.generation,
+    required this.userId,
+    required this.result,
+  });
+
+  final int generation;
+  final String userId;
+  final PortalContextResult result;
+
+  @override
+  List<Object?> get props => <Object?>[generation, userId, result];
+}
