@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 
-/// The SalesReward brand mark, translated from the inline SVG in the web
-/// application's `components/ui/brand.tsx`.
+/// The SalesReward brand mark.
 ///
-/// A rounded indigo→violet tile carrying a rising sales bar chart whose tallest
-/// bar becomes an upward arrow, topped with an amber reward spark. Drawn with a
-/// [CustomPainter] rather than shipped as an asset, for the same reason the web
-/// draws it inline: no asset, no package, no network request, and it stays crisp
-/// at any size.
+/// Reproduced as a [CustomPainter] from the geometry table in § 1 of
+/// `docs/mobile-ui-design-handoff.md`. The web draws it as inline SVG — there is
+/// no PNG, no SVG file, and nothing in `public/` — so a raster would be a
+/// downgrade as well as an unnecessary asset.
 ///
-/// [size] is the tile edge in logical pixels; all geometry is expressed against
-/// the SVG's 40×40 viewBox and scaled from there.
+/// The mark is **theme-independent**: it keeps its own gradient tile in light
+/// and dark, exactly as a logo should, and its colours come from
+/// [SrBrandLiterals] rather than from the interface palette. Those literals are
+/// the Tailwind v3-era hexes the SVG has always carried (decision D-1); using
+/// them here and nowhere else is what keeps the mark pixel-identical to the web
+/// while the interface uses the v4 steps that actually ship.
+///
+/// Sizes in use on the web: 36 (nav lockup), 40 (invitation, access-denied),
+/// 44 (login).
 class SrBrandMark extends StatelessWidget {
   const SrBrandMark({super.key, this.size = 40});
 
@@ -25,73 +30,81 @@ class SrBrandMark extends StatelessWidget {
       child: Semantics(
         label: 'SalesReward',
         image: true,
-        child: CustomPaint(painter: _BrandMarkPainter()),
+        child: const CustomPaint(painter: _BrandMarkPainter()),
       ),
     );
   }
 }
 
 class _BrandMarkPainter extends CustomPainter {
+  const _BrandMarkPainter();
+
   /// The SVG viewBox edge every coordinate below is expressed against.
   static const double _viewBox = 40;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double scale = size.width / _viewBox;
     canvas.save();
-    canvas.scale(scale);
+    canvas.scale(size.width / _viewBox);
 
-    // The tile: rect 40×40, rx 11, indigo-600 → violet-600 across the diagonal.
-    final Rect tile = const Rect.fromLTWH(0, 0, _viewBox, _viewBox);
+    // Tile: rect 0 0 40 40, radius 11, gradient (0,0) → (40,40).
+    const Rect tile = Rect.fromLTWH(0, 0, _viewBox, _viewBox);
     canvas.drawRRect(
       RRect.fromRectAndRadius(tile, const Radius.circular(SrRadii.brandTile)),
       Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: SrColors.brandGradient,
+          colors: <Color>[
+            SrBrandLiterals.gradientStart,
+            SrBrandLiterals.gradientEnd,
+          ],
         ).createShader(tile),
     );
 
     // Rising bars.
-    _bar(canvas, x: 10, y: 23, height: 7, color: SrColors.indigo200);
-    _bar(canvas, x: 16, y: 19, height: 11, color: SrColors.indigo100);
+    _bar(canvas, x: 10, y: 23, height: 7, color: SrBrandLiterals.bar1);
+    _bar(canvas, x: 16, y: 19, height: 11, color: SrBrandLiterals.bar2);
 
     // The tallest bar, which becomes the arrow shaft.
-    final Paint shaft = Paint()
-      ..color = SrColors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.6
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(24, 30), const Offset(24, 15.5), shaft);
+    canvas.drawLine(
+      const Offset(24, 30),
+      const Offset(24, 15.5),
+      Paint()
+        ..color = SrBrandLiterals.arrow
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.6
+        ..strokeCap = StrokeCap.round,
+    );
 
     // The arrowhead.
-    final Path head = Path()
-      ..moveTo(20, 18.5)
-      ..lineTo(24, 14.5)
-      ..lineTo(28, 18.5);
     canvas.drawPath(
-      head,
+      Path()
+        ..moveTo(20, 18.5)
+        ..lineTo(24, 14.5)
+        ..lineTo(28, 18.5),
       Paint()
-        ..color = SrColors.white
+        ..color = SrBrandLiterals.arrow
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3.2
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
 
-    // The amber reward spark.
-    final Path spark = Path()
-      ..moveTo(29.5, 9.5)
-      ..lineTo(30.4, 12.1)
-      ..lineTo(33, 13)
-      ..lineTo(30.4, 13.9)
-      ..lineTo(29.5, 16.5)
-      ..lineTo(28.6, 13.9)
-      ..lineTo(26, 13)
-      ..lineTo(28.6, 12.1)
-      ..close();
-    canvas.drawPath(spark, Paint()..color = SrColors.brandSpark);
+    // The four-point reward spark, centred on (29.5, 13).
+    canvas.drawPath(
+      Path()
+        ..moveTo(29.5, 9.5)
+        ..lineTo(30.4, 12.1)
+        ..lineTo(33, 13)
+        ..lineTo(30.4, 13.9)
+        ..lineTo(29.5, 16.5)
+        ..lineTo(28.6, 13.9)
+        ..lineTo(26, 13)
+        ..lineTo(28.6, 12.1)
+        ..close(),
+      Paint()..color = SrBrandLiterals.spark,
+    );
 
     canvas.restore();
   }
@@ -116,38 +129,31 @@ class _BrandMarkPainter extends CustomPainter {
   bool shouldRepaint(covariant _BrandMarkPainter oldDelegate) => false;
 }
 
-/// The mark paired with the "SalesReward" wordmark — the standard lockup used on
-/// every entry point so they all read as one product.
+/// The mark paired with the "SalesReward" wordmark — the standard lockup, used
+/// wherever an entry point needs to read as this product.
 ///
-/// [context] renders the optional portal caption under the wordmark, exactly as
-/// the web lockup does ("Vendor Admin", "Retailer Portal"). On mobile this is
-/// how a role shell states which experience the user is in.
+/// [portal] renders the optional caption under the wordmark. The web uses it for
+/// the portal name — "Vendor Admin", "Retailer" — never for a role, and never as
+/// a second product name.
 class SrBrandLockup extends StatelessWidget {
-  const SrBrandLockup({
-    super.key,
-    this.size = 36,
-    this.context,
-    this.onDarkSurface = false,
-  });
+  const SrBrandLockup({super.key, this.size = 36, this.portal});
 
   final double size;
 
-  /// An optional caption under the wordmark, e.g. `'Vendor Admin'`.
-  final String? context;
-
-  /// When the lockup sits on the dark `--surface-nav` drawer, the wordmark and
-  /// caption invert so they stay legible.
-  final bool onDarkSurface;
+  /// e.g. `'Vendor Admin'`. Rendered uppercase.
+  final String? portal;
 
   @override
-  Widget build(BuildContext buildContext) {
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         SrBrandMark(size: size),
         const SizedBox(width: SrSpacing.smPlus),
-        // Flexible, so a long portal caption ("Retailer Super Admin") truncates
-        // instead of overflowing a narrow app bar or drawer header.
+        // Flexible so a long caption truncates instead of overflowing a narrow
+        // app bar or drawer header.
         Flexible(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,20 +161,16 @@ class SrBrandLockup extends StatelessWidget {
             children: <Widget>[
               Text(
                 'SalesReward',
-                style: SrTypography.wordmark.copyWith(
-                  color: onDarkSurface ? SrColors.white : SrColors.foreground,
-                ),
+                style: SrTypography.wordmark.copyWith(color: sr.foreground),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (context != null) ...<Widget>[
+              if (portal != null) ...<Widget>[
                 const SizedBox(height: SrSpacing.xs),
                 Text(
-                  context!.toUpperCase(),
+                  portal!.toUpperCase(),
                   style: SrTypography.brandContext.copyWith(
-                    color: onDarkSurface
-                        ? SrColors.slate400
-                        : SrColors.textMuted,
+                    color: sr.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -178,6 +180,74 @@ class SrBrandLockup extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The circular gradient avatar from the app bar (§ 3.19), carrying up to two
+/// initials.
+///
+/// The initials rule follows `InitialsAvatar`: first character of the first
+/// word plus first character of the **last** word — the resolution recommended
+/// for decision D-3, because it handles middle names correctly. A single word
+/// contributes its first two characters.
+class SrInitialsAvatar extends StatelessWidget {
+  const SrInitialsAvatar({
+    super.key,
+    required this.name,
+    this.size = 36,
+    this.fallback = 'SR',
+  });
+
+  final String? name;
+  final double size;
+
+  /// Shown when [name] yields nothing usable. Never a placeholder glyph — the
+  /// web always renders letters.
+  final String fallback;
+
+  /// Extracts up to two initials from [source], upper-cased.
+  static String initialsFor(String? source, {String fallback = 'SR'}) {
+    final List<String> words = (source ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((String w) => w.isNotEmpty)
+        .toList();
+
+    if (words.isEmpty) {
+      return fallback;
+    }
+    if (words.length == 1) {
+      final String word = words.first;
+      return (word.length >= 2 ? word.substring(0, 2) : word).toUpperCase();
+    }
+    return '${words.first[0]}${words.last[0]}'.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[sr.brand, sr.accent],
+        ),
+        boxShadow: sr.subtleShadow,
+      ),
+      child: Text(
+        initialsFor(name, fallback: fallback),
+        style: SrTypography.label.copyWith(
+          color: sr.onBrand,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

@@ -7,20 +7,29 @@ import '../../../../auth/domain/entities/app_role.dart';
 /// The Retailer Manager landing screen.
 ///
 /// A **placeholder** for the staff roster — the only portal page a Manager may
-/// read, and therefore this role's landing, matching the web's
-/// `LANDING_ROUTES.retailerStaff`.
+/// read in full, and therefore this role's landing (RM-01). Sending them to the
+/// overview instead would bounce them straight off it.
 ///
-/// It shows the mobile translation of the web's roster table: a card list rather
-/// than a table, because a five-column table on a 360px viewport is neither
-/// readable nor tappable. The list is empty here because nothing is read.
+/// It shows the mobile translation of the web's roster table: a **card list**
+/// rather than a table, per § 4.2 — *"never horizontally scroll a table on a
+/// phone"*. The list is empty because nothing is read.
 ///
-/// Two facts this screen must not misrepresent, both decided in SQL:
+/// ## Two facts this screen must not misrepresent
 ///
 /// * A Manager sees **ACTIVE members only**. That narrowing lives inside
-///   `list_retailer_staff_members()` — the same RPC an Owner calls — and is
-///   never re-implemented on the client.
+///   `list_retailer_staff_members()` — the same RPC an Owner calls — and the
+///   role-flow map is emphatic that a Flutter client *"needs no role logic at
+///   all here"*. Render what came back.
 /// * A Manager cannot manage staff. The denial is enforced by permission
-///   mapping, not by this screen hiding a button.
+///   mapping, not by this screen hiding a button. When the invitation sections
+///   are built they must be driven by the **backend-returned status**
+///   (`ok` / `denied` / `unavailable`), reproducing `showsInvitationSection`,
+///   `showsInviteSection` and `showsInviteForm` — never by a client-side role
+///   string.
+///
+/// Note the distinction the map draws: an **empty** roster and a **denied**
+/// invitation section must look different. One is an empty-state card; the other
+/// is simply absent.
 class RetailerManagerStaffPage extends StatelessWidget {
   const RetailerManagerStaffPage({super.key});
 
@@ -38,12 +47,15 @@ class RetailerManagerStaffPage extends StatelessWidget {
         const SrEmptyState(
           icon: Icons.group_outlined,
           tone: SrTone.indigo,
-          title: 'No roster loaded',
+          title: 'No staff yet',
+          // Reason-free: the copy never explains why, because the only thing
+          // that could produce a failure here is a database error whose detail
+          // must not reach a client.
           description:
               'The staff roster is not connected to Supabase in this build.',
         ),
 
-        const SizedBox(height: SrSpacing.xxl),
+        const SizedBox(height: SrSpacing.xxxl),
         SrSectionCard(
           title: 'Read-only by design',
           description:
@@ -67,10 +79,12 @@ class RetailerManagerStaffPage extends StatelessWidget {
               const SizedBox(height: SrSpacing.lg),
               Text(
                 'Open question Q3: a Manager currently has no way to read their '
-                'own retailer\'s name, because the portal-context RPC filters '
-                'for Retailer Owner. Until that is resolved this shell cannot '
-                'caption itself with the organization it belongs to.',
-                style: SrTypography.bodyMuted,
+                "own retailer's name, because the portal-context RPC filters "
+                'for Retailer Owner. Until that is resolved this shell captions '
+                'itself with the portal name rather than the organization.',
+                style: SrTypography.body.copyWith(
+                  color: context.sr.textSecondary,
+                ),
               ),
             ],
           ),

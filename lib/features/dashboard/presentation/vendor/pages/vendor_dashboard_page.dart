@@ -6,16 +6,18 @@ import '../../../../auth/domain/entities/app_role.dart';
 
 /// The Vendor Super Admin landing screen.
 ///
-/// A **placeholder**. It demonstrates the SalesReward theme on a real dashboard
-/// layout — the page header, the metric grid, a section card, the status pills —
-/// and it reads nothing from the backend.
+/// A **placeholder** reproducing the layout and copy of § 5.2 of
+/// `docs/mobile-ui-design-handoff.md` — the page header, the four-up stat grid
+/// collapsed to one column, and the three "Quick actions" shortcuts — while
+/// reading nothing from the backend.
 ///
-/// Every metric therefore renders as **Unavailable**, which is [SrStatCard]'s
-/// honest treatment of `null`. It is deliberately not `0`: zero would be a
-/// figure, and there is no figure here.
+/// Every metric therefore renders as **"Unavailable"**, which is [SrStatCard]'s
+/// treatment of `null`. Deliberately not `0`: zero would be a figure, and there
+/// is no figure here. The handoff states that rule twice, and it is one of the
+/// honesty properties the port must not lose.
 ///
-/// The web counterpart assembles these counts from four separate round trips.
-/// The feature matrix proposes `get_vendor_admin_dashboard_summary()` to replace
+/// The web assembles these counts from four separate round trips (V-01). The
+/// feature matrix proposes `get_vendor_admin_dashboard_summary()` to replace
 /// them; it does not exist yet.
 class VendorDashboardPage extends StatelessWidget {
   const VendorDashboardPage({super.key});
@@ -28,69 +30,68 @@ class VendorDashboardPage extends StatelessWidget {
           eyebrow: AppRole.vendorSuperAdmin.displayName,
           title: 'Dashboard',
           description:
-              'Platform-wide administration: retailers, catalogue, access and '
-              'audit.',
+              "Overview of your organization's members, access control, and "
+              'recorded activity.',
         ),
         const SizedBox(height: SrSpacing.xxl),
 
-        // The web renders these in a responsive grid. On mobile they stack, and
-        // pair up once there is room for two.
-        LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            const List<(String, String, IconData, SrTone)> metrics =
-                <(String, String, IconData, SrTone)>[
-                  (
-                    'Retailers',
-                    'Active retail organizations',
-                    Icons.storefront_rounded,
-                    SrTone.indigo,
-                  ),
-                  (
-                    'Products',
-                    'Items in the catalogue',
-                    Icons.inventory_2_rounded,
-                    SrTone.emerald,
-                  ),
-                  (
-                    'Members',
-                    'Users across all organizations',
-                    Icons.group_rounded,
-                    SrTone.amber,
-                  ),
-                  (
-                    'Audit events',
-                    'Recorded in the last 30 days',
-                    Icons.receipt_long_rounded,
-                    SrTone.slate,
-                  ),
-                ];
-
-            final bool twoUp = constraints.maxWidth >= 520;
-            final double itemWidth = twoUp
-                ? (constraints.maxWidth - SrSpacing.lg) / 2
-                : constraints.maxWidth;
-
-            return Wrap(
-              spacing: SrSpacing.lg,
-              runSpacing: SrSpacing.lg,
-              children: <Widget>[
-                for (final (String, String, IconData, SrTone) metric in metrics)
-                  SizedBox(
-                    width: itemWidth,
-                    child: SrStatCard(
-                      label: metric.$1,
-                      value: null,
-                      hint: metric.$2,
-                      icon: metric.$3,
-                      tone: metric.$4,
-                    ),
-                  ),
-              ],
-            );
-          },
+        // Labels, hints and tones verbatim from § 5.2.
+        const SrCardGrid(
+          children: <Widget>[
+            SrStatCard(
+              label: 'Active Members',
+              value: null,
+              hint: 'Active memberships in this organization',
+              icon: Icons.group_rounded,
+              tone: SrTone.indigo,
+            ),
+            SrStatCard(
+              label: 'Active Roles',
+              value: null,
+              hint: 'Roles available in the role catalogue',
+              icon: Icons.vpn_key_rounded,
+              tone: SrTone.emerald,
+            ),
+            SrStatCard(
+              label: 'Permissions',
+              value: null,
+              hint: 'Permissions defined across all modules',
+              icon: Icons.lock_outline_rounded,
+              tone: SrTone.amber,
+            ),
+            SrStatCard(
+              label: 'Audit Events',
+              value: null,
+              hint: 'Recorded admin actions for this organization',
+              icon: Icons.receipt_long_rounded,
+              tone: SrTone.slate,
+            ),
+          ],
         ),
 
-        const SizedBox(height: SrSpacing.xxl),
+        const SizedBox(height: SrSpacing.xxxl),
+        const SrSectionHeader(title: 'Quick actions'),
+        const SizedBox(height: SrSpacing.lg),
+        const SrCardGrid(
+          children: <Widget>[
+            SrShortcutCard(
+              label: 'Manage Retailers',
+              icon: Icons.storefront_rounded,
+            ),
+            SrShortcutCard(
+              label: 'Product catalog',
+              icon: Icons.inventory_2_rounded,
+              tone: SrTone.emerald,
+            ),
+            SrShortcutCard(
+              label: 'Audit logs',
+              icon: Icons.receipt_long_rounded,
+              tone: SrTone.slate,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: SrSpacing.xxxl),
         SrSectionCard(
           title: 'Foundation build',
           description:
@@ -99,8 +100,7 @@ class VendorDashboardPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              // Wrap, not Row: badge clusters must reflow on a narrow phone
-              // rather than overflow.
+              // Wrap, not Row: badge clusters must reflow on a narrow phone.
               const Wrap(
                 spacing: SrSpacing.sm,
                 runSpacing: SrSpacing.sm,
@@ -119,10 +119,12 @@ class VendorDashboardPage extends StatelessWidget {
               ),
               const SizedBox(height: SrSpacing.lg),
               Text(
-                'Vendor administration is phase 3 in the mobile feature matrix, '
-                'and conditional on open question Q4 — whether it belongs on '
-                'mobile at all.',
-                style: SrTypography.bodyMuted,
+                'Every Vendor feature is phase 3 in the feature matrix, and '
+                'conditional on open question Q4 — whether Vendor '
+                'administration belongs on mobile at all.',
+                style: SrTypography.body.copyWith(
+                  color: context.sr.textSecondary,
+                ),
               ),
             ],
           ),

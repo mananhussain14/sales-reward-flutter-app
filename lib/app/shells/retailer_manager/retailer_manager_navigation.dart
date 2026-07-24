@@ -5,37 +5,41 @@ import '../../navigation/role_destination.dart';
 
 /// The Retailer Manager navigation.
 ///
-/// A SEPARATE list from the Retailer Owner's, deliberately duplicating two
-/// labels rather than filtering the Owner's menu down. If this were
+/// A SEPARATE list from the Retailer Owner's, deliberately repeating two labels
+/// rather than filtering the Owner's menu down. Were this
 /// `ownerDestinations.where(...)`, an Owner-only entry added later would land in
 /// a Manager's shell by default; here it cannot.
 ///
-/// Matches § 4.2 of the architecture recommendation: **Staff · Products ·
-/// Profile.**
+/// Matches § 5 of `docs/mobile-role-flow-map.md`: **Staff · Products**, in a
+/// two-item bottom bar. The map notes that two destinations could arguably be an
+/// app-bar-only layout, and recommends the bottom bar for consistency with the
+/// Owner.
 ///
-/// Overview and Shops are absent because both are backed by
-/// `get_retailer_owner_portal_context()` and `list_retailer_owner_portal_shops()`,
-/// whose resolver requires the `RETAILER_OWNER` role — a Manager would be
-/// refused by SQL. Receipts is absent for the same reason it is absent from the
-/// Owner's menu. Linking any of them would advertise a dead end.
+/// Overview, Shops and Receipts are all omitted because SQL refuses the Manager
+/// on each — *"linking any of them would advertise dead ends."*
 ///
-/// The Manager's read of the staff roster is narrowed to ACTIVE members only,
-/// and that narrowing is a permission check **inside** the RPC — the same
-/// `list_retailer_staff_members()` an Owner calls. It is never re-implemented on
-/// the client.
+/// The Manager's roster read is narrowed to ACTIVE members only, and that
+/// narrowing is a permission check **inside** `list_retailer_staff_members()` —
+/// the same RPC the Owner calls. The map is emphatic that a Flutter client
+/// *"needs no role logic at all here"*: render what came back.
 ///
-/// **Open question Q3.** A Retailer Manager currently has no way to read their
-/// own Retailer's name, because `get_retailer_owner_portal_context()` hard-filters
-/// `RETAILER_OWNER`. Until `get_my_portal_context()` exists, this shell cannot
-/// caption itself with the tenant it belongs to.
+/// **Open question Q3 / decision D-6.** A Manager cannot read their own
+/// Retailer's name, because `get_retailer_owner_portal_context()` hard-filters
+/// `RETAILER_OWNER`. The web omits the name rather than fabricating one; the
+/// handoff notes the omission is *"much more visible"* on mobile, where the app
+/// bar is a larger share of the screen. This shell therefore captions itself
+/// with the portal name alone.
 abstract final class RetailerManagerNavigation {
   /// Every Retailer Manager route lives under this prefix and no other role's
-  /// does.
+  /// does. See [RetailerOwnerNavigation.prefix] for why the two roles do not
+  /// share the web's single `/retailer/*` tree.
   static const String prefix = '/retailer-manager';
 
+  /// Web route `/retailer/staff`.
   static const String staff = '$prefix/staff';
+
+  /// Web route `/retailer/products`.
   static const String products = '$prefix/products';
-  static const String profile = '$prefix/profile';
 
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
@@ -50,17 +54,14 @@ abstract final class RetailerManagerNavigation {
       selectedIcon: Icons.inventory_2_rounded,
       path: products,
     ),
-    RoleDestination(
-      label: 'Profile',
-      icon: Icons.person_outline_rounded,
-      selectedIcon: Icons.person_rounded,
-      path: profile,
-    ),
   ];
 
   static const RoleNavigation model = RoleNavigation(
     role: AppRole.retailerManager,
     routePrefix: prefix,
+    portalName: 'Retailer Portal',
+    // The roster is the only portal page a Manager may read in full. Sending
+    // them to the overview instead would bounce them straight off it.
     landingPath: staff,
     chrome: RoleShellChrome.bottomBar,
     destinations: destinations,

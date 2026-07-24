@@ -6,29 +6,35 @@ import '../../../core/design/design.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../features/auth/domain/entities/app_role.dart';
 import '../../navigation/role_destination.dart';
+import 'account_sheet.dart';
 import 'role_shell_bloc.dart';
 
 /// The shared chrome every role shell is built from.
 ///
 /// ## What it translates
 ///
-/// The web application presents one navigation pattern for everything: a fixed
-/// dark sidebar on `--surface-nav`, with the brand lockup at the top and an
-/// indigo active state. That does not survive a 360px viewport, so this scaffold
-/// keeps the *identity* and adapts the *form*:
+/// The web presents one navigation pattern: a fixed **white** 256px sidebar with
+/// a 1px slate-200 right border, which below `lg` becomes a left drawer behind a
+/// hamburger. This scaffold keeps that identity and adapts the *form* per role,
+/// which is decision **D-4** in the design handoff:
 ///
 /// | Web | Mobile |
 /// | --- | --- |
-/// | Fixed dark sidebar, 6+ links | [RoleShellChrome.drawer] — a dark drawer on the same surface |
-/// | Fixed sidebar, 3–5 links | [RoleShellChrome.bottomBar] — a bottom bar, promoted to a rail at ≥640px |
-/// | Sidebar brand lockup | The same lockup, in the app bar and the drawer header |
-/// | Indigo active link | The indigo `brand-soft` navigation indicator |
+/// | Sidebar, 12 entries (Vendor) | [RoleShellChrome.drawer] — same surface, same items, same "Soon" pills |
+/// | Sidebar, 2–4 entries (Retailer) | [RoleShellChrome.bottomBar] — a bar on a phone, a rail from 640px |
+/// | Sidebar brand lockup | The same lockup in the drawer header |
+/// | Indigo active link + 4×24 rail | The same fill and rail in the drawer; a brand-tinted pill in the bar |
+/// | App bar identity cluster | The avatar, opening [AccountSheet] |
+///
+/// > **The drawer is white, not dark.** `--surface-nav` (`#0F172A`) is declared
+/// > in `globals.css` but never applied — the shipped sidebar is white — and
+/// > § 2.3 of the handoff says explicitly not to build a dark drawer from it.
 ///
 /// ## What it is not
 ///
-/// It is not a role switch. Each role's shell supplies its own BLoC type and its
-/// own navigation model; this widget never asks what role it is rendering, and
-/// there is no `if (role == ...)` anywhere in it. That is the difference between
+/// It is not a role switch. Each shell supplies its own BLoC type and its own
+/// navigation model; this widget never asks which role it is rendering, and
+/// there is no `if (role == …)` anywhere in it. That is the difference between
 /// four shells sharing chrome and one shell pretending to be four.
 class RoleShellScaffold<B extends RoleShellBloc> extends StatefulWidget {
   const RoleShellScaffold({
@@ -42,13 +48,10 @@ class RoleShellScaffold<B extends RoleShellBloc> extends StatefulWidget {
   final Widget child;
 
   /// The router's current location, so the highlighted destination stays in
-  /// step with deep links and the back gesture.
+  /// step with deep links, the back gesture and guard redirects.
   final String location;
 
   /// The role this shell was built for, and how far it can be trusted.
-  ///
-  /// Used for the caption under the brand lockup and — when the role is only a
-  /// local preview — for the banner that says so.
   final ResolvedRole resolved;
 
   @override
@@ -71,13 +74,23 @@ class _RoleShellScaffoldState<B extends RoleShellBloc>
     }
   }
 
-  /// Keeps the highlighted tab in agreement with the router, whatever moved it
-  /// — a tap, a deep link, the back gesture, or a guard redirect.
-  ///
   /// Dispatched from the lifecycle rather than from `build`, so the shell never
   /// mutates BLoC state while the tree is being laid out.
   void _syncLocation() {
     context.read<B>().add(RoleShellLocationChanged(widget.location));
+  }
+
+  void _go(RoleNavigation navigation, int index) {
+    if (index < 0 || index >= navigation.destinations.length) {
+      return;
+    }
+    final String? path = navigation.destinations[index].path;
+    if (path == null) {
+      // A "Soon" placeholder. Shown, never navigable.
+      return;
+    }
+    context.read<B>().add(RoleShellDestinationSelected(index));
+    context.go(path);
   }
 
   @override
@@ -86,17 +99,6 @@ class _RoleShellScaffoldState<B extends RoleShellBloc>
 
     return BlocBuilder<B, RoleShellState>(
       builder: (BuildContext context, RoleShellState state) {
-        final double width = MediaQuery.sizeOf(context).width;
-        final bool wide = width >= SrSpacing.railBreakpoint;
-
-        void go(int index) {
-          if (index < 0 || index >= navigation.destinations.length) {
-            return;
-          }
-          context.read<B>().add(RoleShellDestinationSelected(index));
-          context.go(navigation.destinations[index].path);
-        }
-
         final Widget body = Column(
           children: <Widget>[
             if (widget.resolved.trust == RoleTrust.localPreview)
@@ -110,15 +112,14 @@ class _RoleShellScaffoldState<B extends RoleShellBloc>
             navigation: navigation,
             resolved: widget.resolved,
             selectedIndex: state.selectedIndex,
-            onSelected: go,
+            onSelected: (int i) => _go(navigation, i),
             body: body,
           ),
           RoleShellChrome.bottomBar => _BottomBarShell(
             navigation: navigation,
             resolved: widget.resolved,
             selectedIndex: state.selectedIndex,
-            onSelected: go,
-            useRail: wide,
+            onSelected: (int i) => _go(navigation, i),
             body: body,
           ),
         };
@@ -127,37 +128,66 @@ class _RoleShellScaffoldState<B extends RoleShellBloc>
   }
 }
 
-/// The app bar shared by both chrome variants: the brand lockup captioned with
-/// the role, exactly as the web sidebar captions itself ("Vendor Admin").
+/// The app bar (§ 3.19): 64 tall, the portal title at 16/600, a bottom hairline,
+/// and the identity cluster on the right.
 class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _ShellAppBar({required this.resolved, this.leading});
+  const _ShellAppBar({
+    required this.navigation,
+    required this.resolved,
+    this.leading,
+  });
 
+  final RoleNavigation navigation;
   final ResolvedRole resolved;
   final Widget? leading;
 
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => const Size.fromHeight(SrSpacing.appBarHeight);
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return AppBar(
-      toolbarHeight: 64,
       leading: leading,
-      leadingWidth: leading == null ? 0 : null,
+      automaticallyImplyLeading: false,
       titleSpacing: leading == null ? SrSpacing.lg : 0,
-      title: SrBrandLockup(
-        size: 32,
-        context: resolved.retailerName ?? resolved.role.displayName,
+      title: Text(
+        navigation.portalName,
+        style: SrTypography.cardTitle.copyWith(color: sr.foreground),
+        overflow: TextOverflow.ellipsis,
       ),
-      shape: const Border(bottom: BorderSide(color: SrColors.border)),
+      actions: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(right: SrSpacing.lg),
+          child: Semantics(
+            button: true,
+            label: 'Account',
+            container: true,
+            // The avatar's initials are decorative here; the button's own
+            // label is what assistive technology should announce.
+            excludeSemantics: true,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => AccountSheet.show(
+                context,
+                role: resolved,
+                portalName: navigation.portalName,
+              ),
+              child: const SrInitialsAvatar(name: null),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// A visible, permanent reminder that the role in effect was chosen locally.
+/// A permanent, non-dismissible reminder that the role in effect was chosen
+/// locally.
 ///
-/// It is not dismissible on purpose. A preview role authorizes nothing, and the
-/// moment this banner can be hidden, a screenshot of this build becomes
+/// It cannot be hidden on purpose: a preview role authorizes nothing, and the
+/// moment this banner can be dismissed, a screenshot of this build becomes
 /// indistinguishable from one where role resolution actually works.
 class _PreviewBanner extends StatelessWidget {
   const _PreviewBanner({required this.role});
@@ -166,8 +196,10 @@ class _PreviewBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrToneColors colors = context.sr.tone(SrTone.amber);
+
     return Material(
-      color: SrTone.amber.background,
+      color: colors.fill,
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: SrSpacing.lg,
@@ -178,7 +210,7 @@ class _PreviewBanner extends StatelessWidget {
             Icon(
               Icons.info_outline_rounded,
               size: 16,
-              color: SrTone.amber.foreground,
+              color: colors.foreground,
             ),
             const SizedBox(width: SrSpacing.sm),
             Expanded(
@@ -186,7 +218,7 @@ class _PreviewBanner extends StatelessWidget {
                 'Interface preview — ${role.displayName} was selected on this '
                 'device. It grants no access.',
                 style: SrTypography.caption.copyWith(
-                  color: SrTone.amber.foreground,
+                  color: colors.alertText,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -205,7 +237,6 @@ class _BottomBarShell extends StatelessWidget {
     required this.resolved,
     required this.selectedIndex,
     required this.onSelected,
-    required this.useRail,
     required this.body,
   });
 
@@ -213,14 +244,17 @@ class _BottomBarShell extends StatelessWidget {
   final ResolvedRole resolved;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
-  final bool useRail;
   final Widget body;
 
   @override
   Widget build(BuildContext context) {
-    if (useRail) {
+    final SrColorScheme sr = context.sr;
+    final bool wide =
+        MediaQuery.sizeOf(context).width >= SrSpacing.breakpointSm;
+
+    if (wide) {
       return Scaffold(
-        appBar: _ShellAppBar(resolved: resolved),
+        appBar: _ShellAppBar(navigation: navigation, resolved: resolved),
         body: Row(
           children: <Widget>[
             NavigationRail(
@@ -228,16 +262,15 @@ class _BottomBarShell extends StatelessWidget {
               onDestinationSelected: onSelected,
               labelType: NavigationRailLabelType.all,
               destinations: <NavigationRailDestination>[
-                for (final RoleDestination destination
-                    in navigation.destinations)
+                for (final RoleDestination d in navigation.destinations)
                   NavigationRailDestination(
-                    icon: Icon(destination.icon),
-                    selectedIcon: Icon(destination.selectedIcon),
-                    label: Text(destination.label),
+                    icon: Icon(d.icon),
+                    selectedIcon: Icon(d.selectedIcon),
+                    label: Text(d.label),
                   ),
               ],
             ),
-            const VerticalDivider(width: 1),
+            VerticalDivider(width: 1, color: sr.border),
             Expanded(child: body),
           ],
         ),
@@ -245,22 +278,23 @@ class _BottomBarShell extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: _ShellAppBar(resolved: resolved),
+      appBar: _ShellAppBar(navigation: navigation, resolved: resolved),
       body: body,
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: SrColors.border)),
+        // The bar's 1px top hairline, matching the sidebar's right border.
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: sr.border)),
         ),
         child: NavigationBar(
           selectedIndex: selectedIndex,
           onDestinationSelected: onSelected,
           destinations: <NavigationDestination>[
-            for (final RoleDestination destination in navigation.destinations)
+            for (final RoleDestination d in navigation.destinations)
               NavigationDestination(
-                icon: Icon(destination.icon),
-                selectedIcon: Icon(destination.selectedIcon),
-                label: destination.label,
-                tooltip: destination.label,
+                icon: Icon(d.icon),
+                selectedIcon: Icon(d.selectedIcon),
+                label: d.label,
+                tooltip: d.label,
               ),
           ],
         ),
@@ -269,9 +303,8 @@ class _BottomBarShell extends StatelessWidget {
   }
 }
 
-/// A drawer for a role with more destinations than a bottom bar can hold. The
-/// drawer keeps the web sidebar's dark `--surface-nav` surface, so the role that
-/// most resembles the desktop admin still looks like it.
+/// A drawer for a role with more destinations than a bottom bar can carry, and
+/// a permanent side panel once there is desktop room for one.
 class _DrawerShell extends StatelessWidget {
   const _DrawerShell({
     required this.navigation,
@@ -289,14 +322,15 @@ class _DrawerShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
     final bool expanded =
-        MediaQuery.sizeOf(context).width >= SrSpacing.expandedBreakpoint;
+        MediaQuery.sizeOf(context).width >= SrSpacing.breakpointLg;
 
-    final Widget drawer = _RoleNavDrawer(
+    final Widget panel = _RoleNavPanel(
       navigation: navigation,
-      resolved: resolved,
       selectedIndex: selectedIndex,
       onSelected: (int index) {
+        // Tapping an item closes the drawer, as the web's does.
         if (!expanded) {
           Navigator.of(context).maybePop();
         }
@@ -305,15 +339,27 @@ class _DrawerShell extends StatelessWidget {
     );
 
     // At desktop width the drawer stops being modal and simply sits beside the
-    // content, which is the web layout again.
+    // content — the web layout again.
     if (expanded) {
       return Scaffold(
         body: Row(
           children: <Widget>[
-            SizedBox(width: 288, child: drawer),
+            SizedBox(
+              width: SrSpacing.navWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sr.surfaceNav,
+                  border: Border(right: BorderSide(color: sr.border)),
+                ),
+                child: panel,
+              ),
+            ),
             Expanded(
               child: Scaffold(
-                appBar: _ShellAppBar(resolved: resolved),
+                appBar: _ShellAppBar(
+                  navigation: navigation,
+                  resolved: resolved,
+                ),
                 body: body,
               ),
             ),
@@ -324,75 +370,96 @@ class _DrawerShell extends StatelessWidget {
 
     return Scaffold(
       appBar: _ShellAppBar(
+        navigation: navigation,
         resolved: resolved,
         leading: Builder(
           builder: (BuildContext context) => IconButton(
             icon: const Icon(Icons.menu_rounded),
-            tooltip: 'Open navigation',
+            tooltip: 'Open navigation menu',
             onPressed: Scaffold.of(context).openDrawer,
           ),
         ),
       ),
-      drawer: drawer,
+      drawer: Drawer(child: panel),
       body: body,
     );
   }
 }
 
-class _RoleNavDrawer extends StatelessWidget {
-  const _RoleNavDrawer({
+/// The sidebar's contents: a 64px header carrying the brand lockup over a
+/// hairline, then the items, then the version footer.
+class _RoleNavPanel extends StatelessWidget {
+  const _RoleNavPanel({
     required this.navigation,
-    required this.resolved,
     required this.selectedIndex,
     required this.onSelected,
   });
 
   final RoleNavigation navigation;
-  final ResolvedRole resolved;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.all(SrSpacing.xl),
-              child: SrBrandLockup(
-                size: 36,
-                context: resolved.role.displayName,
-                onDarkSurface: true,
+    final SrColorScheme sr = context.sr;
+
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Container(
+            height: SrSpacing.appBarHeight,
+            padding: const EdgeInsets.symmetric(horizontal: SrSpacing.lg),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: sr.border)),
+            ),
+            child: SrBrandLockup(size: 32, portal: navigation.portalName),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SrSpacing.md,
+                vertical: SrSpacing.md,
+              ),
+              children: <Widget>[
+                for (int i = 0; i < navigation.destinations.length; i++)
+                  _NavItem(
+                    destination: navigation.destinations[i],
+                    selected: i == selectedIndex,
+                    onTap: () => onSelected(i),
+                  ),
+              ],
+            ),
+          ),
+          // The sidebar footer, verbatim from the web.
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SrSpacing.lg,
+              vertical: SrSpacing.md,
+            ),
+            child: Text(
+              'SalesReward · v0.1',
+              style: SrTypography.caption.copyWith(
+                fontWeight: FontWeight.w500,
+                color: sr.textMuted,
               ),
             ),
-            const Divider(color: SrColors.slate800, height: 1),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SrSpacing.md,
-                  vertical: SrSpacing.md,
-                ),
-                children: <Widget>[
-                  for (int i = 0; i < navigation.destinations.length; i++)
-                    _DrawerTile(
-                      destination: navigation.destinations[i],
-                      selected: i == selectedIndex,
-                      onTap: () => onSelected(i),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _DrawerTile extends StatelessWidget {
-  const _DrawerTile({
+/// One sidebar item (§ 3.19): `px-3 py-2`, 12-radius, 14/500, a 20px leading
+/// icon 12px from the label.
+///
+/// The active state is a brand-tinted fill **plus** a 4 × 24 rail flush to the
+/// left edge — deliberately two signals, because the product never carries
+/// meaning by colour alone.
+class _NavItem extends StatelessWidget {
+  const _NavItem({
     required this.destination,
     required this.selected,
     required this.onTap,
@@ -404,46 +471,109 @@ class _DrawerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The web sidebar marks its active link with an indigo tint on the dark
-    // surface; the same treatment reads correctly here.
-    final Color foreground = selected ? SrColors.white : SrColors.slate400;
+    final SrColorScheme sr = context.sr;
+    final bool enabled = destination.isEnabled;
+
+    final Color labelColor = !enabled
+        ? sr.textMuted
+        : selected
+        ? sr.navActiveLabel
+        : sr.navLabel;
+
+    final Widget row = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SrSpacing.md,
+        vertical: SrSpacing.sm,
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            selected ? destination.selectedIcon : destination.icon,
+            size: 20,
+            color: labelColor,
+          ),
+          const SizedBox(width: SrSpacing.md),
+          Expanded(
+            child: Text(
+              destination.label,
+              style: SrTypography.label.copyWith(
+                color: labelColor,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (!enabled) const _SoonPill(),
+        ],
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SrSpacing.xs),
-      child: Material(
-        color: selected
-            ? SrColors.brand.withValues(alpha: 0.9)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(SrRadii.lg),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(SrRadii.lg),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SrSpacing.md,
-              vertical: SrSpacing.md,
+      child: Semantics(
+        button: enabled,
+        selected: selected,
+        enabled: enabled,
+        child: Stack(
+          children: <Widget>[
+            Material(
+              color: selected ? sr.navActiveFill : Colors.transparent,
+              borderRadius: BorderRadius.circular(SrRadii.control),
+              child: enabled
+                  ? InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(SrRadii.control),
+                      child: row,
+                    )
+                  // Not a link and not tappable, matching `title="Coming soon"`
+                  // on the web.
+                  : Tooltip(message: 'Coming soon', child: row),
             ),
-            child: Row(
-              children: <Widget>[
-                Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  size: 20,
-                  color: foreground,
-                ),
-                const SizedBox(width: SrSpacing.md),
-                Expanded(
-                  child: Text(
-                    destination.label,
-                    style: SrTypography.body.copyWith(
-                      color: foreground,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            if (selected)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Container(
+                    width: 4,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: sr.navActiveRail,
+                      borderRadius: const BorderRadius.horizontal(
+                        right: Radius.circular(SrRadii.full),
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// The trailing "Soon" pill on a disabled nav item.
+class _SoonPill extends StatelessWidget {
+  const _SoonPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SrSpacing.sm,
+        vertical: SrSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: sr.slate.fill,
+        borderRadius: BorderRadius.circular(SrRadii.full),
+      ),
+      child: Text(
+        'SOON',
+        style: SrTypography.soonPill.copyWith(color: sr.textSecondary),
       ),
     );
   }

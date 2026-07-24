@@ -3,17 +3,19 @@ import 'package:flutter/material.dart';
 import '../design/design.dart';
 import 'sr_card.dart';
 
-/// A metric card, translated from `StatCard` in the web application's
-/// `components/admin/stat-card.tsx`.
+/// A metric card (§ 3.5).
+///
+/// Label at 14/500 top-left, a 40px tinted disc top-right, then the value at
+/// 30px semibold with tabular figures, then a 12px hint.
 ///
 /// ## `null` is not zero
 ///
-/// The web component encodes a distinction worth preserving exactly: a [value]
-/// of `null` means "the figure could not be read", and renders as **Unavailable**
-/// — not `0`, and not an em dash. `0` is a valid count and renders as `0`.
+/// A [value] of `null` means "the figure could not be read" and renders
+/// **"Unavailable"** at 18px/500 in the muted tone — not `0`, and not an em
+/// dash. `0` is a real count and renders as `0`.
 ///
-/// The reason is never shown, because the only thing that could produce it is a
-/// backend error whose detail must not reach the client.
+/// The reason is never shown. The only thing that can produce it is a backend
+/// error whose detail must not reach a client.
 class SrStatCard extends StatelessWidget {
   const SrStatCard({
     super.key,
@@ -30,16 +32,14 @@ class SrStatCard extends StatelessWidget {
   /// The real count, or null when it could not be read.
   final int? value;
 
-  /// Short supporting context under the value.
   final String hint;
-
   final IconData? icon;
   final SrTone tone;
   final VoidCallback? onTap;
 
-  /// Groups digits with commas in a fixed locale, as the web does, so the
-  /// output never varies by device settings.
-  static String _format(int value) {
+  /// Groups digits in a fixed locale, as the web's `toLocaleString("en-US")`
+  /// does, so the output never varies by device settings.
+  static String format(int value) {
     final String digits = value.abs().toString();
     final StringBuffer buffer = StringBuffer();
     for (int i = 0; i < digits.length; i++) {
@@ -53,6 +53,8 @@ class SrStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return SrCard(
       variant: onTap == null
           ? SrCardVariant.standard
@@ -67,23 +69,12 @@ class SrStatCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: SrTypography.body.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: SrColors.textMuted,
-                  ),
+                  style: SrTypography.label.copyWith(color: sr.textSecondary),
                 ),
               ),
               if (icon != null) ...<Widget>[
                 const SizedBox(width: SrSpacing.md),
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: tone.background,
-                    borderRadius: BorderRadius.circular(SrRadii.lg),
-                  ),
-                  child: Icon(icon, size: 20, color: tone.foreground),
-                ),
+                SrIconDisc(icon: icon!, tone: tone, size: 40),
               ],
             ],
           ),
@@ -91,26 +82,15 @@ class SrStatCard extends StatelessWidget {
           if (value == null)
             Text(
               'Unavailable',
-              style: SrTypography.sectionTitle.copyWith(
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-                color: SrColors.slate400,
-              ),
+              style: SrTypography.statUnavailable.copyWith(color: sr.textMuted),
             )
           else
             Text(
-              _format(value!),
-              style: SrTypography.pageTitle.copyWith(
-                fontSize: 30,
-                height: 36 / 30,
-                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-              ),
+              format(value!),
+              style: SrTypography.statValue.copyWith(color: sr.foreground),
             ),
           const SizedBox(height: SrSpacing.xs),
-          Text(
-            hint,
-            style: SrTypography.caption.copyWith(color: SrColors.slate400),
-          ),
+          Text(hint, style: SrTypography.caption.copyWith(color: sr.textMuted)),
         ],
       ),
     );

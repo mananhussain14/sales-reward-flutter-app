@@ -5,33 +5,43 @@ import 'sr_brand_mark.dart';
 import 'sr_button.dart';
 import 'sr_card.dart';
 
-/// The shared, role-neutral "Access denied" screen, translated from
-/// `components/ui/access-denied-card.tsx`.
+/// The shared access-denied surface (§ 3.17).
 ///
-/// Every role's shell routes here for a denial, so the wording, the shield
-/// motif, and the only-way-out sign-out control stay in one place.
+/// A centred `max-w-md` column: the 40px brand lockup, 32px below it a card at
+/// `p-6`, holding a 56px amber disc with a 1px inset ring and a 28px shield, the
+/// 20px title **"Access denied"**, two supporting paragraphs, and a full-width
+/// sign-out button.
 ///
-/// **The copy is fixed and neutral on purpose.** It names no role, no
-/// organization, and no failing condition, because every caller must be
-/// indistinguishable to a signed-in but unauthorized — possibly hostile —
-/// account. Do not add a `role` or `reason` parameter to this widget: telling a
-/// caller *which* check refused them turns a denial into an enumeration oracle,
-/// which is precisely what the backend's overloaded `42501` exists to prevent.
+/// ## The copy is fixed, role-neutral and reason-free
 ///
-/// This widget is presentation and decides nothing. The route guard that sends a
-/// user here is a convenience; the real refusal happens in SQL, on every call.
+/// Both the Vendor route (`/access-denied`) and the Retailer route
+/// (`/retailer-access-denied`) render this identical card — deliberately, so
+/// that the two are **indistinguishable to a signed-in but unauthorized,
+/// possibly hostile, account**.
+///
+/// The handoff is explicit: Flutter must not add a reason, a role name, a
+/// "contact your administrator" line, or a retry button. Sign-out is the only
+/// affordance. Do not add a `role` or `reason` parameter to this widget —
+/// telling a caller *which* check refused them turns a denial into an
+/// enumeration oracle, which is exactly what the backend's overloaded `42501`
+/// exists to prevent.
+///
+/// This widget is presentation and decides nothing. The route guard that leads
+/// here is a convenience; the real refusal happens in SQL, on every call.
 class SrAccessDeniedView extends StatelessWidget {
   const SrAccessDeniedView({super.key, this.onSignOut});
 
-  /// Wired to a real sign-out once authentication is implemented. When null the
-  /// control is disabled rather than hidden, so the screen's shape does not
-  /// change between this milestone and the next.
+  /// Wired to a real sign-out once authentication exists. When null the control
+  /// is disabled rather than hidden, so the screen's shape does not change
+  /// between this milestone and the next.
   final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Scaffold(
-      backgroundColor: SrColors.appBackground,
+      backgroundColor: sr.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -40,11 +50,13 @@ class SrAccessDeniedView extends StatelessWidget {
               vertical: SrSpacing.huge,
             ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 448),
+              constraints: const BoxConstraints(
+                maxWidth: SrSpacing.compactMaxWidth,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  // Mirrors the login lockup so every entry point reads as one
+                  // Mirrors the login lockup, so every entry point reads as one
                   // product.
                   const SrBrandLockup(size: 40),
                   const SizedBox(height: SrSpacing.xxxl),
@@ -61,21 +73,27 @@ class SrAccessDeniedView extends StatelessWidget {
                         const SizedBox(height: SrSpacing.xl),
                         Text(
                           'Access denied',
-                          style: SrTypography.screenTitle,
+                          style: SrTypography.screenTitle.copyWith(
+                            color: sr.foreground,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: SrSpacing.sm),
                         Text(
                           'You are signed in, but this account does not have '
                           'access to this page.',
-                          style: SrTypography.bodyMuted,
+                          style: SrTypography.body.copyWith(
+                            color: sr.textSecondary,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: SrSpacing.md),
                         Text(
                           'Use the navigation available to your account, or '
                           'sign in with a different account.',
-                          style: SrTypography.bodyMuted,
+                          style: SrTypography.body.copyWith(
+                            color: sr.textSecondary,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: SrSpacing.xxl),

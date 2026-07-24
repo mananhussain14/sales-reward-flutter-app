@@ -46,11 +46,12 @@ void main() {
       }
     });
 
-    test('every destination lives under its own role\'s prefix', () {
+    test('every routable destination lives under its own role\'s prefix', () {
       for (final RoleNavigation navigation in RoleNavigationRegistry.ordered) {
-        for (final RoleDestination destination in navigation.destinations) {
+        for (final RoleDestination destination
+            in navigation.routableDestinations) {
           expect(
-            navigation.owns(destination.path),
+            navigation.owns(destination.path!),
             isTrue,
             reason:
                 '${destination.path} is offered by ${navigation.role.name} but '
@@ -64,24 +65,26 @@ void main() {
       final Map<String, AppRole> seen = <String, AppRole>{};
 
       for (final RoleNavigation navigation in RoleNavigationRegistry.ordered) {
-        for (final RoleDestination destination in navigation.destinations) {
+        for (final RoleDestination destination
+            in navigation.routableDestinations) {
           expect(
-            seen.containsKey(destination.path),
+            seen.containsKey(destination.path!),
             isFalse,
             reason:
                 '${destination.path} is claimed by both '
                 '${seen[destination.path]?.name} and ${navigation.role.name}',
           );
-          seen[destination.path] = navigation.role;
+          seen[destination.path!] = navigation.role;
         }
       }
     });
 
     test('roleOwning resolves each destination to its own role', () {
       for (final RoleNavigation navigation in RoleNavigationRegistry.ordered) {
-        for (final RoleDestination destination in navigation.destinations) {
+        for (final RoleDestination destination
+            in navigation.routableDestinations) {
           expect(
-            RoleNavigationRegistry.roleOwning(destination.path),
+            RoleNavigationRegistry.roleOwning(destination.path!),
             navigation.role,
           );
         }
@@ -124,9 +127,10 @@ void main() {
 
     test('allows a role inside its own group', () {
       for (final RoleNavigation navigation in RoleNavigationRegistry.ordered) {
-        for (final RoleDestination destination in navigation.destinations) {
+        for (final RoleDestination destination
+            in navigation.routableDestinations) {
           expect(
-            redirectFor(active(navigation.role), destination.path),
+            redirectFor(active(navigation.role), destination.path!),
             isNull,
             reason: '${destination.path} is ${navigation.role.name}\'s own',
           );

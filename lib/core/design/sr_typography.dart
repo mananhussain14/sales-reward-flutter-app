@@ -1,209 +1,226 @@
 import 'package:flutter/material.dart';
 
-import 'sr_colors.dart';
-
-/// The typography hierarchy, translated from the web application's Tailwind
-/// classes.
+/// The SalesReward type scale, transcribed from § 2.11 of
+/// `docs/mobile-ui-design-handoff.md`.
+///
+/// ## These styles carry no colour
+///
+/// Every style below is **geometry only** — size, weight, line height, letter
+/// spacing. Colour is applied by the caller from `context.sr`, because the same
+/// role is `slate-900` in light and `slate-50` in dark. Baking a colour into a
+/// [TextStyle] is what makes a design system impossible to re-theme.
 ///
 /// ## Font family
 ///
-/// The web app loads Geist Sans through `next/font/google` and declares this
-/// fallback stack in `globals.css`:
+/// The web loads **Geist** via `next/font/google`, with the fallback chain
+/// `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial`.
 ///
-/// ```
-/// var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
-/// "Segoe UI", Roboto, Arial, sans-serif
-/// ```
+/// This milestone ships **no bundled font asset and no runtime font download**,
+/// so the app renders the platform sans-serif — which is precisely the fallback
+/// the web itself uses before Geist loads. The hierarchy is carried by the
+/// sizes, weights and tracking below, and those are exact.
 ///
-/// This milestone deliberately ships **no bundled font asset and no network
-/// font fetch**, so the app renders the platform sans-serif — which is exactly
-/// the documented fallback the web app itself uses when Geist has not loaded.
-/// The proportions, weights and letter-spacing below are what actually carry the
-/// hierarchy, and they are reproduced exactly. Bundling Geist as an asset is a
-/// self-contained follow-up: set [fontFamily] and nothing else changes.
+/// The handoff asks for Geist to be bundled; it is recorded as a required asset
+/// in `docs/required-design-assets.md`. Adopting it is a one-line change:
+/// set [fontFamily] and add the `.ttf` to `pubspec.yaml`.
 ///
-/// ## Scale
+/// ## Line heights
 ///
-/// Every size below is a Tailwind step the web components use, with the line
-/// height Tailwind pairs with it and the `tracking-*` value converted from `em`
-/// to logical pixels at that size.
+/// Tailwind's defaults, applied as a unitless multiplier:
+/// `text-xs` 1.333 · `text-sm` 1.4286 · `text-base` 1.5 · `text-lg` 1.556 ·
+/// `text-xl` 1.4 · `text-2xl` 1.333 · `text-3xl` 1.2.
+/// `tracking-tight` = −0.025em, `tracking-wide` = +0.025em, converted to
+/// logical pixels at each size.
 abstract final class SrTypography {
-  /// Left null so Flutter resolves the platform sans-serif — the same outcome
-  /// as the web's fallback stack. Set this once Geist ships as a bundled asset.
+  /// Null resolves the platform sans-serif. Set once Geist ships as an asset.
   static const String? fontFamily = null;
 
-  /// `text-2xl font-semibold tracking-tight` — the page title in `PageHeader`.
-  /// 24px / 32px, -0.025em → -0.6px.
+  static const double _xs = 1.3333;
+  static const double _sm = 1.4286;
+  static const double _base = 1.5;
+  static const double _lg = 1.5556;
+  static const double _xl = 1.4;
+  static const double _xxl = 1.3333;
+  static const double _xxxl = 1.2;
+
+  /// `text-2xl` 24 / 600 / tracking-tight — the page title.
   static const TextStyle pageTitle = TextStyle(
     fontFamily: fontFamily,
     fontSize: 24,
-    height: 32 / 24,
+    height: _xxl,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.6,
-    color: SrColors.foreground,
   );
 
-  /// `text-xl font-semibold tracking-tight` — the heading on a standalone card
-  /// screen such as access-denied. 20px / 28px, -0.5px.
+  /// `text-xl` 20 / 600 / tracking-tight — invitation and access-denied titles.
   static const TextStyle screenTitle = TextStyle(
     fontFamily: fontFamily,
     fontSize: 20,
-    height: 28 / 20,
+    height: _xl,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.5,
-    color: SrColors.foreground,
   );
 
-  /// `text-lg font-semibold tracking-tight` — `SectionHeader`.
-  /// 18px / 28px, -0.45px.
+  /// `text-lg` 18 / 600 / tracking-tight — a section heading.
   static const TextStyle sectionTitle = TextStyle(
     fontFamily: fontFamily,
     fontSize: 18,
-    height: 28 / 18,
+    height: _lg,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.45,
-    color: SrColors.foreground,
   );
 
-  /// `text-base font-semibold` — the title inside a `SectionCard` or
-  /// `StatusCard`. 16px / 24px.
+  /// `text-base` 16 / 600 — a card title, and the app-bar title.
   static const TextStyle cardTitle = TextStyle(
     fontFamily: fontFamily,
     fontSize: 16,
-    height: 24 / 16,
+    height: _base,
     fontWeight: FontWeight.w600,
-    color: SrColors.foreground,
   );
 
-  /// `text-base` — body copy at the large step. 16px / 24px.
+  /// `text-3xl` 30 / 600 / tabular — a stat value.
+  static const TextStyle statValue = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 30,
+    height: _xxxl,
+    fontWeight: FontWeight.w600,
+    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+  );
+
+  /// `text-lg` 18 / 500 — a stat value that could not be read ("Unavailable").
+  static const TextStyle statUnavailable = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 18,
+    height: _lg,
+    fontWeight: FontWeight.w500,
+  );
+
+  /// `text-base` 16 / 400.
   static const TextStyle bodyLarge = TextStyle(
     fontFamily: fontFamily,
     fontSize: 16,
-    height: 24 / 16,
+    height: _base,
     fontWeight: FontWeight.w400,
-    color: SrColors.foreground,
   );
 
-  /// `text-sm` — the product's default body size. 14px / 20px.
+  /// `text-sm` 14 / 400 — the product's default body size.
   static const TextStyle body = TextStyle(
     fontFamily: fontFamily,
     fontSize: 14,
-    height: 20 / 14,
+    height: _sm,
     fontWeight: FontWeight.w400,
-    color: SrColors.foreground,
   );
 
-  /// `text-sm text-slate-500` — descriptions under a title.
-  static const TextStyle bodyMuted = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w400,
-    color: SrColors.textMuted,
-  );
-
-  /// `text-sm font-medium text-slate-800` — a form field label.
+  /// `text-sm` 14 / 500 — a form field label, a nav item, an identity name.
   static const TextStyle label = TextStyle(
     fontFamily: fontFamily,
     fontSize: 14,
-    height: 20 / 14,
+    height: _sm,
     fontWeight: FontWeight.w500,
-    color: SrColors.slate800,
   );
 
-  /// `text-sm font-semibold` — button text at the `sm` and `md` sizes.
+  /// `text-sm` 14 / 600 — a button label at `sm` and `md`.
   static const TextStyle button = TextStyle(
     fontFamily: fontFamily,
     fontSize: 14,
-    height: 20 / 14,
+    height: _sm,
     fontWeight: FontWeight.w600,
   );
 
-  /// `text-base font-semibold` — button text at the `lg` size.
+  /// `text-base` 16 / 600 — a button label at `lg`.
   static const TextStyle buttonLarge = TextStyle(
     fontFamily: fontFamily,
     fontSize: 16,
-    height: 24 / 16,
+    height: _base,
     fontWeight: FontWeight.w600,
   );
 
-  /// `text-xs text-slate-500` — a field hint or caption. 12px / 16px.
+  /// `text-xs` 12 / 400 — a hint or caption.
   static const TextStyle caption = TextStyle(
     fontFamily: fontFamily,
     fontSize: 12,
-    height: 16 / 12,
+    height: _xs,
     fontWeight: FontWeight.w400,
-    color: SrColors.textMuted,
   );
 
-  /// `text-xs font-medium` — the label inside a status badge.
+  /// `text-xs` 12 / 500 — a status badge label.
   static const TextStyle badge = TextStyle(
     fontFamily: fontFamily,
     fontSize: 12,
-    height: 16 / 12,
+    height: _xs,
     fontWeight: FontWeight.w500,
   );
 
-  /// `text-xs font-semibold uppercase tracking-wide text-indigo-600` — the
-  /// eyebrow above a page title. 0.05em → +0.6px. Callers uppercase the string.
+  /// `text-xs` 12 / 600 / uppercase / tracking-wide — the eyebrow above a page
+  /// title. Callers uppercase the string themselves.
   static const TextStyle eyebrow = TextStyle(
     fontFamily: fontFamily,
     fontSize: 12,
-    height: 16 / 12,
+    height: _xs,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.6,
-    color: SrColors.brand,
+    letterSpacing: 0.3,
   );
 
-  /// `text-[0.7rem] font-medium uppercase tracking-wide text-slate-500` — the
-  /// portal caption under the brand wordmark ("Vendor Admin"). 11.2px.
-  static const TextStyle brandContext = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 11.2,
-    height: 16 / 11.2,
-    fontWeight: FontWeight.w500,
-    letterSpacing: 0.56,
-    color: SrColors.textMuted,
-  );
-
-  /// `text-[0.95rem] font-semibold tracking-tight` — the "SalesReward"
-  /// wordmark. 15.2px.
+  /// 15.2 / 600 / tracking-tight — the "SalesReward" wordmark.
   static const TextStyle wordmark = TextStyle(
     fontFamily: fontFamily,
     fontSize: 15.2,
-    height: 1.1,
+    height: 1.15,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.38,
-    color: SrColors.foreground,
   );
 
-  /// `text-sm font-medium text-red-700` — a field-level validation error.
+  /// 11.2 / 500 / uppercase / tracking-wide — the portal caption under the
+  /// wordmark, and the stage-indicator label.
+  static const TextStyle brandContext = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 11.2,
+    height: 1.4,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.28,
+  );
+
+  /// 10 / 600 / uppercase / tracking-wide — the "Soon" pill on a disabled nav
+  /// item.
+  static const TextStyle soonPill = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 10,
+    height: 1.4,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.25,
+  );
+
+  /// `text-sm` 14 / 500 — a field-level validation error.
   static const TextStyle fieldError = TextStyle(
     fontFamily: fontFamily,
     fontSize: 14,
-    height: 20 / 14,
+    height: _sm,
     fontWeight: FontWeight.w500,
-    color: SrColors.red700,
   );
 
-  /// The Material [TextTheme] the app theme is built from. Each slot is mapped
-  /// to the closest step in the scale above so that any Material widget which
-  /// resolves typography from the theme still lands on a documented style.
-  static const TextTheme textTheme = TextTheme(
-    displayLarge: pageTitle,
-    displayMedium: pageTitle,
-    displaySmall: screenTitle,
-    headlineLarge: pageTitle,
-    headlineMedium: screenTitle,
-    headlineSmall: sectionTitle,
-    titleLarge: sectionTitle,
-    titleMedium: cardTitle,
-    titleSmall: label,
-    bodyLarge: bodyLarge,
-    bodyMedium: body,
-    bodySmall: caption,
-    labelLarge: button,
-    labelMedium: label,
-    labelSmall: badge,
-  );
+  /// The Material [TextTheme], with [foreground] applied to the primary slots
+  /// and [secondary] to the supporting ones, so any stock Material widget still
+  /// lands on a documented style in whichever theme is active.
+  static TextTheme textTheme({
+    required Color foreground,
+    required Color secondary,
+  }) {
+    return TextTheme(
+      displayLarge: pageTitle.copyWith(color: foreground),
+      displayMedium: pageTitle.copyWith(color: foreground),
+      displaySmall: screenTitle.copyWith(color: foreground),
+      headlineLarge: pageTitle.copyWith(color: foreground),
+      headlineMedium: screenTitle.copyWith(color: foreground),
+      headlineSmall: sectionTitle.copyWith(color: foreground),
+      titleLarge: sectionTitle.copyWith(color: foreground),
+      titleMedium: cardTitle.copyWith(color: foreground),
+      titleSmall: label.copyWith(color: foreground),
+      bodyLarge: bodyLarge.copyWith(color: foreground),
+      bodyMedium: body.copyWith(color: foreground),
+      bodySmall: caption.copyWith(color: secondary),
+      labelLarge: button.copyWith(color: foreground),
+      labelMedium: label.copyWith(color: foreground),
+      labelSmall: badge.copyWith(color: secondary),
+    );
+  }
 }

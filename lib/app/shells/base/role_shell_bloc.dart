@@ -89,6 +89,7 @@ abstract class RoleShellBloc extends Bloc<RoleShellEvent, RoleShellState> {
   /// This role's own navigation model. Never another role's.
   final RoleNavigation navigation;
 
-  /// The route path for the currently selected destination.
-  String get selectedPath => navigation.destinations[state.selectedIndex].path;
+  /// The route path for the currently selected destination, or null when that
+  /// destination is a non-navigable "Soon" placeholder.
+  String? get selectedPath => navigation.destinations[state.selectedIndex].path;
 }

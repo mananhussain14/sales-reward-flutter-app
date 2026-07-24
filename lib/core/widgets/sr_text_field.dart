@@ -2,24 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 
-/// The standard single-line text field, translated from `TextField` in the web
-/// application's `components/ui/field.tsx`.
+/// The standard single-line text field (§ 3.2).
 ///
-/// ## The layout rule, preserved
+/// ## The layout rule, which is load-bearing
 ///
-/// The web component carries a deliberate, documented rule: the label sits on
-/// top, the control directly beneath it, and the hint **or** the error is
-/// rendered BELOW the control — never between the label and the input. That is
-/// what lets two fields side by side keep their inputs on the same row when only
-/// one of them has a hint.
+/// Label on top → control directly beneath → hint **or** error **below the
+/// control**. Guidance never sits between the label and the input.
+/// `components/ui/field.tsx` documents this as a CRITICAL LAYOUT RULE: it is
+/// what lets two fields in a two-column grid keep their inputs on the same row
+/// when only one of them has a hint.
 ///
 /// Mobile stacks fields vertically, so the alignment argument does not apply —
 /// but the rule is kept anyway, because it also means a message only ever grows
-/// downward and never pushes the control the user is typing into.
+/// downward and never displaces the control the user is typing into.
 ///
-/// A hint and an error are mutually exclusive: when both are supplied the error
-/// wins, and `aria-describedby` on the web points at whichever is rendered. The
-/// Flutter equivalent is that only one message widget exists in the tree.
+/// Vertical rhythm: 8px label → control, 8px control → message, 20px between
+/// fields (the caller supplies the last one).
 class SrTextField extends StatelessWidget {
   const SrTextField({
     super.key,
@@ -44,19 +42,19 @@ class SrTextField extends StatelessWidget {
   final String label;
   final TextEditingController? controller;
 
-  /// Guidance shown under the control when there is no [errorText].
+  /// Guidance below the control, shown when there is no [errorText].
   final String? hint;
 
-  /// A validation message. When present it replaces [hint] and tints the border.
+  /// A validation message. Replaces [hint] and tints the border.
   final String? errorText;
 
   final String? placeholder;
 
-  /// Renders the visible `*` marker, so a requirement is not left to color or
-  /// placement alone.
+  /// Renders a **visible** red asterisk. Requirement is never signalled by
+  /// colour or placement alone.
   final bool required;
 
-  /// Renders the "(optional)" marker. Defaults to the inverse of [required].
+  /// Renders the "(optional)" affix. Defaults to the inverse of [required].
   final bool? showOptionalMarker;
 
   final bool obscureText;
@@ -71,13 +69,17 @@ class SrTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
     final bool hasError = errorText != null;
-    final bool optional = showOptionalMarker ?? !required;
 
-    return Column(
+    final Widget field = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _Label(label: label, required: required, optional: optional),
+        _Label(
+          label: label,
+          required: required,
+          optional: showOptionalMarker ?? !required,
+        ),
         const SizedBox(height: SrSpacing.sm),
         TextField(
           controller: controller,
@@ -90,49 +92,53 @@ class SrTextField extends StatelessWidget {
           maxLength: maxLength,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
-          style: SrTypography.body,
-          cursorColor: SrColors.brand,
+          style: SrTypography.body.copyWith(color: sr.foreground),
+          cursorColor: sr.brand,
           decoration: InputDecoration(
             hintText: placeholder,
-            // The message is rendered below by this widget rather than by
-            // InputDecoration, so the two never disagree about which one shows
-            // and the field keeps a stable height.
+            // The message is rendered below by this widget, not by
+            // InputDecoration, so the two can never disagree about which one
+            // shows and the field keeps a stable height.
             counterText: '',
             errorText: null,
             helperText: null,
-            enabledBorder: hasError
-                ? OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(SrRadii.lg),
-                    borderSide: const BorderSide(color: SrColors.red400),
-                  )
-                : null,
+            fillColor: enabled ? sr.inputFill : sr.inputDisabledFill,
+            enabledBorder: hasError ? _border(sr.inputErrorBorder) : null,
             focusedBorder: hasError
-                ? OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(SrRadii.lg),
-                    borderSide: const BorderSide(
-                      color: SrColors.red600,
-                      width: 2,
-                    ),
-                  )
+                ? _border(sr.inputErrorFocusBorder, width: 2)
                 : null,
-            fillColor: enabled ? SrColors.surface : SrColors.appBackground,
           ),
         ),
         if (hasError) ...<Widget>[
           const SizedBox(height: SrSpacing.sm),
-          Text(errorText!, style: SrTypography.fieldError),
+          Text(
+            errorText!,
+            style: SrTypography.fieldError.copyWith(color: sr.fieldError),
+          ),
         ] else if (hint != null) ...<Widget>[
           const SizedBox(height: SrSpacing.sm),
-          Text(hint!, style: SrTypography.caption),
+          Text(
+            hint!,
+            style: SrTypography.caption.copyWith(color: sr.textSecondary),
+          ),
         ],
       ],
     );
+
+    // § 2.6: a disabled control drops to 70% over the muted fill.
+    return enabled ? field : Opacity(opacity: 0.7, child: field);
   }
+
+  static OutlineInputBorder _border(Color color, {double width = 1}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(SrRadii.control),
+        borderSide: BorderSide(color: color, width: width),
+      );
 }
 
-/// A labelled wrapper for a control this package does not provide (a dropdown,
-/// a date picker, a segmented control), so those still get the product's label,
-/// hint and error treatment. Mirrors the web's generic `Field`.
+/// A labelled wrapper for a control this package does not provide — a dropdown,
+/// a date picker, a segmented control — so those still take the product's
+/// label, hint and error treatment.
 class SrField extends StatelessWidget {
   const SrField({
     super.key,
@@ -151,6 +157,8 @@ class SrField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -159,10 +167,16 @@ class SrField extends StatelessWidget {
         child,
         if (errorText != null) ...<Widget>[
           const SizedBox(height: SrSpacing.sm),
-          Text(errorText!, style: SrTypography.fieldError),
+          Text(
+            errorText!,
+            style: SrTypography.fieldError.copyWith(color: sr.fieldError),
+          ),
         ] else if (hint != null) ...<Widget>[
           const SizedBox(height: SrSpacing.sm),
-          Text(hint!, style: SrTypography.caption),
+          Text(
+            hint!,
+            style: SrTypography.caption.copyWith(color: sr.textSecondary),
+          ),
         ],
       ],
     );
@@ -182,22 +196,24 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Text.rich(
       TextSpan(
         text: label,
-        style: SrTypography.label,
+        style: SrTypography.label.copyWith(color: sr.textLabel),
         children: <InlineSpan>[
           if (required)
-            const TextSpan(
+            TextSpan(
               text: ' *',
-              style: TextStyle(color: SrColors.red600),
+              style: TextStyle(color: sr.dangerFill),
             ),
           if (optional)
             TextSpan(
               text: ' (optional)',
               style: SrTypography.label.copyWith(
                 fontWeight: FontWeight.w400,
-                color: SrColors.slate400,
+                color: sr.textMuted,
               ),
             ),
         ],

@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 
-/// The standard page header, translated from `PageHeader` in the web
-/// application's `components/ui/page-header.tsx`.
+/// The standard page header (§ 3.16): an optional uppercase brand-tinted
+/// eyebrow, a 24px semibold title, an optional supporting description capped at
+/// `max-w-2xl`, and an optional action cluster.
 ///
-/// An optional eyebrow, a title, an optional supporting description, and an
-/// optional action cluster. The web places actions to the right on wide screens;
-/// on mobile they always wrap beneath the text, because a title plus a button on
-/// one 360px row leaves room for neither.
+/// The web puts actions on the right from `sm` up and stacks them below on a
+/// phone. Flutter builds the phone column, so they always stack.
 class SrPageHeader extends StatelessWidget {
   const SrPageHeader({
     super.key,
@@ -20,7 +19,7 @@ class SrPageHeader extends StatelessWidget {
 
   final String title;
 
-  /// Rendered uppercase in the brand color, exactly as on the web.
+  /// Rendered uppercase in the brand colour.
   final String? eyebrow;
 
   final String? description;
@@ -28,17 +27,31 @@ class SrPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         if (eyebrow != null) ...<Widget>[
-          Text(eyebrow!.toUpperCase(), style: SrTypography.eyebrow),
+          Text(
+            eyebrow!.toUpperCase(),
+            style: SrTypography.eyebrow.copyWith(color: sr.brand),
+          ),
           const SizedBox(height: SrSpacing.xs),
         ],
-        Text(title, style: SrTypography.pageTitle),
+        Text(
+          title,
+          style: SrTypography.pageTitle.copyWith(color: sr.foreground),
+        ),
         if (description != null) ...<Widget>[
           const SizedBox(height: SrSpacing.xsPlus),
-          Text(description!, style: SrTypography.bodyMuted),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: SrSpacing.formMaxWidth),
+            child: Text(
+              description!,
+              style: SrTypography.body.copyWith(color: sr.textSecondary),
+            ),
+          ),
         ],
         if (actions.isNotEmpty) ...<Widget>[
           const SizedBox(height: SrSpacing.lg),
@@ -53,8 +66,8 @@ class SrPageHeader extends StatelessWidget {
   }
 }
 
-/// A lighter within-page section heading, for grouping content under a page
-/// header. Mirrors `SectionHeader` in `page-header.tsx`.
+/// A within-page section heading (§ 3.16): 18px semibold title, optional
+/// description, optional right-aligned action.
 class SrSectionHeader extends StatelessWidget {
   const SrSectionHeader({
     super.key,
@@ -69,6 +82,8 @@ class SrSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
@@ -76,10 +91,16 @@ class SrSectionHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(title, style: SrTypography.sectionTitle),
+              Text(
+                title,
+                style: SrTypography.sectionTitle.copyWith(color: sr.foreground),
+              ),
               if (description != null) ...<Widget>[
                 const SizedBox(height: SrSpacing.xxs),
-                Text(description!, style: SrTypography.bodyMuted),
+                Text(
+                  description!,
+                  style: SrTypography.body.copyWith(color: sr.textSecondary),
+                ),
               ],
             ],
           ),
@@ -93,20 +114,38 @@ class SrSectionHeader extends StatelessWidget {
   }
 }
 
-/// The standard page body: the app background, the page gutter, and a max width
-/// so a card does not stretch to 1400px on a tablet or on Flutter web and stop
-/// resembling the product.
+/// The standard page body: the page gutter, and a max width so a card does not
+/// stretch across a tablet or a desktop browser.
+///
+/// `px-4 py-6` on a phone (§ 2.9), widening to `px-6` at `sm`, capped at
+/// `max-w-6xl` — the same responsive rule the web's `<main>` uses.
 class SrPageBody extends StatelessWidget {
-  const SrPageBody({super.key, required this.children, this.scrollable = true});
+  const SrPageBody({
+    super.key,
+    required this.children,
+    this.scrollable = true,
+    this.maxWidth = SrSpacing.contentMaxWidth,
+  });
 
   final List<Widget> children;
   final bool scrollable;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
+    final double width = MediaQuery.sizeOf(context).width;
+    final double horizontal = width >= SrSpacing.breakpointSm
+        ? SrSpacing.xxl
+        : SrSpacing.lg;
+
+    final EdgeInsets gutter = EdgeInsets.symmetric(
+      horizontal: horizontal,
+      vertical: SrSpacing.xxl,
+    );
+
     final Widget content = Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: SrSpacing.contentMaxWidth),
+        constraints: BoxConstraints(maxWidth: maxWidth),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -115,15 +154,9 @@ class SrPageBody extends StatelessWidget {
       ),
     );
 
-    const EdgeInsets gutter = EdgeInsets.symmetric(
-      horizontal: SrSpacing.lg,
-      vertical: SrSpacing.xl,
-    );
-
     if (!scrollable) {
       return Padding(padding: gutter, child: content);
     }
-
     return SingleChildScrollView(padding: gutter, child: content);
   }
 }

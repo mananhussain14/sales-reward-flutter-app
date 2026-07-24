@@ -7,32 +7,34 @@ import 'sr_empty_state.dart';
 
 /// The shared failure state.
 ///
-/// Turns a [Failure] into copy, a tone, and (where it helps) a retry — and does
-/// nothing else. Three properties inherited from the web layer make this widget
-/// the right place for that translation:
+/// Turns a [Failure] into copy, a tone and — only where retrying could change
+/// the answer — a retry. It does nothing else, and it is the only place that
+/// translation happens.
 ///
-/// * **The wording is fixed here, per discriminant.** No caller can accidentally
-///   render a backend message, because no backend message reaches this widget.
-/// * **A denial never reads as "not found".** `42501` is deliberately overloaded
-///   in SQL so that it is not an existence oracle; splitting it into friendlier
-///   sub-cases in the UI would undo that.
+/// Three properties are inherited from the web layer and are the reason this is
+/// centralised:
+///
+/// * **The wording is fixed here, per discriminant.** No caller can render a
+///   backend message, because no backend message ever reaches this widget.
+/// * **A denial never reads as "not found".** `42501` is deliberately
+///   overloaded in SQL so it is not an existence oracle; splitting it into
+///   friendlier sub-cases would undo that.
 /// * **An outage never reads as a denial.** [UnavailableFailure] offers a retry
-///   and says nothing about permission.
+///   and says nothing about permission. The role-flow map calls this out
+///   directly: telling a user they lack access when the database was merely
+///   unreachable is both wrong and alarming.
 ///
-/// [DeniedFailure] renders here as an inline state for a failed operation. A
-/// caller whose *entire screen* is refused should use `SrAccessDeniedView`,
-/// which is the full-screen equivalent with a sign-out affordance.
+/// A whole screen that is refused should use `SrAccessDeniedView` instead — the
+/// full-screen surface with a sign-out affordance.
 class SrFailureView extends StatelessWidget {
   const SrFailureView({super.key, required this.failure, this.onRetry});
 
   final Failure failure;
-
-  /// Shown only where retrying could plausibly change the answer.
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final _FailureCopy copy = _copyFor(failure);
+    final SrFailureCopy copy = copyFor(failure);
 
     return SrEmptyState(
       icon: copy.icon,
@@ -50,40 +52,41 @@ class SrFailureView extends StatelessWidget {
     );
   }
 
-  static _FailureCopy _copyFor(Failure failure) => switch (failure) {
-    DeniedFailure() => const _FailureCopy(
+  /// The copy for [failure]. Exposed so tests can assert the mapping directly.
+  static SrFailureCopy copyFor(Failure failure) => switch (failure) {
+    DeniedFailure() => const SrFailureCopy(
       icon: Icons.shield_outlined,
       tone: SrTone.amber,
       title: 'Not available to this account',
-      // Says nothing about whether the target exists. Matches the web's
-      // single generic denial for every 42501.
+      // Says nothing about whether the target exists, matching the web's single
+      // generic denial for every 42501.
       description:
           'This account does not have access to this action. If you think that '
           'is wrong, contact whoever manages your access.',
       retryable: false,
     ),
-    UnauthenticatedFailure() => const _FailureCopy(
+    UnauthenticatedFailure() => const SrFailureCopy(
       icon: Icons.lock_outline_rounded,
       tone: SrTone.slate,
       title: 'Your session has ended',
       description: 'Sign in again to continue.',
       retryable: false,
     ),
-    DuplicateFailure() => const _FailureCopy(
-      icon: Icons.content_copy_outlined,
+    DuplicateFailure() => const SrFailureCopy(
+      icon: Icons.copy_all_outlined,
       tone: SrTone.amber,
       title: 'That already exists',
       description: 'Change the details and try again.',
       retryable: false,
     ),
-    InvalidFailure() => const _FailureCopy(
+    InvalidFailure() => const SrFailureCopy(
       icon: Icons.error_outline_rounded,
       tone: SrTone.amber,
       title: 'Check the details',
       description: 'Something in this request was rejected. Review and resend.',
       retryable: false,
     ),
-    NotReadyFailure() => const _FailureCopy(
+    NotReadyFailure() => const SrFailureCopy(
       icon: Icons.pause_circle_outline_rounded,
       tone: SrTone.slate,
       title: 'Not ready yet',
@@ -91,7 +94,7 @@ class SrFailureView extends StatelessWidget {
           'This cannot be completed while the related record is inactive.',
       retryable: false,
     ),
-    UnavailableFailure() => const _FailureCopy(
+    UnavailableFailure() => const SrFailureCopy(
       icon: Icons.cloud_off_rounded,
       tone: SrTone.slate,
       title: 'Could not load this',
@@ -99,7 +102,7 @@ class SrFailureView extends StatelessWidget {
       description: 'Check your connection and try again.',
       retryable: true,
     ),
-    NotImplementedFailure() => const _FailureCopy(
+    NotImplementedFailure() => const SrFailureCopy(
       icon: Icons.construction_rounded,
       tone: SrTone.indigo,
       title: 'Not built yet',
@@ -109,8 +112,9 @@ class SrFailureView extends StatelessWidget {
   };
 }
 
-class _FailureCopy {
-  const _FailureCopy({
+/// The fixed copy for one failure discriminant.
+class SrFailureCopy {
+  const SrFailureCopy({
     required this.icon,
     required this.tone,
     required this.title,

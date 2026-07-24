@@ -32,8 +32,8 @@ const Map<AppRole, Type> _landingPages = <AppRole, Type>{
 
 /// Makes a shell's destinations visible.
 ///
-/// A bottom bar and a rail render their destinations immediately; a drawer
-/// hides them behind the menu button, so it has to be opened first.
+/// A bottom bar and a rail render theirs immediately; a drawer hides them behind
+/// the menu button.
 Future<void> _revealNavigation(
   WidgetTester tester,
   RoleNavigation navigation,
@@ -57,7 +57,7 @@ void main() {
 
         expect(find.byType(_shellTypes[role]!), findsOneWidget);
 
-        // And exactly one shell exists — no other role's shell is in the tree.
+        // Exactly one shell exists — no other role's is in the tree.
         for (final Type other in _shellTypes.values) {
           if (other == _shellTypes[role]) continue;
           expect(
@@ -78,14 +78,20 @@ void main() {
           findsOneWidget,
           reason: 'landing must be ${navigation.landingPath}',
         );
-
-        // The screen states which role it belongs to — the page eyebrow and the
-        // shell's brand caption both render the name in caps.
         expect(
           find.text(role.displayName.toUpperCase()),
           findsWidgets,
           reason: 'the landing screen must state which role it belongs to',
         );
+      });
+
+      testWidgets('${role.displayName} captions itself with its portal', (
+        tester,
+      ) async {
+        await pumpAppInRole(tester, role);
+
+        // The app bar names the portal, never the role — matching the web.
+        expect(find.text(navigation.portalName), findsWidgets);
       });
 
       testWidgets('${role.displayName} offers all of its own destinations', (
@@ -112,6 +118,18 @@ void main() {
         expect(find.textContaining('Interface preview'), findsOneWidget);
         expect(find.textContaining('grants no access'), findsOneWidget);
       });
+
+      testWidgets('${role.displayName} renders in dark mode too', (
+        tester,
+      ) async {
+        tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+        await pumpAppInRole(tester, role);
+
+        expect(find.byType(_shellTypes[role]!), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 
@@ -123,9 +141,9 @@ void main() {
         await pumpAppInRole(tester, role);
         await _revealNavigation(tester, navigation);
 
-        final Set<String> ownLabels = RoleNavigationRegistry.forRole(
-          role,
-        ).destinations.map((RoleDestination d) => d.label).toSet();
+        final Set<String> ownLabels = navigation.destinations
+            .map((RoleDestination d) => d.label)
+            .toSet();
 
         for (final AppRole other in AppRole.values) {
           if (other == role) continue;
@@ -133,7 +151,7 @@ void main() {
           for (final RoleDestination destination
               in RoleNavigationRegistry.forRole(other).destinations) {
             if (ownLabels.contains(destination.label)) {
-              // Shared label (e.g. Products, Profile) — not a leak.
+              // A shared label (Products, Staff) is not a leak.
               continue;
             }
             expect(
@@ -150,22 +168,39 @@ void main() {
   });
 
   group('shell chrome adapts to the viewport', () {
-    testWidgets('a three-to-five destination role uses bottom navigation on a '
-        'phone', (tester) async {
-      await pumpAppInRole(tester, AppRole.salesStaff);
+    testWidgets('a Retailer role uses bottom navigation on a phone', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, AppRole.retailerOwner);
 
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
     });
 
     testWidgets('the same role promotes to a rail on a tablet', (tester) async {
-      await pumpAppInRole(tester, AppRole.salesStaff, surface: tabletSurface);
+      await pumpAppInRole(
+        tester,
+        AppRole.retailerOwner,
+        surface: tabletSurface,
+      );
 
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
     });
 
-    testWidgets('the Vendor role uses a drawer, not a crowded bottom bar', (
+    testWidgets('Sales Staff keeps a concise two-item bar', (tester) async {
+      await pumpAppInRole(tester, AppRole.salesStaff);
+
+      final NavigationBar bar = tester.widget<NavigationBar>(
+        find.byType(NavigationBar),
+      );
+      expect(bar.destinations, hasLength(2));
+      // The primary write action is the landing tab.
+      expect(bar.selectedIndex, 0);
+      expect(find.text('Submit a receipt'), findsOneWidget);
+    });
+
+    testWidgets('the Vendor uses a drawer, not a crowded bottom bar', (
       tester,
     ) async {
       await pumpAppInRole(tester, AppRole.vendorSuperAdmin);
@@ -177,7 +212,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Drawer), findsOneWidget);
-      expect(find.text('Audit logs'), findsWidgets);
+      expect(find.text('Audit Logs'), findsWidgets);
+    });
+
+    testWidgets('the Vendor drawer keeps the "Soon" placeholders inert', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, AppRole.vendorSuperAdmin);
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Campaigns'), findsOneWidget);
+      expect(find.text('SOON'), findsNWidgets(6));
+
+      // Tapping one changes nothing: it is shown, never navigable.
+      await tester.tap(find.text('Campaigns'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VendorDashboardPage), findsOneWidget);
+    });
+
+    testWidgets('the Vendor drawer becomes a permanent panel on desktop', (
+      tester,
+    ) async {
+      await pumpAppInRole(
+        tester,
+        AppRole.vendorSuperAdmin,
+        surface: desktopSurface,
+      );
+
+      // No hamburger: the panel is already open beside the content.
+      expect(find.byIcon(Icons.menu_rounded), findsNothing);
+      expect(find.text('Dashboard'), findsWidgets);
     });
   });
 
@@ -187,7 +253,7 @@ void main() {
 
       expect(find.text('Submit a receipt'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.history_rounded).first);
+      await tester.tap(find.byIcon(Icons.receipt_long_outlined).first);
       await tester.pumpAndSettle();
 
       expect(find.text('My receipts'), findsOneWidget);
@@ -195,6 +261,22 @@ void main() {
 
       // Still inside the Sales Staff shell.
       expect(find.byType(SalesStaffShell), findsOneWidget);
+    });
+
+    testWidgets('the drawer closes when a destination is chosen', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, AppRole.vendorSuperAdmin);
+
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+
+      await tester.tap(find.text('Retailers'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Drawer), findsNothing);
+      expect(find.text('Retailers'), findsWidgets);
     });
   });
 }

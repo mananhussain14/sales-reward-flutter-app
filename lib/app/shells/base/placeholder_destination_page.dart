@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/design/design.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/widgets/widgets.dart';
 
@@ -7,12 +8,12 @@ import '../../../core/widgets/widgets.dart';
 ///
 /// It renders the shared [SrFailureView] for a [NotImplementedFailure] rather
 /// than a bespoke "coming soon" graphic, so an unbuilt screen looks exactly like
-/// every other unbuilt thing in the app and cannot be mistaken for a working one
-/// that happens to be empty.
+/// every other unbuilt thing in the app and can never be mistaken for a working
+/// one that happens to be empty.
 ///
-/// [backendNote] names the backend work the screen is waiting on — an RPC or an
-/// Edge Function from the feature matrix. It is developer-facing context, shown
-/// so a reviewer can see *why* a destination is inert without leaving the app.
+/// [backendNote] names the backend work the screen is waiting on — an RPC, an
+/// Edge Function, or a contract fix from the feature matrix — so a reviewer can
+/// see *why* a destination is inert without leaving the app.
 class PlaceholderDestinationPage extends StatelessWidget {
   const PlaceholderDestinationPage({
     super.key,
@@ -32,11 +33,11 @@ class PlaceholderDestinationPage extends StatelessWidget {
     return SrPageBody(
       children: <Widget>[
         SrPageHeader(eyebrow: roleName, title: title),
-        const SizedBox(height: 24),
+        const SizedBox(height: SrSpacing.xxl),
         const SrFailureView(
           failure: NotImplementedFailure(capability: 'screen'),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: SrSpacing.lg),
         SrSectionCard(
           title: 'Waiting on the backend',
           description: backendNote,

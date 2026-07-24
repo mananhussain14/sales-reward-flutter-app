@@ -28,9 +28,12 @@ import 'router_refresh.dart';
 ///
 /// Each role owns a prefix — `/vendor`, `/retailer-owner`, `/retailer-manager`,
 /// `/sales-staff` — and a `ShellRoute` that builds only that role's shell. The
-/// groups do not overlap and no path is shared between them, which is what makes
-/// "can a Sales Staff shell ever render a Vendor screen?" answerable by reading
-/// one file.
+/// groups do not overlap and no path is shared, which makes "can a Sales Staff
+/// shell ever render a Vendor screen?" answerable by reading one file.
+///
+/// The web serves the Owner, Manager and Sales Staff from one `/retailer/*` tree
+/// and separates them with server-side checks. Splitting them here does not
+/// weaken that — it adds a second, purely presentational boundary on top of it.
 ///
 /// ## The guard
 ///
@@ -38,12 +41,18 @@ import 'router_refresh.dart';
 /// they do not belong in, which prevents a confusing screen — not a security
 /// incident. Supabase remains the authorization authority: every read and write
 /// behind these screens is decided again in SQL by a `SECURITY DEFINER` function
-/// that derives the caller from `auth.uid()` and accepts no user id. If this
-/// guard were deleted entirely, a user who typed another role's URL would reach
-/// a shell whose every query returned `42501`.
+/// that derives the caller from `auth.uid()` and accepts no user id. The
+/// role-flow map states the rule three times over; if this guard were deleted
+/// entirely, a user who typed another role's URL would reach a shell whose every
+/// query returned `42501`.
 ///
 /// It is written to fail closed: no resolved role sends the user back to the
 /// gate, and a mismatched role sends them to the shared access-denied screen.
+///
+/// ## Lazy construction
+///
+/// Every route builds its page in a closure, so a screen is constructed only
+/// when it is actually visited. Nothing is instantiated at router-build time.
 GoRouter buildAppRouter({
   required RoleSessionBloc roleSessionBloc,
   String initialLocation = AppRoutes.roleGate,
@@ -73,9 +82,8 @@ GoRouter buildAppRouter({
 }
 
 /// The route guard, written as a pure function of (session state, location) so
-/// it can be tested directly against a table of cases — the same discipline the
-/// web repository applies to `landing-decision.ts` and
-/// `portal-access-decision.ts`.
+/// it can be tested against a table of cases — the discipline the web repository
+/// applies to `landing-decision.ts` and `portal-access-decision.ts`.
 ///
 /// Returns the path to redirect to, or null to allow the navigation.
 String? redirectFor(RoleSessionState session, String location) {
@@ -131,15 +139,32 @@ ShellRoute _roleShell({
       if (resolved == null || resolved.role != role) {
         return const AccessDeniedPage();
       }
-
       return shellBuilder(child, state.matchedLocation, resolved);
     },
     routes: routes,
   );
 }
 
+/// A placeholder route, so the ten unbuilt destinations read identically.
+GoRoute _placeholder({
+  required String path,
+  required String roleName,
+  required String title,
+  required String backendNote,
+}) {
+  return GoRoute(
+    path: path,
+    builder: (BuildContext context, GoRouterState state) =>
+        PlaceholderDestinationPage(
+          roleName: roleName,
+          title: title,
+          backendNote: backendNote,
+        ),
+  );
+}
+
 RouteBase _vendorRoutes(RoleSessionBloc bloc) {
-  const String roleName = 'Vendor Super Admin';
+  const String role = 'Vendor Super Admin';
 
   return _roleShell(
     bloc: bloc,
@@ -152,79 +177,55 @@ RouteBase _vendorRoutes(RoleSessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const VendorDashboardPage(),
       ),
-      GoRoute(
+      _placeholder(
         path: VendorNavigation.retailers,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Retailers',
-              backendNote:
-                  'Needs list_vendor_retailers() and '
-                  'get_vendor_retailer_detail(); both are proposed, neither '
-                  'exists. Phase 3.',
-            ),
+        roleName: role,
+        title: 'Retailers',
+        backendNote:
+            'V-05 and V-06. Needs list_vendor_retailers() and '
+            'get_vendor_retailer_detail(); the current reads fetch every shop '
+            'row just to count them. Phase 3.',
       ),
-      GoRoute(
+      _placeholder(
         path: VendorNavigation.users,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Users',
-              backendNote:
-                  'Needs list_vendor_organization_members(); the web assembles '
-                  'this from a four-query join in TypeScript today. Phase 3.',
-            ),
+        roleName: role,
+        title: 'Users',
+        backendNote:
+            'V-02. Needs list_vendor_organization_members(); the web assembles '
+            'this from a four-query join in TypeScript, which Flutter must not '
+            're-implement. Phase 3.',
       ),
-      GoRoute(
+      _placeholder(
         path: VendorNavigation.roles,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Roles',
-              backendNote:
-                  'The roles and permissions catalogue is readable through RLS '
-                  'today; the screen is simply not built. Phase 3.',
-            ),
+        roleName: role,
+        title: 'Roles',
+        backendNote:
+            'V-03. The roles and permissions catalogue is readable through RLS '
+            'today for a Vendor; only the screen is missing. Phase 3.',
       ),
-      GoRoute(
+      _placeholder(
         path: VendorNavigation.products,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Products',
-              backendNote:
-                  'list_vendor_products() and the create/update/status RPCs all '
-                  'exist; the screens are not built. Phase 3.',
-            ),
+        roleName: role,
+        title: 'Products',
+        backendNote:
+            'V-12 to V-16. The RPCs exist. Duplicate code-vs-barcode errors are '
+            'discriminated by an English message substring today — Flutter must '
+            'not re-implement that matching (contract fix #3). Phase 3.',
       ),
-      GoRoute(
+      _placeholder(
         path: VendorNavigation.auditLogs,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Audit logs',
-              backendNote:
-                  'Needs list_vendor_audit_logs(p_limit, p_before); the current '
-                  'read is capped at 100 rows with no pagination. Phase 3.',
-            ),
-      ),
-      GoRoute(
-        path: VendorNavigation.profile,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Profile',
-              backendNote:
-                  'Needs an authenticated session. Authentication is not '
-                  'implemented in this milestone.',
-            ),
+        roleName: role,
+        title: 'Audit Logs',
+        backendNote:
+            'V-04. Needs list_vendor_audit_logs(p_limit, p_before); the current '
+            'read is a fixed 100 rows with no pagination. Phase 3.',
       ),
     ],
   );
 }
 
 RouteBase _retailerOwnerRoutes(RoleSessionBloc bloc) {
-  const String roleName = 'Retailer Owner';
+  const String role = 'Retailer Owner';
 
   return _roleShell(
     bloc: bloc,
@@ -241,58 +242,39 @@ RouteBase _retailerOwnerRoutes(RoleSessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const RetailerOwnerOverviewPage(),
       ),
-      GoRoute(
+      _placeholder(
         path: RetailerOwnerNavigation.shops,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Shops',
-              backendNote:
-                  'list_retailer_owner_portal_shops() exists but returns no '
-                  'shop_id, so a mobile list cannot key its rows or navigate to '
-                  'a detail screen. Contract fix #1.',
-            ),
+        roleName: role,
+        title: 'Shops',
+        backendNote:
+            'RO-02. list_retailer_owner_portal_shops() exists but returns no '
+            'shop_id, so a list cannot key its rows or open a detail screen. '
+            'Render non-tappable until contract fix #1.',
       ),
-      GoRoute(
+      _placeholder(
         path: RetailerOwnerNavigation.staff,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Staff',
-              backendNote:
-                  'The roster and invitation reads exist. Sending an invitation '
-                  'needs the send-staff-invitation Edge Function, which holds '
-                  'the token and the Resend key. Phase 2.',
-            ),
+        roleName: role,
+        title: 'Staff',
+        backendNote:
+            'RO-04 to RO-09. The roster, invitation and revoke paths are ready. '
+            'Sending an invitation needs the send-staff-invitation Edge '
+            'Function, which holds the token and the Resend key. Phase 2.',
       ),
-      GoRoute(
+      _placeholder(
         path: RetailerOwnerNavigation.products,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Products',
-              backendNote:
-                  'list_retailer_assigned_products() is ready; the screen is '
-                  'not built. Phase 2.',
-            ),
-      ),
-      GoRoute(
-        path: RetailerOwnerNavigation.profile,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Profile',
-              backendNote:
-                  'Needs an authenticated session. Authentication is not '
-                  'implemented in this milestone.',
-            ),
+        roleName: role,
+        title: 'Products',
+        backendNote:
+            'RO-03. list_retailer_assigned_products() is ready and identical '
+            'for the Owner and the Manager; only the screen is missing. '
+            'Phase 2.',
       ),
     ],
   );
 }
 
 RouteBase _retailerManagerRoutes(RoleSessionBloc bloc) {
-  const String roleName = 'Retailer Manager';
+  const String role = 'Retailer Manager';
 
   return _roleShell(
     bloc: bloc,
@@ -309,34 +291,20 @@ RouteBase _retailerManagerRoutes(RoleSessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const RetailerManagerStaffPage(),
       ),
-      GoRoute(
+      _placeholder(
         path: RetailerManagerNavigation.products,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Products',
-              backendNote:
-                  'list_retailer_assigned_products() is ready; the screen is '
-                  'not built. Phase 2.',
-            ),
-      ),
-      GoRoute(
-        path: RetailerManagerNavigation.profile,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Profile',
-              backendNote:
-                  'Needs an authenticated session. Authentication is not '
-                  'implemented in this milestone.',
-            ),
+        roleName: role,
+        title: 'Products',
+        backendNote:
+            'RM-03. list_retailer_assigned_products() is ready and this role '
+            'is permitted to read it. Only the screen is missing. Phase 2.',
       ),
     ],
   );
 }
 
 RouteBase _salesStaffRoutes(RoleSessionBloc bloc) {
-  const String roleName = 'Sales Staff';
+  const String role = 'Sales Staff';
 
   return _roleShell(
     bloc: bloc,
@@ -349,28 +317,15 @@ RouteBase _salesStaffRoutes(RoleSessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const SalesStaffSubmitPage(),
       ),
-      GoRoute(
+      _placeholder(
         path: SalesStaffNavigation.history,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'My receipts',
-              backendNote:
-                  'list_my_receipt_submissions() is ready and scoped to '
-                  'auth.uid() in SQL. Viewing a submitted image has no read '
-                  'path anywhere in the backend — open question Q1.',
-            ),
-      ),
-      GoRoute(
-        path: SalesStaffNavigation.profile,
-        builder: (BuildContext context, GoRouterState state) =>
-            const PlaceholderDestinationPage(
-              roleName: roleName,
-              title: 'Profile',
-              backendNote:
-                  'Needs an authenticated session. Authentication is not '
-                  'implemented in this milestone.',
-            ),
+        roleName: role,
+        title: 'My receipts',
+        backendNote:
+            'SS-05 is ready — list_my_receipt_submissions() is scoped to '
+            'auth.uid() in SQL. SS-06 is not: there is no read path anywhere in '
+            'the backend for a submitted image, so a row cannot be opened '
+            '(Q1 / D-5).',
       ),
     ],
   );

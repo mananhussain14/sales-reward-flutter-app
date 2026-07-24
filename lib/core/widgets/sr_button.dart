@@ -2,69 +2,47 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 
-/// The button variants, mirroring `VARIANTS` in the web application's
-/// `components/ui/button.tsx`.
-enum SrButtonVariant {
-  /// `bg-indigo-600 text-white` — the primary call to action.
-  primary,
+/// The five button variants, from § 3.1 of
+/// `docs/mobile-ui-design-handoff.md`.
+enum SrButtonVariant { primary, secondary, outline, ghost, danger }
 
-  /// `bg-slate-900 text-white` — a strong but non-brand action.
-  secondary,
-
-  /// `border-slate-300 bg-white text-slate-700` — the default secondary.
-  outline,
-
-  /// `text-slate-600 hover:bg-slate-100` — a low-emphasis action.
-  ghost,
-
-  /// `bg-red-600 text-white` — a destructive action.
-  danger,
-}
-
-/// The button sizes, mirroring `SIZES` in `button.tsx`.
+/// The three button sizes.
+///
+/// `md` (44) and `lg` (48) already clear the 44pt touch-target minimum; the
+/// handoff notes explicitly that they must not be shrunk to `sm` on mobile.
 enum SrButtonSize {
-  /// `h-9 px-3 text-sm`
-  sm(
-    height: 36,
-    horizontalPadding: SrSpacing.md,
-    textStyle: SrTypography.button,
-  ),
+  /// h-9 / px-3 / 14px.
+  sm(height: 36, horizontalPadding: SrSpacing.md),
 
-  /// `h-11 px-4 text-sm` — the default.
-  md(
-    height: 44,
-    horizontalPadding: SrSpacing.lg,
-    textStyle: SrTypography.button,
-  ),
+  /// h-11 / px-4 / 14px — the default.
+  md(height: 44, horizontalPadding: SrSpacing.lg),
 
-  /// `h-12 px-5 text-base`
-  lg(
-    height: 48,
-    horizontalPadding: SrSpacing.xl,
-    textStyle: SrTypography.buttonLarge,
-  );
+  /// h-12 / px-5 / 16px — the primary submit on auth and receipt forms.
+  lg(height: 48, horizontalPadding: SrSpacing.xl);
 
-  const SrButtonSize({
-    required this.height,
-    required this.horizontalPadding,
-    required this.textStyle,
-  });
+  const SrButtonSize({required this.height, required this.horizontalPadding});
 
   final double height;
   final double horizontalPadding;
-  final TextStyle textStyle;
+
+  TextStyle get textStyle =>
+      this == SrButtonSize.lg ? SrTypography.buttonLarge : SrTypography.button;
 }
 
-/// The shared button, translated from `components/ui/button.tsx`.
+/// The shared button.
 ///
-/// Carries the same geometry (12px radius, semibold label, 8px icon gap), the
-/// same variant palette, and the same built-in busy state: while [loading] the
-/// button shows a spinner, optionally swaps its label, and is disabled — so a
-/// double submit is prevented by the control itself.
+/// Carries the product's geometry (12-radius, semibold label, 8px icon gap,
+/// `shadow-sm` at rest) and its **built-in loading state**: while [loading] the
+/// button disables itself, prepends a 16px spinner and optionally swaps its
+/// label. The handoff calls for exactly that rather than a bare
+/// `CircularProgressIndicator` replacing the child.
 ///
-/// That last property is not cosmetic. The backend contract records that
-/// `onboard_vendor_retailer()` has **no idempotency guard**, so a double submit
-/// creates two Retailers. Disabling on submit is the client's half of that.
+/// That behaviour is not only cosmetic. `onboard_vendor_retailer()` has **no
+/// server-side idempotency**, so a double submit creates two Retailers;
+/// disabling on submit is the client's half of that guard.
+///
+/// Disabled and loading both render at 60% opacity with the shadow removed,
+/// matching § 2.6 — deliberately not Material's default grey.
 class SrButton extends StatelessWidget {
   const SrButton({
     super.key,
@@ -84,99 +62,81 @@ class SrButton extends StatelessWidget {
   final SrButtonSize size;
   final IconData? icon;
 
-  /// Shows a spinner and disables the button.
+  /// Shows the spinner and disables the button.
   final bool loading;
 
-  /// Optional label shown while [loading]. Falls back to [label].
+  /// The label shown while [loading] — "Signing in…", "Submitting…". Falls back
+  /// to [label].
   final String? loadingLabel;
 
   final bool fullWidth;
 
   bool get _enabled => onPressed != null && !loading;
 
-  Color get _background => switch (variant) {
-    SrButtonVariant.primary => SrColors.brand,
-    SrButtonVariant.secondary => SrColors.slate900,
-    SrButtonVariant.outline => SrColors.surface,
-    SrButtonVariant.ghost => Colors.transparent,
-    SrButtonVariant.danger => SrColors.red600,
-  };
-
-  Color get _pressedBackground => switch (variant) {
-    SrButtonVariant.primary => SrColors.brandHover,
-    SrButtonVariant.secondary => SrColors.slate800,
-    SrButtonVariant.outline => SrColors.slate50,
-    SrButtonVariant.ghost => SrColors.slate100,
-    SrButtonVariant.danger => SrColors.red700,
-  };
-
-  Color get _foreground => switch (variant) {
-    SrButtonVariant.primary ||
-    SrButtonVariant.secondary ||
-    SrButtonVariant.danger => SrColors.white,
-    SrButtonVariant.outline => SrColors.slate700,
-    SrButtonVariant.ghost => SrColors.textSecondary,
-  };
-
-  BorderSide? get _side => switch (variant) {
-    SrButtonVariant.outline => const BorderSide(color: SrColors.borderStrong),
-    _ => null,
-  };
-
-  /// `shadow-sm` on every filled and outlined variant; the ghost variant has
-  /// none, exactly as on the web.
-  List<BoxShadow> get _shadow => switch (variant) {
-    SrButtonVariant.ghost => const <BoxShadow>[],
-    _ => SrShadows.subtle,
-  };
-
   @override
   Widget build(BuildContext context) {
-    final ButtonStyle style = ButtonStyle(
-      backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
-        if (states.contains(WidgetState.disabled)) {
-          // `disabled:opacity-60`
-          return Color.alphaBlend(
-            _background.withValues(alpha: 0.6),
-            SrColors.appBackground,
-          );
-        }
-        if (states.contains(WidgetState.pressed) ||
-            states.contains(WidgetState.hovered)) {
-          return _pressedBackground;
-        }
-        return _background;
-      }),
-      foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
-        if (states.contains(WidgetState.disabled)) {
-          return _foreground.withValues(alpha: 0.6);
-        }
-        return _foreground;
-      }),
-      overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
-      elevation: const WidgetStatePropertyAll<double>(0),
-      shadowColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
-      surfaceTintColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
-      textStyle: WidgetStatePropertyAll<TextStyle>(size.textStyle),
-      padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-        EdgeInsets.symmetric(horizontal: size.horizontalPadding),
+    final SrColorScheme sr = context.sr;
+
+    final (Color fill, Color pressedFill, Color foreground) = switch (variant) {
+      SrButtonVariant.primary => (sr.brand, sr.brandHover, sr.onBrand),
+      SrButtonVariant.secondary => (
+        sr.secondaryFill,
+        sr.secondaryHover,
+        sr.onSecondary,
       ),
-      minimumSize: WidgetStatePropertyAll<Size>(Size(0, size.height)),
-      side: _side == null ? null : WidgetStatePropertyAll<BorderSide>(_side!),
-      shape: WidgetStatePropertyAll<OutlinedBorder>(
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(SrRadii.lg)),
+      SrButtonVariant.outline => (
+        sr.outlineFill,
+        sr.outlineHover,
+        sr.onOutline,
       ),
-      animationDuration: SrMotion.fast,
-    );
+      SrButtonVariant.ghost => (Colors.transparent, sr.ghostHover, sr.onGhost),
+      SrButtonVariant.danger => (sr.dangerFill, sr.dangerHover, sr.onBrand),
+    };
+
+    final BorderSide? side = variant == SrButtonVariant.outline
+        ? BorderSide(color: sr.borderStrong)
+        : null;
+
+    // `shadow-sm` on every variant except ghost, and never while disabled.
+    final List<BoxShadow> shadow = variant == SrButtonVariant.ghost || !_enabled
+        ? const <BoxShadow>[]
+        : sr.subtleShadow;
 
     final Widget button = DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(SrRadii.lg),
-        boxShadow: _enabled ? _shadow : const <BoxShadow>[],
+        borderRadius: BorderRadius.circular(SrRadii.control),
+        boxShadow: shadow,
       ),
       child: TextButton(
         onPressed: _enabled ? onPressed : null,
-        style: style,
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.pressed) ||
+                states.contains(WidgetState.hovered)) {
+              return pressedFill;
+            }
+            return fill;
+          }),
+          foregroundColor: WidgetStatePropertyAll<Color>(foreground),
+          overlayColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+          elevation: const WidgetStatePropertyAll<double>(0),
+          shadowColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+          surfaceTintColor: const WidgetStatePropertyAll<Color>(
+            Colors.transparent,
+          ),
+          textStyle: WidgetStatePropertyAll<TextStyle>(size.textStyle),
+          padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
+            EdgeInsets.symmetric(horizontal: size.horizontalPadding),
+          ),
+          minimumSize: WidgetStatePropertyAll<Size>(Size(0, size.height)),
+          side: side == null ? null : WidgetStatePropertyAll<BorderSide>(side),
+          shape: WidgetStatePropertyAll<OutlinedBorder>(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SrRadii.control),
+            ),
+          ),
+          animationDuration: SrMotion.fast,
+        ),
         child: Row(
           mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -186,11 +146,11 @@ class SrButton extends StatelessWidget {
                 dimension: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: _foreground,
+                  color: foreground,
                 ),
               )
             else if (icon != null)
-              Icon(icon, size: 16, color: _foreground),
+              Icon(icon, size: 16, color: foreground),
             if (loading || icon != null) const SizedBox(width: SrSpacing.sm),
             Flexible(
               child: Text(
@@ -203,6 +163,12 @@ class SrButton extends StatelessWidget {
       ),
     );
 
-    return fullWidth ? SizedBox(width: double.infinity, child: button) : button;
+    // § 2.6: the whole control drops to 60%, rather than each colour being
+    // separately muted.
+    final Widget sized = fullWidth
+        ? SizedBox(width: double.infinity, child: button)
+        : button;
+
+    return _enabled ? sized : Opacity(opacity: 0.6, child: sized);
   }
 }

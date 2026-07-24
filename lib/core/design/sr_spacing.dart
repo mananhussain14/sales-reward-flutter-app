@@ -1,79 +1,99 @@
-/// The spacing rhythm, translated from Tailwind's 4px scale as the web
-/// components use it.
+/// The spacing rhythm, transcribed from § 2.9 of
+/// `docs/mobile-ui-design-handoff.md`.
 ///
-/// The web app never invents a spacing value: every gap, pad and margin is a
-/// step on Tailwind's `0.25rem` scale. Naming the steps here (rather than
-/// writing `16` at call sites) is what keeps the mobile rhythm identical to the
-/// web's, and makes a deviation visible in review.
+/// Tailwind v4's base unit is `0.25rem`, so utility `n` renders `4n` px. The
+/// web never invents a spacing value; naming the steps here — rather than
+/// writing `16` at call sites — is what keeps the mobile rhythm identical and
+/// makes a deviation visible in review.
 abstract final class SrSpacing {
-  /// `0.5` → 2px
+  /// `0.5` → 2
   static const double xxs = 2;
 
-  /// `1` → 4px
+  /// `1` → 4
   static const double xs = 4;
 
-  /// `1.5` → 6px
+  /// `1.5` → 6 — empty-state title → description.
   static const double xsPlus = 6;
 
-  /// `2` → 8px — the base gap inside a control (icon ↔ label).
+  /// `2` → 8 — label → control, control → message, icon → label in a button.
   static const double sm = 8;
 
-  /// `2.5` → 10px — horizontal padding of a status badge.
+  /// `2.5` → 10 — badge horizontal padding, brand lockup gap.
   static const double smPlus = 10;
 
-  /// `3` → 12px
+  /// `3` → 12 — nav item horizontal padding, nav icon → label, card list gap.
   static const double md = 12;
 
-  /// `3.5` → 14px — horizontal padding of a form control.
+  /// `3.5` → 14 — form control horizontal padding.
   static const double mdPlus = 14;
 
-  /// `4` → 16px — the default gap between siblings.
+  /// `4` → 16 — grid gutter, card body padding, main content padding on a
+  /// phone.
   static const double lg = 16;
 
-  /// `5` → 20px — card padding on narrow screens (`p-5`).
+  /// `5` → 20 — card padding, and the gap between fields in a form.
   static const double xl = 20;
 
-  /// `6` → 24px — card padding on wider screens (`sm:p-6`), page gutters.
+  /// `6` → 24 — card padding at `sm`+, page section stack, empty-state
+  /// horizontal padding.
   static const double xxl = 24;
 
-  /// `8` → 32px — separation between major page sections.
+  /// `8` → 32 — the wider page section stack, and auth card padding at `sm`+.
   static const double xxxl = 32;
 
-  /// `12` → 48px — vertical padding of an empty state (`py-12`).
+  /// `12` → 48 — empty-state vertical padding.
   static const double huge = 48;
 
-  /// The maximum content width for a page body. Phones never reach it; tablets
-  /// and Flutter web do, and without it a card would stretch to 1400px and stop
-  /// resembling the web product at all.
-  static const double contentMaxWidth = 720;
+  /// `max-w-6xl` = 1152 — dashboards and lists.
+  static const double contentMaxWidth = 1152;
 
-  /// Below this width the shells use bottom navigation; at or above it they use
-  /// a navigation rail. Matches Material's compact/medium window breakpoint.
-  static const double railBreakpoint = 640;
+  /// `max-w-2xl` = 672 — form pages and page-header descriptions.
+  static const double formMaxWidth = 672;
 
-  /// At or above this width a navigation drawer can stay permanently open
-  /// beside the content instead of being summoned modally.
-  static const double expandedBreakpoint = 1024;
+  /// `max-w-md` = 448 — auth, invitation and access-denied surfaces.
+  static const double compactMaxWidth = 448;
+
+  /// `max-w-sm` = 384 — the login form, and an empty-state description.
+  static const double narrowMaxWidth = 384;
+
+  /// `w-64` = 256 — the sidebar, and therefore the drawer.
+  static const double navWidth = 256;
+
+  /// `h-16` = 64 — the app bar, and the sidebar header.
+  static const double appBarHeight = 64;
+
+  /// Tailwind `sm`. Below it the phone layout applies.
+  static const double breakpointSm = 640;
+
+  /// Tailwind `md`. The web swaps its card lists for tables here.
+  static const double breakpointMd = 768;
+
+  /// Tailwind `lg`. The web's drawer becomes a permanent sidebar here.
+  static const double breakpointLg = 1024;
 }
 
-/// The corner radii, translated from the Tailwind `rounded-*` steps the web
-/// components use.
+/// The corner radii, transcribed from § 2.8.
+///
+/// > There are **three** radii to internalise: **12 for controls, 16 for
+/// > surfaces, full for pills.** Nothing in the product uses 4 or 24.
 abstract final class SrRadii {
-  /// `rounded-md` → 6px — skeleton blocks.
-  static const double sm = 6;
+  /// `rounded-md` → 6 — skeleton blocks only.
+  static const double skeleton = 6;
 
-  /// `rounded-lg` → 8px — back links, small hit targets.
-  static const double md = 8;
+  /// `rounded-lg` → 8 — small inline controls and chips.
+  static const double sm = 8;
 
-  /// `rounded-xl` → 12px — buttons and every form control.
-  static const double lg = 12;
+  /// `rounded-xl` → 12 — **controls**: buttons, inputs, alerts, nav items,
+  /// icon buttons, and the 10 × 10 icon disc.
+  static const double control = 12;
 
-  /// `rounded-2xl` → 16px — cards, sheets, tinted icon discs.
-  static const double xl = 16;
+  /// `rounded-2xl` → 16 — **surfaces**: cards, sheets, dialogs, empty states,
+  /// and the 11–14 icon discs.
+  static const double surface = 16;
 
-  /// The brand mark tile's radius at its 40px reference size (`rx="11"`).
+  /// The brand tile's radius on its 40px reference grid.
   static const double brandTile = 11;
 
-  /// `rounded-full` — status badges and avatars.
+  /// `rounded-full` — badges, avatars, timeline nodes, the active nav rail.
   static const double full = 9999;
 }

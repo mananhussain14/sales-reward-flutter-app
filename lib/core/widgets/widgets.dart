@@ -1,15 +1,17 @@
 /// The SalesReward design system.
 ///
-/// The Flutter counterpart to the web application's `components/ui/*`. Every
-/// widget here documents which web component it was translated from; none of
-/// them makes a decision, and none of them talks to Supabase.
+/// The Flutter counterpart of the web's `components/ui/*`. Every widget records
+/// the numbered section of `docs/mobile-ui-design-handoff.md` it was translated
+/// from. None of them makes a decision, and none of them talks to Supabase.
 library;
 
 export 'sr_access_denied_view.dart';
+export 'sr_alert.dart';
 export 'sr_badge.dart';
 export 'sr_brand_mark.dart';
 export 'sr_button.dart';
 export 'sr_card.dart';
+export 'sr_card_grid.dart';
 export 'sr_empty_state.dart';
 export 'sr_failure_view.dart';
 export 'sr_loading_view.dart';
