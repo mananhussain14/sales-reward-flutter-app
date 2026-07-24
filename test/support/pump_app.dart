@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sale_reward/app/app.dart';
-import 'package:sale_reward/app/di/injector.dart';
 import 'package:sale_reward/app/theme/app_theme.dart';
-import 'package:sale_reward/features/auth/domain/entities/app_role.dart';
+import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
+import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
+import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
 
-/// A convenience alias, so a test that only needs *some* role does not have to
-/// pick one arbitrarily at each call site.
-const AppRole salesStaffRole = AppRole.salesStaff;
+import 'fakes.dart';
 
 /// A phone-sized surface, so shells that adapt on width render their
 /// narrow-screen chrome (bottom navigation, modal drawer).
 const Size phoneSurface = Size(390, 844);
+
+/// A small-but-common phone, to catch overflow the taller default hides.
+const Size smallPhoneSurface = Size(360, 640);
 
 /// A tablet-sized surface, for asserting the rail promotion.
 const Size tabletSurface = Size(900, 1000);
@@ -27,49 +29,58 @@ void useSurface(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-/// Pumps the real application and settles it on the role gate.
+/// Pumps the real application over supplied fakes, never Supabase.
 ///
-/// Uses the real dependency graph, so this also exercises the startup wiring
-/// [configureDependencies] performs.
-Future<void> pumpApp(WidgetTester tester, {Size surface = phoneSurface}) async {
-  await configureDependencies();
-  addTearDown(resetDependencies);
+/// Returns the fakes so a test can drive the auth stream and inspect calls.
+/// [initialUser] seeds a restored session; leave it null for a cold start with
+/// no session.
+Future<({FakeAuthRepository auth, FakePortalContextRepository portal})> pumpApp(
+  WidgetTester tester, {
+  AuthUser? initialUser,
+  PortalContextResult portalResult = deniedResult,
+  Size surface = phoneSurface,
+  ThemeMode themeMode = ThemeMode.system,
+  bool settle = true,
+}) async {
+  final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
+  final FakePortalContextRepository portal = FakePortalContextRepository(
+    portalResult,
+  );
+  addTearDown(auth.dispose);
 
   useSurface(tester, surface);
-  await tester.pumpWidget(const SaleRewardApp());
-  await tester.pumpAndSettle();
+  await tester.pumpWidget(
+    SaleRewardApp(
+      authRepository: auth,
+      portalContextRepository: portal,
+      initialThemeMode: themeMode,
+    ),
+  );
+  if (settle) {
+    await tester.pumpAndSettle();
+  }
+  return (auth: auth, portal: portal);
 }
 
-/// Pumps the app and enters [role]'s shell through the gate's preview control.
-///
-/// Deliberately goes through the real UI rather than seeding BLoC state: the
-/// preview path is the only way into a shell in this build, and a test that
-/// bypassed it would stop noticing if that path broke.
-Future<void> pumpAppInRole(
+/// Pumps the app already signed in and resolved into [kind]'s shell.
+Future<({FakeAuthRepository auth, FakePortalContextRepository portal})>
+pumpAppInRole(
   WidgetTester tester,
-  AppRole role, {
+  PortalKind kind, {
   Size surface = phoneSurface,
-}) async {
-  await pumpApp(tester, surface: surface);
-
-  final Finder control = find.widgetWithText(TextButton, role.displayName);
-
-  // The gate scrolls on a phone; the later roles sit below the fold.
-  await tester.ensureVisible(control);
-  await tester.pumpAndSettle();
-
-  await tester.tap(control);
-  await tester.pumpAndSettle();
+}) {
+  return pumpApp(
+    tester,
+    initialUser: testUser,
+    portalResult: resolvedResult(kind),
+    surface: surface,
+  );
 }
 
 /// Pumps a single design-system widget inside a real app theme.
 ///
-/// [brightness] selects which theme, so every widget can be asserted in both.
-///
-/// Deliberately **pumps a single frame rather than settling**: the button
-/// spinner and the skeleton shimmer both animate indefinitely by design, so
-/// `pumpAndSettle` would time out on them. One frame is enough to build and lay
-/// out, which is all a finder needs.
+/// Pumps one frame rather than settling: the button spinner and the skeleton
+/// shimmer animate indefinitely by design, so `pumpAndSettle` would time out.
 Future<void> pumpThemed(
   WidgetTester tester,
   Widget child, {

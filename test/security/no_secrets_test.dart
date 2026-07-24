@@ -83,6 +83,80 @@ void main() {
     );
   });
 
+  test('no source hardcodes a login credential', () {
+    // No demo email/password, no seeded token. A credential in the binary is a
+    // credential in every user's hands.
+    _expectAbsent(
+      sources,
+      <String>['sb_secret_', 'password:'],
+      allowInComments: true,
+      allowNamedParams: true,
+    );
+  });
+
+  test('the portal-context RPC is called with no identity arguments', () {
+    // The RPC derives identity from auth.uid(). The data source models it as a
+    // nullary invoker, so an argument cannot be expressed — but assert directly
+    // that no forbidden parameter name appears near the call site.
+    final File dataSource = sources.firstWhere(
+      (File f) => f.path.endsWith('portal_context_data_source.dart'),
+    );
+    final String src = dataSource.readAsStringSync();
+    for (final String forbidden in <String>[
+      'user_id',
+      'p_user',
+      'organization_id',
+      'p_organization',
+      'retailer_id',
+      'membership_id',
+      'role_code',
+      "'email'",
+      'access_token',
+      'tenant',
+    ]) {
+      expect(
+        src.contains(forbidden),
+        isFalse,
+        reason: 'the RPC call must pass no $forbidden argument',
+      );
+    }
+  });
+
+  test('the presentation layer never touches Supabase.instance directly', () {
+    // Data access is confined to the data layer. A widget or bloc reaching for
+    // the client would route around the repository boundary.
+    final Iterable<File> presentation = sources.where(
+      (File f) =>
+          f.path.contains('/presentation/') || f.path.contains('/shells/'),
+    );
+    for (final File file in presentation) {
+      expect(
+        file.readAsStringSync().contains('Supabase.instance'),
+        isFalse,
+        reason: '${file.path} reaches Supabase directly',
+      );
+    }
+  });
+
+  test('no source outside the data layer imports the Supabase SDK', () {
+    final Iterable<File> offenders = sources.where((File f) {
+      if (f.path.contains('/data/') || f.path.endsWith('bootstrap.dart')) {
+        return false; // the data layer and the one init call may.
+      }
+      // The DI injector wires the client into the data layer; allow it.
+      if (f.path.endsWith('injector.dart')) return false;
+      // The failure mapper is the one seam that classifies SDK exception types
+      // into the shared Failure union — a data-adjacent boundary by design.
+      if (f.path.endsWith('failure_mapper.dart')) return false;
+      return f.readAsStringSync().contains("package:supabase_flutter");
+    });
+    expect(
+      offenders.map((File f) => f.path),
+      isEmpty,
+      reason: 'Supabase types must stay in the data layer',
+    );
+  });
+
   test('dart_defines.json is not tracked by git', () {
     final ProcessResult result = Process.runSync('git', <String>[
       'ls-files',
@@ -106,6 +180,7 @@ void _expectAbsent(
   List<File> sources,
   List<String> needles, {
   bool allowInComments = false,
+  bool allowNamedParams = false,
 }) {
   final List<String> hits = <String>[];
 
@@ -122,9 +197,16 @@ void _expectAbsent(
       }
 
       for (final String needle in needles) {
-        if (line.contains(needle)) {
-          hits.add('${file.path}:${i + 1} → $needle');
+        if (!line.contains(needle)) continue;
+        // `password:` is a legitimate Dart named parameter (signInWithPassword,
+        // AuthUser fields). Only a string LITERAL assigned to it would be a
+        // hardcoded credential, and there is none.
+        if (allowNamedParams &&
+            needle == 'password:' &&
+            !RegExp("password:\\s*'").hasMatch(line)) {
+          continue;
         }
+        hits.add('${file.path}:${i + 1} → $needle');
       }
     }
   }

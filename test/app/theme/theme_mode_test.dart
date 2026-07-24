@@ -1,10 +1,9 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sale_reward/app/app.dart';
 import 'package:sale_reward/app/theme/cubit/theme_cubit.dart';
 import 'package:sale_reward/core/design/design.dart';
-import 'package:sale_reward/features/auth/data/repositories/unimplemented_portal_context_repository.dart';
+import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 
 import '../../support/pump_app.dart';
 
@@ -77,14 +76,7 @@ void main() {
       tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
       addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
 
-      useSurface(tester, phoneSurface);
-      await tester.pumpWidget(
-        const SaleRewardApp(
-          portalContextRepository: UnimplementedPortalContextRepository(),
-          initialThemeMode: ThemeMode.light,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await pumpApp(tester, themeMode: ThemeMode.light);
 
       expect(appOf(tester).themeMode, ThemeMode.light);
       expect(_activeScheme(tester).isDark, isFalse);
@@ -96,31 +88,17 @@ void main() {
       tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
       addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
 
-      useSurface(tester, phoneSurface);
-      await tester.pumpWidget(
-        const SaleRewardApp(
-          portalContextRepository: UnimplementedPortalContextRepository(),
-          initialThemeMode: ThemeMode.dark,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await pumpApp(tester, themeMode: ThemeMode.dark);
 
       expect(appOf(tester).themeMode, ThemeMode.dark);
       expect(_activeScheme(tester).isDark, isTrue);
     });
 
     testWidgets('the app renders without error in dark mode', (tester) async {
-      useSurface(tester, phoneSurface);
-      await tester.pumpWidget(
-        const SaleRewardApp(
-          portalContextRepository: UnimplementedPortalContextRepository(),
-          initialThemeMode: ThemeMode.dark,
-        ),
-      );
-      await tester.pumpAndSettle();
+      await pumpApp(tester, themeMode: ThemeMode.dark);
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Role resolution is not connected'), findsOneWidget);
+      expect(find.byType(MaterialApp), findsOneWidget);
     });
   });
 
@@ -128,7 +106,7 @@ void main() {
     testWidgets('is reachable from the account sheet and changes the theme', (
       tester,
     ) async {
-      await pumpAppInRole(tester, salesStaffRole);
+      await pumpAppInRole(tester, PortalKind.salesStaff);
 
       // The avatar in the app bar opens the account sheet.
       await tester.tap(find.bySemanticsLabel('Account'));
@@ -149,36 +127,21 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('does not invent an identity it cannot know', (tester) async {
-      await pumpAppInRole(tester, salesStaffRole);
-
-      await tester.tap(find.bySemanticsLabel('Account'));
-      await tester.pumpAndSettle();
-
-      // Authentication is not implemented, so the sheet says so rather than
-      // showing a placeholder name.
-      expect(find.text('Not signed in'), findsOneWidget);
-      expect(find.textContaining('Sign-in is not built yet'), findsOneWidget);
-    });
-
-    testWidgets('states the role\'s provenance, not just the role', (
+    testWidgets('shows the signed-in email and the resolved role', (
       tester,
     ) async {
-      await pumpAppInRole(tester, salesStaffRole);
+      await pumpAppInRole(tester, PortalKind.salesStaff);
 
       await tester.tap(find.bySemanticsLabel('Account'));
       await tester.pumpAndSettle();
 
-      // A locally previewed role must never read as a resolved one, on the one
-      // surface a user goes to in order to ask "who am I?".
-      expect(find.text('Sales Staff · preview'), findsOneWidget);
-      expect(find.text('Sales Staff'), findsNothing);
+      // The real identity, not a fabricated one, and the role from the backend.
+      expect(find.text('sam@example.com'), findsOneWidget);
+      expect(find.text('Sales Staff'), findsWidgets);
     });
   });
 }
 
-/// The SalesReward colour layer currently in effect, read from a widget below
-/// the MaterialApp so it reflects the resolved brightness.
 SrColorScheme _activeScheme(WidgetTester tester) {
   final BuildContext context = tester.element(find.byType(Scaffold).first);
   return Theme.of(context).extension<SrColorScheme>()!;

@@ -5,7 +5,8 @@ import 'package:sale_reward/app/shells/retailer_manager/retailer_manager_navigat
 import 'package:sale_reward/app/shells/retailer_owner/retailer_owner_navigation.dart';
 import 'package:sale_reward/app/shells/sales_staff/sales_staff_navigation.dart';
 import 'package:sale_reward/app/shells/vendor/vendor_navigation.dart';
-import 'package:sale_reward/features/auth/domain/entities/app_role.dart';
+import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
+import 'package:sale_reward/features/auth/domain/entities/retailer_capabilities.dart';
 
 /// The four navigation models are **separate declarations**, not one filtered
 /// list.
@@ -18,31 +19,39 @@ void main() {
   group('each role has its own model', () {
     test('the registry resolves each role to its own declaration', () {
       expect(
-        RoleNavigationRegistry.forRole(AppRole.vendorSuperAdmin),
+        RoleNavigationRegistry.forRole(PortalKind.vendorSuperAdmin),
         same(VendorNavigation.model),
       );
       expect(
-        RoleNavigationRegistry.forRole(AppRole.retailerOwner),
+        RoleNavigationRegistry.forRole(PortalKind.retailerOwner),
         same(RetailerOwnerNavigation.model),
       );
       expect(
-        RoleNavigationRegistry.forRole(AppRole.retailerManager),
+        RoleNavigationRegistry.forRole(PortalKind.retailerManager),
         same(RetailerManagerNavigation.model),
       );
       expect(
-        RoleNavigationRegistry.forRole(AppRole.salesStaff),
+        RoleNavigationRegistry.forRole(PortalKind.salesStaff),
         same(SalesStaffNavigation.model),
       );
     });
 
-    test('every role is covered exactly once', () {
-      expect(RoleNavigationRegistry.ordered, hasLength(AppRole.values.length));
+    test('every shell kind is covered exactly once', () {
+      final Set<PortalKind> shellKinds = PortalKind.values
+          .where((PortalKind k) => k.hasShell)
+          .toSet();
+      expect(RoleNavigationRegistry.ordered, hasLength(shellKinds.length));
       expect(
         RoleNavigationRegistry.ordered
             .map((RoleNavigation n) => n.role)
             .toSet(),
-        AppRole.values.toSet(),
+        shellKinds,
       );
+    });
+
+    test('PortalKind.none has no navigation model', () {
+      expect(RoleNavigationRegistry.forRole(PortalKind.none), isNull);
+      expect(RoleNavigationRegistry.landingPathFor(PortalKind.none), isNull);
     });
 
     test('no two roles share a destination list instance', () {
@@ -80,7 +89,7 @@ void main() {
       // list is where the mobile side writes it down.
       expect(
         RoleNavigationRegistry.ordered.first.role,
-        AppRole.vendorSuperAdmin,
+        PortalKind.vendorSuperAdmin,
       );
     });
   });
@@ -178,7 +187,8 @@ void main() {
   group('chrome matches the destination count', () {
     test('only the Vendor uses a drawer', () {
       for (final RoleNavigation model in RoleNavigationRegistry.ordered) {
-        final RoleShellChrome expected = model.role == AppRole.vendorSuperAdmin
+        final RoleShellChrome expected =
+            model.role == PortalKind.vendorSuperAdmin
             ? RoleShellChrome.drawer
             : RoleShellChrome.bottomBar;
         expect(model.chrome, expected, reason: model.role.name);
@@ -251,6 +261,44 @@ void main() {
 
     test('falls back to the first destination for an unknown path', () {
       expect(SalesStaffNavigation.model.indexForLocation('/nowhere'), 0);
+    });
+  });
+
+  group('capability filtering is a presentation hint', () {
+    test('a false capability hides its destination', () {
+      const RetailerCapabilities caps = RetailerCapabilities(
+        viewRetailerOverview: true,
+        viewShops: false, // hidden
+        viewStaff: true,
+        manageStaff: true,
+        assignStaffShops: true,
+        viewAssignedProducts: true,
+        submitReceipts: true,
+      );
+      final visible = RetailerOwnerNavigation.model
+          .visibleDestinations(caps)
+          .map((RoleDestination d) => d.label)
+          .toList();
+      expect(visible, isNot(contains('Shops')));
+      expect(visible, containsAll(<String>['Overview', 'Staff', 'Products']));
+    });
+
+    test('an empty capability block never empties the shell', () {
+      // A backend inconsistency (or a Vendor context, which carries none) must
+      // fall back to the full list rather than a shell with no destinations.
+      final visible = RetailerOwnerNavigation.model.visibleDestinations(
+        RetailerCapabilities.none,
+      );
+      expect(visible, RetailerOwnerNavigation.model.destinations);
+    });
+
+    test('all-false but non-empty still never returns an empty list', () {
+      // Guard the pathological case directly: even if every mapped capability
+      // were false, the shell keeps its destinations.
+      final visible = RetailerManagerNavigation.model.visibleDestinations(
+        const RetailerCapabilities(viewRetailerOverview: true),
+      );
+      expect(visible, isNotEmpty);
     });
   });
 }

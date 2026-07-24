@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../features/auth/domain/entities/app_role.dart';
+import '../../../features/auth/domain/entities/portal_context.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/vendor_shell_bloc.dart';
 
@@ -18,12 +18,12 @@ class VendorShell extends StatelessWidget {
     super.key,
     required this.child,
     required this.location,
-    required this.resolved,
+    required this.portalContext,
   });
 
   final Widget child;
   final String location;
-  final ResolvedRole resolved;
+  final PortalContext portalContext;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +31,7 @@ class VendorShell extends StatelessWidget {
       create: (_) => VendorShellBloc(),
       child: RoleShellScaffold<VendorShellBloc>(
         location: location,
-        resolved: resolved,
+        portalContext: portalContext,
         child: child,
       ),
     );

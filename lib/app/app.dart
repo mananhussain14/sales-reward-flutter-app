@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
-import '../features/auth/presentation/bloc/role_session_bloc.dart';
+import '../features/auth/presentation/bloc/session_bloc.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
 import 'theme/app_theme.dart';
@@ -11,21 +12,25 @@ import 'theme/cubit/theme_cubit.dart';
 
 /// The application root.
 ///
-/// Owns the three things that must exist before any route is built: the shared
-/// [RoleSessionBloc], the [ThemeCubit], and the router whose guard reads the
-/// session. All three are created here and disposed here, so a test can pump a
-/// whole app without leaking any of them.
+/// Owns everything that must exist before any route is built: the shared
+/// [AuthRepository] (exposed to the tree so screens and sheets can reach
+/// sign-in and sign-out), the [SessionBloc] that coordinates authentication and
+/// portal resolution, the [ThemeCubit], and the router whose guard reads the
+/// session. All are created here and disposed here, so a test can pump a whole
+/// app without leaking any of them.
 ///
-/// [portalContextRepository] and [initialThemeMode] exist for tests. A real
-/// build resolves the repository from [getIt] — the only place the concrete
-/// implementation is named — and starts on [ThemeMode.system].
+/// [authRepository] and [portalContextRepository] override the injected graph.
+/// A real build resolves both from [getIt]; a test supplies fakes and never
+/// touches Supabase.
 class SaleRewardApp extends StatefulWidget {
   const SaleRewardApp({
     super.key,
+    this.authRepository,
     this.portalContextRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
+  final AuthRepository? authRepository;
   final PortalContextRepository? portalContextRepository;
   final ThemeMode initialThemeMode;
 
@@ -34,7 +39,8 @@ class SaleRewardApp extends StatefulWidget {
 }
 
 class _SaleRewardAppState extends State<SaleRewardApp> {
-  late final RoleSessionBloc _roleSessionBloc;
+  late final AuthRepository _authRepository;
+  late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
 
@@ -42,43 +48,52 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   void initState() {
     super.initState();
 
-    _roleSessionBloc = RoleSessionBloc(
-      repository:
+    _authRepository = widget.authRepository ?? getIt<AuthRepository>();
+
+    _sessionBloc = SessionBloc(
+      authRepository: _authRepository,
+      portalContextRepository:
           widget.portalContextRepository ?? getIt<PortalContextRepository>(),
-    )..add(const RoleSessionResolveRequested());
+    )..add(const SessionStarted());
 
     _themeCubit = ThemeCubit(initialMode: widget.initialThemeMode);
-    _router = buildAppRouter(roleSessionBloc: _roleSessionBloc);
+    _router = buildAppRouter(sessionBloc: _sessionBloc);
   }
 
   @override
   void dispose() {
     _router.dispose();
     _themeCubit.close();
-    _roleSessionBloc.close();
+    _sessionBloc.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: <BlocProvider<dynamic>>[
-        BlocProvider<RoleSessionBloc>.value(value: _roleSessionBloc),
-        BlocProvider<ThemeCubit>.value(value: _themeCubit),
+    return MultiRepositoryProvider(
+      providers: <RepositoryProvider<dynamic>>[
+        // Provided as a value so login, the account sheet and the access-denied
+        // screen can build their own short-lived cubits over it without
+        // threading it through constructors.
+        RepositoryProvider<AuthRepository>.value(value: _authRepository),
       ],
-      // Only the MaterialApp rebuilds when the mode changes — the router, the
-      // session and every route stay put.
-      child: BlocBuilder<ThemeCubit, ThemeMode>(
-        builder: (BuildContext context, ThemeMode themeMode) {
-          return MaterialApp.router(
-            title: 'SalesReward',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
-            themeMode: themeMode,
-            routerConfig: _router,
-          );
-        },
+      child: MultiBlocProvider(
+        providers: <BlocProvider<dynamic>>[
+          BlocProvider<SessionBloc>.value(value: _sessionBloc),
+          BlocProvider<ThemeCubit>.value(value: _themeCubit),
+        ],
+        child: BlocBuilder<ThemeCubit, ThemeMode>(
+          builder: (BuildContext context, ThemeMode themeMode) {
+            return MaterialApp.router(
+              title: 'SalesReward',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: themeMode,
+              routerConfig: _router,
+            );
+          },
+        ),
       ),
     );
   }

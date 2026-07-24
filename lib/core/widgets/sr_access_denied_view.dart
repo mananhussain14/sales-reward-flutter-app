@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../design/design.dart';
+import 'sr_alert.dart';
 import 'sr_brand_mark.dart';
 import 'sr_button.dart';
 import 'sr_card.dart';
@@ -29,12 +30,24 @@ import 'sr_card.dart';
 /// This widget is presentation and decides nothing. The route guard that leads
 /// here is a convenience; the real refusal happens in SQL, on every call.
 class SrAccessDeniedView extends StatelessWidget {
-  const SrAccessDeniedView({super.key, this.onSignOut});
+  const SrAccessDeniedView({
+    super.key,
+    this.onSignOut,
+    this.signingOut = false,
+    this.signOutFailed = false,
+  });
 
-  /// Wired to a real sign-out once authentication exists. When null the control
-  /// is disabled rather than hidden, so the screen's shape does not change
-  /// between this milestone and the next.
+  /// The sign-out action. When null the control is disabled — which is how the
+  /// screen presents an in-flight sign-out rather than hiding its only
+  /// affordance.
   final VoidCallback? onSignOut;
+
+  /// Whether a sign-out is in progress. Shows a busy button.
+  final bool signingOut;
+
+  /// Whether the last sign-out attempt failed. Surfaces an inline notice, so a
+  /// failed sign-out never leaves the user silently stuck on this screen.
+  final bool signOutFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -96,11 +109,22 @@ class SrAccessDeniedView extends StatelessWidget {
                           ),
                           textAlign: TextAlign.center,
                         ),
+                        if (signOutFailed) ...<Widget>[
+                          const SizedBox(height: SrSpacing.xl),
+                          const SrAlert(
+                            tone: SrAlertTone.error,
+                            message:
+                                'Could not sign out. Check your connection and '
+                                'try again.',
+                          ),
+                        ],
                         const SizedBox(height: SrSpacing.xxl),
                         SrButton(
                           label: 'Sign out',
+                          loadingLabel: 'Signing out…',
                           variant: SrButtonVariant.outline,
                           fullWidth: true,
+                          loading: signingOut,
                           onPressed: onSignOut,
                         ),
                       ],

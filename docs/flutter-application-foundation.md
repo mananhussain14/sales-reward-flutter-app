@@ -530,9 +530,16 @@ web does.
 
 ## 10. Backend honesty
 
-`public.get_my_portal_context()` **does not exist**. The role-flow map calls
-shipping it *"the single most important thing to fix before Flutter ships"* and
-the feature matrix lists it as the #1 phase-1 item.
+> **Update (auth milestone):** `public.get_my_portal_context()` now exists and is
+> implemented. Real authentication and trusted routing are documented in
+> [`flutter-authentication-and-portal-context.md`](./flutter-authentication-and-portal-context.md).
+> The preview showcase described below has been **removed** — real sign-in and
+> resolution replace it. The rest of this section is retained as the original
+> foundation record.
+
+`public.get_my_portal_context()` did not exist at the foundation milestone. The
+role-flow map called shipping it *"the single most important thing to fix before
+Flutter ships"* and the feature matrix listed it as the #1 phase-1 item.
 
 Therefore:
 

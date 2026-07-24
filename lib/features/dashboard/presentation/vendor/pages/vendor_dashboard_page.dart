@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
-import '../../../../auth/domain/entities/app_role.dart';
+import '../../../../auth/domain/entities/portal_kind.dart';
 
 /// The Vendor Super Admin landing screen.
 ///
@@ -27,7 +27,7 @@ class VendorDashboardPage extends StatelessWidget {
     return SrPageBody(
       children: <Widget>[
         SrPageHeader(
-          eyebrow: AppRole.vendorSuperAdmin.displayName,
+          eyebrow: PortalKind.vendorSuperAdmin.displayName,
           title: 'Dashboard',
           description:
               "Overview of your organization's members, access control, and "
