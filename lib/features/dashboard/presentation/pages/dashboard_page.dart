@@ -10,10 +10,7 @@ class DashboardPage extends StatelessWidget {
         child: Center(
           child: Text(
             'saleReward',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
           ),
         ),
       ),

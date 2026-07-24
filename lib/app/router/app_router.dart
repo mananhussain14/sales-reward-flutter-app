@@ -6,10 +6,7 @@ abstract final class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: '/',
     routes: <RouteBase>[
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const DashboardPage(),
-      ),
+      GoRoute(path: '/', builder: (context, state) => const DashboardPage()),
     ],
   );
 }
