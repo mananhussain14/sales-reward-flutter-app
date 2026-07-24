@@ -7,6 +7,7 @@ import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
 
 import 'fakes.dart';
+import 'receipt_fakes.dart';
 
 /// A phone-sized surface, so shells that adapt on width render their
 /// narrow-screen chrome (bottom navigation, modal drawer).
@@ -29,23 +30,41 @@ void useSurface(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
+/// Everything a pumped application exposes back to a test.
+typedef PumpedApp = ({
+  FakeAuthRepository auth,
+  FakePortalContextRepository portal,
+  FakeReceiptRepository receipts,
+  FakeReceiptImageSource images,
+});
+
 /// Pumps the real application over supplied fakes, never Supabase.
 ///
 /// Returns the fakes so a test can drive the auth stream and inspect calls.
 /// [initialUser] seeds a restored session; leave it null for a cold start with
 /// no session.
-Future<({FakeAuthRepository auth, FakePortalContextRepository portal})> pumpApp(
+///
+/// The receipt fakes are always supplied, even for tests that never open the
+/// Sales Staff shell — that shell builds its cubits from them, and a test that
+/// forgot to pass one would fall through to the service locator, which is
+/// exactly the accident the injected graph exists to prevent.
+Future<PumpedApp> pumpApp(
   WidgetTester tester, {
   AuthUser? initialUser,
   PortalContextResult portalResult = deniedResult,
   Size surface = phoneSurface,
   ThemeMode themeMode = ThemeMode.system,
   bool settle = true,
+  FakeReceiptRepository? receipts,
+  FakeReceiptImageSource? images,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
     portalResult,
   );
+  final FakeReceiptRepository receiptRepository =
+      receipts ?? FakeReceiptRepository();
+  final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -53,27 +72,37 @@ Future<({FakeAuthRepository auth, FakePortalContextRepository portal})> pumpApp(
     SaleRewardApp(
       authRepository: auth,
       portalContextRepository: portal,
+      receiptRepository: receiptRepository,
+      receiptImageSource: imageSource,
       initialThemeMode: themeMode,
     ),
   );
   if (settle) {
     await tester.pumpAndSettle();
   }
-  return (auth: auth, portal: portal);
+  return (
+    auth: auth,
+    portal: portal,
+    receipts: receiptRepository,
+    images: imageSource,
+  );
 }
 
 /// Pumps the app already signed in and resolved into [kind]'s shell.
-Future<({FakeAuthRepository auth, FakePortalContextRepository portal})>
-pumpAppInRole(
+Future<PumpedApp> pumpAppInRole(
   WidgetTester tester,
   PortalKind kind, {
   Size surface = phoneSurface,
+  FakeReceiptRepository? receipts,
+  FakeReceiptImageSource? images,
 }) {
   return pumpApp(
     tester,
     initialUser: testUser,
     portalResult: resolvedResult(kind),
     surface: surface,
+    receipts: receipts,
+    images: images,
   );
 }
 

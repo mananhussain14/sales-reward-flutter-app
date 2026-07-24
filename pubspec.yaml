@@ -13,6 +13,15 @@ dependencies:
   flutter_bloc: ^9.1.1
   get_it: ^9.2.1
   go_router: ^17.3.0
+  # The multipart transport for the submit-receipt Edge Function. Already
+  # present transitively under supabase_flutter; declared directly because this
+  # application now imports it. `Client()` resolves to a BrowserClient on web
+  # and an IOClient elsewhere, so one call site covers Android, iOS and web.
+  http: ^1.6.0
+  # Gallery pick and camera capture, behind the ReceiptImageSource abstraction.
+  # flutter.dev-maintained and federated: image_picker_for_web makes the same
+  # two calls work in a browser.
+  image_picker: ^1.2.0
   supabase_flutter: ^2.16.0
 
 dev_dependencies:
