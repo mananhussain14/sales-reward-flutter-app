@@ -15,6 +15,7 @@ import 'package:sale_reward/features/auth/presentation/pages/splash_page.dart';
 import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.dart';
 
 import '../support/fakes.dart';
+import '../support/receipt_fakes.dart';
 import '../support/pump_app.dart';
 
 /// The whole flow, driven through the real widget tree over fakes.
@@ -77,7 +78,12 @@ void main() {
 
       useSurface(tester, phoneSurface);
       await tester.pumpWidget(
-        SaleRewardApp(authRepository: auth, portalContextRepository: portal),
+        SaleRewardApp(
+          authRepository: auth,
+          portalContextRepository: portal,
+          receiptRepository: FakeReceiptRepository(),
+          receiptImageSource: FakeReceiptImageSource(),
+        ),
       );
 
       // While the RPC is in flight, the splash holds the frame — never a shell.
@@ -94,8 +100,7 @@ void main() {
     testWidgets('a successful sign-in resolves and routes to the shell', (
       tester,
     ) async {
-      final ({FakeAuthRepository auth, FakePortalContextRepository portal})
-      app = await pumpApp(
+      final PumpedApp app = await pumpApp(
         tester,
         portalResult: resolvedResult(PortalKind.salesStaff),
       );
@@ -114,8 +119,7 @@ void main() {
     testWidgets('invalid credentials stay on login with a generic error', (
       tester,
     ) async {
-      final ({FakeAuthRepository auth, FakePortalContextRepository portal})
-      app = await pumpApp(tester);
+      final PumpedApp app = await pumpApp(tester);
       app.auth.nextSignInResult = const SignInRejected();
 
       await tester.enterText(find.byType(TextField).first, 'sam@example.com');
@@ -155,8 +159,10 @@ void main() {
 
   group('token refresh', () {
     testWidgets('does not log the user out or leave the shell', (tester) async {
-      final ({FakeAuthRepository auth, FakePortalContextRepository portal})
-      app = await pumpAppInRole(tester, PortalKind.vendorSuperAdmin);
+      final PumpedApp app = await pumpAppInRole(
+        tester,
+        PortalKind.vendorSuperAdmin,
+      );
       expect(find.byType(VendorShell), findsOneWidget);
 
       app.auth.emitTokenRefreshed(testUser);
@@ -190,8 +196,7 @@ void main() {
     testWidgets('retry after a failure resolves and routes to the shell', (
       tester,
     ) async {
-      final ({FakeAuthRepository auth, FakePortalContextRepository portal})
-      app = await pumpApp(
+      final PumpedApp app = await pumpApp(
         tester,
         initialUser: testUser,
         portalResult: unavailableResult,
@@ -222,7 +227,12 @@ void main() {
 
         useSurface(tester, phoneSurface);
         await tester.pumpWidget(
-          SaleRewardApp(authRepository: auth, portalContextRepository: portal),
+          SaleRewardApp(
+            authRepository: auth,
+            portalContextRepository: portal,
+            receiptRepository: FakeReceiptRepository(),
+            receiptImageSource: FakeReceiptImageSource(),
+          ),
         );
         await tester.pump();
         expect(find.byType(SplashPage), findsOneWidget);
@@ -254,7 +264,12 @@ void main() {
 
         useSurface(tester, phoneSurface);
         await tester.pumpWidget(
-          SaleRewardApp(authRepository: auth, portalContextRepository: portal),
+          SaleRewardApp(
+            authRepository: auth,
+            portalContextRepository: portal,
+            receiptRepository: FakeReceiptRepository(),
+            receiptImageSource: FakeReceiptImageSource(),
+          ),
         );
         await tester.pump();
 

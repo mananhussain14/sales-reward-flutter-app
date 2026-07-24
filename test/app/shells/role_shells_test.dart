@@ -208,7 +208,15 @@ void main() {
       await pumpAppInRole(tester, PortalKind.salesStaff);
       expect(find.text('Submit a receipt'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.receipt_long_outlined).first);
+      // Scoped to the bottom bar. The submit screen now renders real receipt
+      // content of its own, so an unscoped icon finder could match the page
+      // rather than the destination it is trying to tap.
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.byIcon(Icons.receipt_long_outlined),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('My receipts'), findsOneWidget);

@@ -1,0 +1,248 @@
+import 'package:flutter/material.dart';
+
+import '../../../../../core/design/design.dart';
+import '../../../../../core/widgets/widgets.dart';
+import '../../../domain/entities/receipt_file.dart';
+import '../../../domain/services/receipt_image_source.dart';
+
+/// The receipt image control: an upload target when nothing is chosen, a preview
+/// when something is.
+///
+/// ## What it shows about the file, and what it never shows
+///
+/// The preview shows the image, its sanitized name, its size and its detected
+/// format — everything a person needs to confirm they picked the right
+/// photograph. It never shows a device path, a storage bucket, an object path or
+/// a hash: the first is private to the device and the other three are private to
+/// the server, which is why none of them exists in this layer to display.
+class ReceiptFileField extends StatelessWidget {
+  const ReceiptFileField({
+    super.key,
+    required this.file,
+    required this.enabled,
+    required this.supportsCamera,
+    required this.onChoose,
+    required this.onRemove,
+  });
+
+  final ReceiptFile? file;
+  final bool enabled;
+
+  /// Whether to offer capture at all. Presentation only — the operating system
+  /// still decides access when the camera is opened.
+  final bool supportsCamera;
+
+  final ValueChanged<ReceiptImageOrigin> onChoose;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final ReceiptFile? selected = file;
+
+    return SrField(
+      label: 'Receipt image',
+      required: true,
+      hint: 'JPEG, PNG or WebP, up to 10 MB.',
+      child: selected == null
+          ? _EmptyTarget(
+              enabled: enabled,
+              supportsCamera: supportsCamera,
+              onChoose: onChoose,
+            )
+          : _Preview(
+              file: selected,
+              enabled: enabled,
+              supportsCamera: supportsCamera,
+              onChoose: onChoose,
+              onRemove: onRemove,
+            ),
+    );
+  }
+}
+
+/// The dashed tap-to-upload area (§ 4.3 of the design handoff), with the two
+/// mobile affordances the web's file input cannot offer.
+class _EmptyTarget extends StatelessWidget {
+  const _EmptyTarget({
+    required this.enabled,
+    required this.supportsCamera,
+    required this.onChoose,
+  });
+
+  final bool enabled;
+  final bool supportsCamera;
+  final ValueChanged<ReceiptImageOrigin> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    return SrEmptyState(
+      icon: Icons.add_a_photo_outlined,
+      tone: SrTone.indigo,
+      title: 'Add the receipt',
+      description: supportsCamera
+          ? 'Take a photo of the receipt, or choose one you already have.'
+          : 'Choose a photo of the receipt from this device.',
+      action: Wrap(
+        spacing: SrSpacing.sm,
+        runSpacing: SrSpacing.sm,
+        alignment: WrapAlignment.center,
+        children: <Widget>[
+          if (supportsCamera)
+            SrButton(
+              label: 'Take photo',
+              icon: Icons.photo_camera_rounded,
+              onPressed: enabled
+                  ? () => onChoose(ReceiptImageOrigin.camera)
+                  : null,
+            ),
+          SrButton(
+            label: 'Choose image',
+            variant: SrButtonVariant.outline,
+            icon: Icons.image_outlined,
+            onPressed: enabled
+                ? () => onChoose(ReceiptImageOrigin.gallery)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The chosen receipt: a bounded preview, the file facts, and replace / remove.
+class _Preview extends StatelessWidget {
+  const _Preview({
+    required this.file,
+    required this.enabled,
+    required this.supportsCamera,
+    required this.onChoose,
+    required this.onRemove,
+  });
+
+  final ReceiptFile file;
+  final bool enabled;
+  final bool supportsCamera;
+  final ValueChanged<ReceiptImageOrigin> onChoose;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
+    return SrCard(
+      variant: SrCardVariant.muted,
+      padding: const EdgeInsets.all(SrSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Semantics(
+            image: true,
+            container: true,
+            // On the wrapper rather than on Image.memory, so the description
+            // survives a file the platform decoder cannot render — the file
+            // facts below are still correct, and still enough to submit with.
+            label: 'Preview of the selected receipt image',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(SrRadii.control),
+              child: ConstrainedBox(
+                // Bounded so a tall receipt cannot push the submit button off a
+                // phone screen, and letterboxed rather than cropped so the whole
+                // receipt stays visible.
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: Container(
+                  color: sr.backgroundSecondary,
+                  width: double.infinity,
+                  child: Image.memory(
+                    file.bytes,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                    // A picked image is decoded by the platform; if it cannot
+                    // be, the file facts below are still correct and still
+                    // enough to submit with.
+                    errorBuilder:
+                        (
+                          BuildContext context,
+                          Object error,
+                          StackTrace? stackTrace,
+                        ) => Padding(
+                          padding: const EdgeInsets.all(SrSpacing.xxl),
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: sr.textMuted,
+                          ),
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: SrSpacing.lg),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      file.fileName,
+                      style: SrTypography.label.copyWith(color: sr.foreground),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: SrSpacing.xxs),
+                    Text(
+                      '${file.imageType.label} · ${file.readableSize}',
+                      style: SrTypography.caption.copyWith(
+                        color: sr.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: SrSpacing.md),
+              SrBadge(
+                label: 'Ready to send',
+                tone: SrTone.indigo,
+                icon: Icons.check_rounded,
+              ),
+            ],
+          ),
+          const SizedBox(height: SrSpacing.lg),
+          Wrap(
+            spacing: SrSpacing.sm,
+            runSpacing: SrSpacing.sm,
+            children: <Widget>[
+              if (supportsCamera)
+                SrButton(
+                  label: 'Retake',
+                  variant: SrButtonVariant.outline,
+                  size: SrButtonSize.sm,
+                  icon: Icons.photo_camera_outlined,
+                  onPressed: enabled
+                      ? () => onChoose(ReceiptImageOrigin.camera)
+                      : null,
+                ),
+              SrButton(
+                label: 'Replace',
+                variant: SrButtonVariant.outline,
+                size: SrButtonSize.sm,
+                icon: Icons.swap_horiz_rounded,
+                onPressed: enabled
+                    ? () => onChoose(ReceiptImageOrigin.gallery)
+                    : null,
+              ),
+              SrButton(
+                label: 'Remove',
+                variant: SrButtonVariant.ghost,
+                size: SrButtonSize.sm,
+                icon: Icons.delete_outline_rounded,
+                onPressed: enabled ? onRemove : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

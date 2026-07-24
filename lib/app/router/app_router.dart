@@ -10,6 +10,7 @@ import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/unavailable_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
+import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import '../../features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
 import '../navigation/role_navigation_registry.dart';
@@ -320,8 +321,6 @@ RouteBase _retailerManagerRoutes(SessionBloc bloc) {
 }
 
 RouteBase _salesStaffRoutes(SessionBloc bloc) {
-  const String role = 'Sales Staff';
-
   return _roleShell(
     bloc: bloc,
     role: PortalKind.salesStaff,
@@ -337,15 +336,14 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const SalesStaffSubmitPage(),
       ),
-      _placeholder(
+      // SS-05. list_my_receipt_submissions() is scoped to auth.uid() in SQL and
+      // needs no argument. SS-06 remains out of reach: there is still no read
+      // path anywhere in the backend for a submitted image, so a row cannot be
+      // opened (Q1 / D-5).
+      GoRoute(
         path: SalesStaffNavigation.history,
-        roleName: role,
-        title: 'My receipts',
-        backendNote:
-            'SS-05 is ready — list_my_receipt_submissions() is scoped to '
-            'auth.uid() in SQL. SS-06 is not: there is no read path anywhere in '
-            'the backend for a submitted image, so a row cannot be opened '
-            '(Q1 / D-5).',
+        builder: (BuildContext context, GoRouterState state) =>
+            const SalesStaffHistoryPage(),
       ),
     ],
   );

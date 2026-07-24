@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Required by image_picker on iOS. Only these two are declared: the
+	     receipt flow reads one still image and never records audio, so
+	     NSMicrophoneUsageDescription is deliberately absent. -->
+	<key>NSCameraUsageDescription</key>
+	<string>SalesReward uses the camera so you can photograph a receipt to submit it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SalesReward opens your photo library so you can choose a receipt image to submit.</string>
 </dict>
 </plist>
