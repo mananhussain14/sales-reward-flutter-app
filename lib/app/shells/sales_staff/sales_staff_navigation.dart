@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../features/auth/domain/entities/app_role.dart';
+import '../../../features/auth/domain/entities/portal_kind.dart';
+import '../../../features/auth/domain/entities/retailer_capabilities.dart';
 import '../../navigation/role_destination.dart';
 
 /// The Sales Staff navigation.
@@ -53,6 +54,7 @@ abstract final class SalesStaffNavigation {
       icon: Icons.photo_camera_outlined,
       selectedIcon: Icons.photo_camera_rounded,
       path: submit,
+      requiredCapability: RetailerCapability.submitReceipts,
     ),
     RoleDestination(
       label: 'History',
@@ -63,7 +65,7 @@ abstract final class SalesStaffNavigation {
   ];
 
   static const RoleNavigation model = RoleNavigation(
-    role: AppRole.salesStaff,
+    role: PortalKind.salesStaff,
     routePrefix: prefix,
     portalName: 'Retailer Portal',
     landingPath: submit,

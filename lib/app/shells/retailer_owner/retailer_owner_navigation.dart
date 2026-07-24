@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../features/auth/domain/entities/app_role.dart';
+import '../../../features/auth/domain/entities/portal_kind.dart';
+import '../../../features/auth/domain/entities/retailer_capabilities.dart';
 import '../../navigation/role_destination.dart';
 
 /// The Retailer Owner navigation.
@@ -52,29 +53,33 @@ abstract final class RetailerOwnerNavigation {
       icon: Icons.dashboard_outlined,
       selectedIcon: Icons.dashboard_rounded,
       path: overview,
+      requiredCapability: RetailerCapability.viewRetailerOverview,
     ),
     RoleDestination(
       label: 'Shops',
       icon: Icons.storefront_outlined,
       selectedIcon: Icons.storefront_rounded,
       path: shops,
+      requiredCapability: RetailerCapability.viewShops,
     ),
     RoleDestination(
       label: 'Staff',
       icon: Icons.group_outlined,
       selectedIcon: Icons.group_rounded,
       path: staff,
+      requiredCapability: RetailerCapability.viewStaff,
     ),
     RoleDestination(
       label: 'Products',
       icon: Icons.inventory_2_outlined,
       selectedIcon: Icons.inventory_2_rounded,
       path: products,
+      requiredCapability: RetailerCapability.viewAssignedProducts,
     ),
   ];
 
   static const RoleNavigation model = RoleNavigation(
-    role: AppRole.retailerOwner,
+    role: PortalKind.retailerOwner,
     routePrefix: prefix,
     portalName: 'Retailer Portal',
     landingPath: overview,

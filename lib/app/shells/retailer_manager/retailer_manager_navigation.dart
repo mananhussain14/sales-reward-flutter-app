@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../features/auth/domain/entities/app_role.dart';
+import '../../../features/auth/domain/entities/portal_kind.dart';
+import '../../../features/auth/domain/entities/retailer_capabilities.dart';
 import '../../navigation/role_destination.dart';
 
 /// The Retailer Manager navigation.
@@ -47,17 +48,19 @@ abstract final class RetailerManagerNavigation {
       icon: Icons.group_outlined,
       selectedIcon: Icons.group_rounded,
       path: staff,
+      requiredCapability: RetailerCapability.viewStaff,
     ),
     RoleDestination(
       label: 'Products',
       icon: Icons.inventory_2_outlined,
       selectedIcon: Icons.inventory_2_rounded,
       path: products,
+      requiredCapability: RetailerCapability.viewAssignedProducts,
     ),
   ];
 
   static const RoleNavigation model = RoleNavigation(
-    role: AppRole.retailerManager,
+    role: PortalKind.retailerManager,
     routePrefix: prefix,
     portalName: 'Retailer Portal',
     // The roster is the only portal page a Manager may read in full. Sending

@@ -37,6 +37,8 @@ class SrTextField extends StatelessWidget {
     this.maxLength,
     this.onChanged,
     this.onSubmitted,
+    this.focusNode,
+    this.suffix,
   });
 
   final String label;
@@ -66,6 +68,14 @@ class SrTextField extends StatelessWidget {
   final int? maxLength;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+  final FocusNode? focusNode;
+
+  /// A control rendered inside the field's trailing edge — the password
+  /// visibility toggle being the only current use.
+  ///
+  /// Constrained to the control's 44px height so adding one cannot change the
+  /// field's geometry, which is what keeps a row of fields aligned.
+  final Widget? suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +93,7 @@ class SrTextField extends StatelessWidget {
         const SizedBox(height: SrSpacing.sm),
         TextField(
           controller: controller,
+          focusNode: focusNode,
           obscureText: obscureText,
           enabled: enabled,
           readOnly: readOnly,
@@ -103,6 +114,11 @@ class SrTextField extends StatelessWidget {
             errorText: null,
             helperText: null,
             fillColor: enabled ? sr.inputFill : sr.inputDisabledFill,
+            suffixIcon: suffix,
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 44,
+              minHeight: 44,
+            ),
             enabledBorder: hasError ? _border(sr.inputErrorBorder) : null,
             focusedBorder: hasError
                 ? _border(sr.inputErrorFocusBorder, width: 2)

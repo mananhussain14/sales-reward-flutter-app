@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
-import '../../../../auth/domain/entities/app_role.dart';
+import '../../../../auth/domain/entities/portal_kind.dart';
 
 /// The Retailer Owner landing screen.
 ///
@@ -23,7 +23,7 @@ class RetailerOwnerOverviewPage extends StatelessWidget {
     return SrPageBody(
       children: <Widget>[
         SrPageHeader(
-          eyebrow: AppRole.retailerOwner.displayName,
+          eyebrow: PortalKind.retailerOwner.displayName,
           title: 'Overview',
           description:
               'A read-only view of your organization and its shops on '

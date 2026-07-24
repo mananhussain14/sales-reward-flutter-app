@@ -9,7 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 /// picked a mode". There is no event to model beyond the call itself, so a Bloc
 /// would add an event class and a handler for no additional clarity. Every
 /// other state holder in the app that *does* have meaningful events
-/// (`RoleSessionBloc`, the four shell BLoCs) remains a Bloc.
+/// (`SessionBloc`, the four shell BLoCs) remains a Bloc.
 ///
 /// ## Why the selection is not persisted
 ///

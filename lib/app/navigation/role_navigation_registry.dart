@@ -1,4 +1,4 @@
-import '../../features/auth/domain/entities/app_role.dart';
+import '../../features/auth/domain/entities/portal_kind.dart';
 import '../shells/retailer_manager/retailer_manager_navigation.dart';
 import '../shells/retailer_owner/retailer_owner_navigation.dart';
 import '../shells/sales_staff/sales_staff_navigation.dart';
@@ -24,7 +24,7 @@ import 'role_destination.dart';
 /// That precedence is *not implemented here*, and cannot be, because it is
 /// applied by whatever resolves the role — the proposed
 /// `public.get_my_portal_context()`, which folds the whole rule into one row and
-/// one round trip. This registry receives a single already-decided [AppRole].
+/// one round trip. This registry receives a single already-decided [PortalKind].
 /// The ordering of [ordered] below records the intended precedence for whoever
 /// implements that resolver.
 abstract final class RoleNavigationRegistry {
@@ -38,19 +38,21 @@ abstract final class RoleNavigationRegistry {
     SalesStaffNavigation.model,
   ];
 
-  /// The navigation model for [role].
-  static RoleNavigation forRole(AppRole role) => switch (role) {
-    AppRole.vendorSuperAdmin => VendorNavigation.model,
-    AppRole.retailerOwner => RetailerOwnerNavigation.model,
-    AppRole.retailerManager => RetailerManagerNavigation.model,
-    AppRole.salesStaff => SalesStaffNavigation.model,
+  /// The navigation model for [role], or null for [PortalKind.none], which has
+  /// no shell.
+  static RoleNavigation? forRole(PortalKind role) => switch (role) {
+    PortalKind.vendorSuperAdmin => VendorNavigation.model,
+    PortalKind.retailerOwner => RetailerOwnerNavigation.model,
+    PortalKind.retailerManager => RetailerManagerNavigation.model,
+    PortalKind.salesStaff => SalesStaffNavigation.model,
+    PortalKind.none => null,
   };
 
   /// The role that owns [location], or null if no role does.
   ///
   /// Used by the route guard to decide whether the current role is allowed to
   /// be where the router is about to take it.
-  static AppRole? roleOwning(String location) {
+  static PortalKind? roleOwning(String location) {
     for (final RoleNavigation navigation in ordered) {
       if (navigation.owns(location)) {
         return navigation.role;
@@ -59,6 +61,6 @@ abstract final class RoleNavigationRegistry {
     return null;
   }
 
-  /// Where [role] lands after resolution.
-  static String landingPathFor(AppRole role) => forRole(role).landingPath;
+  /// Where [role] lands after resolution, or null for [PortalKind.none].
+  static String? landingPathFor(PortalKind role) => forRole(role)?.landingPath;
 }

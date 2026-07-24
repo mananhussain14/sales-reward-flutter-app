@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
-import '../../../../auth/domain/entities/app_role.dart';
+import '../../../../auth/domain/entities/portal_kind.dart';
 
 /// The Sales Staff landing screen.
 ///
@@ -45,7 +45,7 @@ class SalesStaffSubmitPage extends StatelessWidget {
     return SrPageBody(
       children: <Widget>[
         SrPageHeader(
-          eyebrow: AppRole.salesStaff.displayName,
+          eyebrow: PortalKind.salesStaff.displayName,
           title: 'Submit a receipt',
           description: 'Photograph a receipt for one of your assigned shops.',
         ),

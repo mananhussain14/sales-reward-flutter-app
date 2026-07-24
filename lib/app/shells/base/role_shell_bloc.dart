@@ -11,16 +11,6 @@ sealed class RoleShellEvent extends Equatable {
   List<Object?> get props => const <Object?>[];
 }
 
-/// The user tapped a destination in this role's navigation.
-final class RoleShellDestinationSelected extends RoleShellEvent {
-  const RoleShellDestinationSelected(this.index);
-
-  final int index;
-
-  @override
-  List<Object?> get props => <Object?>[index];
-}
-
 /// The router moved — deep link, back gesture, or a programmatic redirect.
 ///
 /// The router is the source of truth for *where* the app is; this event keeps
@@ -68,15 +58,6 @@ final class RoleShellState extends Equatable {
 abstract class RoleShellBloc extends Bloc<RoleShellEvent, RoleShellState> {
   RoleShellBloc(this.navigation)
     : super(const RoleShellState(selectedIndex: 0)) {
-    on<RoleShellDestinationSelected>((event, emit) {
-      if (event.index < 0 || event.index >= navigation.destinations.length) {
-        // Fail closed: an out-of-range index leaves the shell where it is
-        // rather than throwing into the widget tree.
-        return;
-      }
-      emit(RoleShellState(selectedIndex: event.index));
-    });
-
     on<RoleShellLocationChanged>((event, emit) {
       emit(
         RoleShellState(

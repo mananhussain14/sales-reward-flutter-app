@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/auth/domain/entities/app_role.dart';
-import '../../features/auth/presentation/bloc/role_session_bloc.dart';
+import '../../features/auth/domain/entities/portal_context.dart';
+import '../../features/auth/domain/entities/portal_kind.dart';
+import '../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../features/auth/presentation/pages/access_denied_page.dart';
-import '../../features/auth/presentation/pages/role_gate_page.dart';
+import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/auth/presentation/pages/splash_page.dart';
+import '../../features/auth/presentation/pages/unavailable_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
@@ -24,99 +27,111 @@ import 'router_refresh.dart';
 
 /// Builds the application router.
 ///
-/// ## Four route groups, one per role
+/// ## The routing state machine
 ///
-/// Each role owns a prefix — `/vendor`, `/retailer-owner`, `/retailer-manager`,
-/// `/sales-staff` — and a `ShellRoute` that builds only that role's shell. The
-/// groups do not overlap and no path is shared, which makes "can a Sales Staff
-/// shell ever render a Vendor screen?" answerable by reading one file.
+/// [redirectFor] is the whole of it: a **pure function** of the session state
+/// and the requested location, tested against a table of cases. Every redirect
+/// the app can perform is decided here, which is what makes "can a Sales Staff
+/// user reach the Vendor shell?" answerable by reading one function.
 ///
-/// The web serves the Owner, Manager and Sales Staff from one `/retailer/*` tree
-/// and separates them with server-side checks. Splitting them here does not
-/// weaken that — it adds a second, purely presentational boundary on top of it.
+/// | Session state | Home |
+/// | --- | --- |
+/// | initial / resolving | `/` (splash) — nothing else may render yet |
+/// | unauthenticated | `/login` |
+/// | active(kind) | that kind's landing path |
+/// | denied (NONE) | `/access-denied` |
+/// | unavailable | `/unavailable` |
 ///
-/// ## The guard
+/// A request for any location other than the caller's home is redirected to it,
+/// with one exception: an **active** caller may move freely *within their own
+/// role group*, so tab navigation works. A request into another role's group is
+/// sent back to the caller's own landing — a user cannot reach another shell by
+/// typing a URL.
 ///
-/// [redirectFor] is a **presentation** guard. It keeps a user out of a shell
-/// they do not belong in, which prevents a confusing screen — not a security
-/// incident. Supabase remains the authorization authority: every read and write
-/// behind these screens is decided again in SQL by a `SECURITY DEFINER` function
-/// that derives the caller from `auth.uid()` and accepts no user id. The
-/// role-flow map states the rule three times over; if this guard were deleted
-/// entirely, a user who typed another role's URL would reach a shell whose every
-/// query returned `42501`.
+/// ## No shell before resolution
 ///
-/// It is written to fail closed: no resolved role sends the user back to the
-/// gate, and a mismatched role sends them to the shared access-denied screen.
+/// While the session is indeterminate every role route redirects to the splash,
+/// so no authenticated shell can flash before the backend has answered.
 ///
-/// ## Lazy construction
+/// ## The guard is presentation, not security
 ///
-/// Every route builds its page in a closure, so a screen is constructed only
-/// when it is actually visited. Nothing is instantiated at router-build time.
+/// Supabase remains the authorization authority: every read and write behind
+/// these screens is decided again in SQL by a `SECURITY DEFINER` function that
+/// derives the caller from `auth.uid()`. If this guard were deleted, a user who
+/// typed another role's URL would reach a shell whose every query returned a
+/// refusal — the guard prevents a confusing screen, not a breach.
 GoRouter buildAppRouter({
-  required RoleSessionBloc roleSessionBloc,
-  String initialLocation = AppRoutes.roleGate,
+  required SessionBloc sessionBloc,
+  String initialLocation = AppRoutes.splash,
 }) {
   return GoRouter(
     initialLocation: initialLocation,
-    refreshListenable: GoRouterRefreshStream(roleSessionBloc.stream),
+    refreshListenable: GoRouterRefreshStream(sessionBloc.stream),
     redirect: (BuildContext context, GoRouterState state) =>
-        redirectFor(roleSessionBloc.state, state.matchedLocation),
+        redirectFor(sessionBloc.state, state.matchedLocation),
     routes: <RouteBase>[
       GoRoute(
-        path: AppRoutes.roleGate,
+        path: AppRoutes.splash,
         builder: (BuildContext context, GoRouterState state) =>
-            const RoleGatePage(),
+            const SplashPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.login,
+        builder: (BuildContext context, GoRouterState state) =>
+            const LoginPage(),
       ),
       GoRoute(
         path: AppRoutes.accessDenied,
         builder: (BuildContext context, GoRouterState state) =>
             const AccessDeniedPage(),
       ),
-      _vendorRoutes(roleSessionBloc),
-      _retailerOwnerRoutes(roleSessionBloc),
-      _retailerManagerRoutes(roleSessionBloc),
-      _salesStaffRoutes(roleSessionBloc),
+      GoRoute(
+        path: AppRoutes.unavailable,
+        builder: (BuildContext context, GoRouterState state) =>
+            const UnavailablePage(),
+      ),
+      _vendorRoutes(sessionBloc),
+      _retailerOwnerRoutes(sessionBloc),
+      _retailerManagerRoutes(sessionBloc),
+      _salesStaffRoutes(sessionBloc),
     ],
   );
 }
 
-/// The route guard, written as a pure function of (session state, location) so
-/// it can be tested against a table of cases — the discipline the web repository
-/// applies to `landing-decision.ts` and `portal-access-decision.ts`.
+/// The single location this session state belongs at.
 ///
-/// Returns the path to redirect to, or null to allow the navigation.
-String? redirectFor(RoleSessionState session, String location) {
-  // Always reachable. It is the destination of a denial, so guarding it would
-  // be a redirect loop.
-  if (location == AppRoutes.accessDenied) {
-    return null;
-  }
+/// Exposed for tests: the redirect table is easier to reason about when the
+/// "home" of each state is named directly.
+String sessionHome(SessionState session) {
+  return switch (session) {
+    SessionInitial() || SessionResolving() => AppRoutes.splash,
+    SessionUnauthenticated() => AppRoutes.login,
+    SessionDenied() => AppRoutes.accessDenied,
+    SessionUnavailable() => AppRoutes.unavailable,
+    SessionActive(:final PortalContext portalContext) =>
+      RoleNavigationRegistry.landingPathFor(portalContext.portalKind) ??
+          AppRoutes.accessDenied,
+  };
+}
 
-  final ResolvedRole? resolved = session.resolved;
-  final AppRole? owningRole = RoleNavigationRegistry.roleOwning(location);
+/// The route guard. Returns the path to redirect to, or null to allow.
+String? redirectFor(SessionState session, String location) {
+  final String home = sessionHome(session);
 
-  if (owningRole == null) {
-    // Not inside any role group — the gate, or an unknown path.
-    if (location == AppRoutes.roleGate) {
-      if (resolved != null) {
-        return RoleNavigationRegistry.landingPathFor(resolved.role);
-      }
-      if (session is RoleSessionNoAccess) {
-        return AppRoutes.accessDenied;
-      }
+  // An active caller may roam freely inside their OWN role group so that tab
+  // navigation and deep links within it work. Anything else — another group,
+  // the login screen, the splash — goes to their landing.
+  if (session is SessionActive) {
+    final PortalKind kind = session.portalContext.portalKind;
+    final PortalKind? owningRole = RoleNavigationRegistry.roleOwning(location);
+    if (owningRole != null && owningRole == kind) {
+      return null;
     }
-    return null;
+    return location == home ? null : home;
   }
 
-  // Inside a role group. Fail closed on both branches.
-  if (resolved == null) {
-    return AppRoutes.roleGate;
-  }
-  if (resolved.role != owningRole) {
-    return AppRoutes.accessDenied;
-  }
-  return null;
+  // Every non-active state has exactly one permitted location.
+  return location == home ? null : home;
 }
 
 /// Builds a role's `ShellRoute`.
@@ -124,22 +139,23 @@ String? redirectFor(RoleSessionState session, String location) {
 /// [shellBuilder] is supplied per role rather than switched on inside one
 /// builder, so no single function knows how to construct more than one shell.
 ShellRoute _roleShell({
-  required RoleSessionBloc bloc,
-  required AppRole role,
-  required Widget Function(Widget child, String location, ResolvedRole resolved)
+  required SessionBloc bloc,
+  required PortalKind role,
+  required Widget Function(Widget child, String location, PortalContext context)
   shellBuilder,
   required List<RouteBase> routes,
 }) {
   return ShellRoute(
     builder: (BuildContext context, GoRouterState state, Widget child) {
-      final ResolvedRole? resolved = bloc.state.resolved;
+      final SessionState session = bloc.state;
 
       // The guard should have redirected already. If it somehow did not, refuse
-      // rather than inventing a role to render with.
-      if (resolved == null || resolved.role != role) {
+      // rather than invent a context to render with.
+      if (session is! SessionActive ||
+          session.portalContext.portalKind != role) {
         return const AccessDeniedPage();
       }
-      return shellBuilder(child, state.matchedLocation, resolved);
+      return shellBuilder(child, state.matchedLocation, session.portalContext);
     },
     routes: routes,
   );
@@ -163,14 +179,14 @@ GoRoute _placeholder({
   );
 }
 
-RouteBase _vendorRoutes(RoleSessionBloc bloc) {
+RouteBase _vendorRoutes(SessionBloc bloc) {
   const String role = 'Vendor Super Admin';
 
   return _roleShell(
     bloc: bloc,
-    role: AppRole.vendorSuperAdmin,
-    shellBuilder: (Widget child, String location, ResolvedRole resolved) =>
-        VendorShell(location: location, resolved: resolved, child: child),
+    role: PortalKind.vendorSuperAdmin,
+    shellBuilder: (Widget child, String location, PortalContext context) =>
+        VendorShell(location: location, portalContext: context, child: child),
     routes: <RouteBase>[
       GoRoute(
         path: VendorNavigation.dashboard,
@@ -224,16 +240,16 @@ RouteBase _vendorRoutes(RoleSessionBloc bloc) {
   );
 }
 
-RouteBase _retailerOwnerRoutes(RoleSessionBloc bloc) {
+RouteBase _retailerOwnerRoutes(SessionBloc bloc) {
   const String role = 'Retailer Owner';
 
   return _roleShell(
     bloc: bloc,
-    role: AppRole.retailerOwner,
-    shellBuilder: (Widget child, String location, ResolvedRole resolved) =>
+    role: PortalKind.retailerOwner,
+    shellBuilder: (Widget child, String location, PortalContext context) =>
         RetailerOwnerShell(
           location: location,
-          resolved: resolved,
+          portalContext: context,
           child: child,
         ),
     routes: <RouteBase>[
@@ -273,16 +289,16 @@ RouteBase _retailerOwnerRoutes(RoleSessionBloc bloc) {
   );
 }
 
-RouteBase _retailerManagerRoutes(RoleSessionBloc bloc) {
+RouteBase _retailerManagerRoutes(SessionBloc bloc) {
   const String role = 'Retailer Manager';
 
   return _roleShell(
     bloc: bloc,
-    role: AppRole.retailerManager,
-    shellBuilder: (Widget child, String location, ResolvedRole resolved) =>
+    role: PortalKind.retailerManager,
+    shellBuilder: (Widget child, String location, PortalContext context) =>
         RetailerManagerShell(
           location: location,
-          resolved: resolved,
+          portalContext: context,
           child: child,
         ),
     routes: <RouteBase>[
@@ -303,14 +319,18 @@ RouteBase _retailerManagerRoutes(RoleSessionBloc bloc) {
   );
 }
 
-RouteBase _salesStaffRoutes(RoleSessionBloc bloc) {
+RouteBase _salesStaffRoutes(SessionBloc bloc) {
   const String role = 'Sales Staff';
 
   return _roleShell(
     bloc: bloc,
-    role: AppRole.salesStaff,
-    shellBuilder: (Widget child, String location, ResolvedRole resolved) =>
-        SalesStaffShell(location: location, resolved: resolved, child: child),
+    role: PortalKind.salesStaff,
+    shellBuilder: (Widget child, String location, PortalContext context) =>
+        SalesStaffShell(
+          location: location,
+          portalContext: context,
+          child: child,
+        ),
     routes: <RouteBase>[
       GoRoute(
         path: SalesStaffNavigation.submit,

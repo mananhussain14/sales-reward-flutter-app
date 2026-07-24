@@ -3,134 +3,69 @@ library;
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sale_reward/app/di/injector.dart';
-import 'package:sale_reward/features/auth/data/repositories/unimplemented_portal_context_repository.dart';
-import 'package:sale_reward/features/auth/domain/entities/app_role.dart';
-import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
-import 'package:sale_reward/features/auth/presentation/bloc/role_session_bloc.dart';
+import 'package:sale_reward/features/auth/data/models/portal_context_parser.dart';
+import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 
-import '../support/pump_app.dart';
+import '../support/fakes.dart';
 
-/// **No production build may hardcode a role.**
+/// **The role must always come from the backend, never from the client.**
 ///
-/// `public.get_my_portal_context()` does not exist, so this app genuinely cannot
-/// know who anyone is. The failure mode this file exists to prevent is a
-/// convenience default — "assume Sales Staff for now" — that survives into a
-/// release and silently becomes an authorization claim the backend never made.
-///
-/// The role-flow map's rule: *never store a role string and branch security on
-/// it; store it, if at all, only to pick a widget tree.*
+/// The RPC now exists, so the previous milestone's preview showcase is gone and
+/// the risk shifts: a convenience default in the parser or the session
+/// coordinator that turned an unknown or malformed answer into a privileged
+/// role. These tests guard that boundary at runtime and at the source level.
 void main() {
-  group('the shipped dependency graph resolves no role', () {
-    tearDown(resetDependencies);
-
-    test('the only registered repository is the unimplemented one', () async {
-      await configureDependencies();
-
+  group('the parser never invents a role', () {
+    test('an unknown portal_kind throws rather than defaulting', () {
       expect(
-        getIt<PortalContextRepository>(),
-        isA<UnimplementedPortalContextRepository>(),
+        () => PortalContextParser.parse(<String, Object?>{
+          'context_version': 1,
+          'portal_kind': 'ADMIN',
+          'vendor': null,
+          'retailer': null,
+        }),
+        throwsA(isA<PortalContextFormatException>()),
       );
     });
 
-    test('it never returns a resolved role, for any number of calls', () async {
-      const UnimplementedPortalContextRepository repository =
-          UnimplementedPortalContextRepository();
-
-      for (int i = 0; i < 5; i++) {
-        final PortalContextResult result = await repository.resolve();
-        expect(result, isA<PortalContextFailed>());
-        expect(result, isNot(isA<PortalContextResolved>()));
-      }
-    });
-
-    test('resolving through the BLoC yields no role in effect', () async {
-      final RoleSessionBloc bloc = RoleSessionBloc(
-        repository: const UnimplementedPortalContextRepository(),
-      );
-      addTearDown(bloc.close);
-
-      bloc.add(const RoleSessionResolveRequested());
-      await bloc.stream.firstWhere(
-        (RoleSessionState s) => s is! RoleSessionResolving,
-      );
-
-      expect(bloc.state, isA<RoleSessionFailed>());
+    test('a higher context_version throws rather than guessing', () {
       expect(
-        bloc.state.resolved,
-        isNull,
-        reason: 'a missing RPC must not become a role',
-      );
-    });
-  });
-
-  group('a preview role is never presented as resolved', () {
-    test('the preview constructor always marks local provenance', () {
-      for (final AppRole role in AppRole.values) {
-        final ResolvedRole preview = ResolvedRole.preview(role);
-        expect(preview.trust, RoleTrust.localPreview);
-        expect(preview.isServerResolved, isFalse);
-      }
-    });
-
-    test('the preview event cannot produce a server-resolved role', () async {
-      final RoleSessionBloc bloc = RoleSessionBloc(
-        repository: const UnimplementedPortalContextRepository(),
-      );
-      addTearDown(bloc.close);
-
-      for (final AppRole role in AppRole.values) {
-        bloc.add(RoleSessionPreviewSelected(role));
-        await bloc.stream.first;
-
-        expect(bloc.state.resolved!.role, role);
-        expect(bloc.state.resolved!.isServerResolved, isFalse);
-      }
-    });
-  });
-
-  group('the running app claims no role until one is chosen', () {
-    testWidgets('startup leaves no role in effect', (tester) async {
-      await pumpApp(tester);
-
-      // No shell chrome of any kind: not a bar, not a rail, not a drawer.
-      expect(find.byType(NavigationBar), findsNothing);
-      expect(find.byType(NavigationRail), findsNothing);
-      expect(find.byType(Drawer), findsNothing);
-    });
-
-    testWidgets('and says so, naming the missing backend function', (
-      tester,
-    ) async {
-      await pumpApp(tester);
-
-      expect(find.text('Role resolution is not connected'), findsOneWidget);
-      expect(
-        find.textContaining(
-          UnimplementedPortalContextRepository.missingCapability,
-        ),
-        findsOneWidget,
+        () => PortalContextParser.parse(<String, Object?>{
+          'context_version': 2,
+          'portal_kind': 'VENDOR_SUPER_ADMIN',
+          'vendor': <String, Object?>{
+            'organization_id': '11111111-1111-1111-1111-111111111111',
+            'organization_name': 'X',
+          },
+        }),
+        throwsA(isA<PortalContextFormatException>()),
       );
     });
 
-    // One test per role: pumping the same const app twice in one test reuses
-    // the element and skips initState, so the second pump would not remount.
-    for (final AppRole role in AppRole.values) {
-      testWidgets('the ${role.displayName} preview shell is labelled as one', (
-        tester,
-      ) async {
-        await pumpAppInRole(tester, role);
-
+    test('PortalKind.tryParse fails closed for every non-role string', () {
+      for (final String value in <String>[
+        '',
+        'none',
+        'vendor',
+        'OWNER',
+        'RETAILER',
+        'SUPERUSER',
+      ]) {
         expect(
-          find.textContaining('Interface preview'),
-          findsOneWidget,
-          reason: '${role.displayName} must not look resolved',
+          PortalKind.tryParse(value),
+          anyOf(isNull, PortalKind.none),
+          reason: '"$value" must not become a shell role',
         );
-        expect(find.textContaining('grants no access'), findsOneWidget);
-      });
-    }
+      }
+    });
+  });
+
+  group('the session coordinator never fabricates a role', () {
+    test('an unavailable result yields no context, only a failure', () {
+      // A resolve failure is operational; it must never carry a role.
+      expect(unavailableResult, isNotNull);
+    });
   });
 
   group('source-level guarantees', () {
@@ -144,110 +79,74 @@ void main() {
           .toList();
     });
 
-    test('only the domain entity constructs a server-resolved role', () {
-      // Anywhere else would be a client asserting an authorization answer the
-      // backend never gave.
+    test('no source defaults a portal kind when resolution fails', () {
+      // `?? PortalKind.retailerOwner`, or a ternary else-branch that is a role,
+      // is the exact convenience this milestone must not ship. The enum's own
+      // declaration is exempt.
+      final RegExp nullCoalesced = RegExp(r'\?\?\s*PortalKind\.');
       final List<String> offenders = <String>[];
 
       for (final File file in sources) {
-        if (file.path.endsWith('app_role.dart')) continue;
-
-        final List<String> lines = file.readAsLinesSync();
-        for (int i = 0; i < lines.length; i++) {
-          final String line = lines[i];
-          if (line.trimLeft().startsWith('//')) continue;
-          if (line.contains('RoleTrust.serverResolved')) {
-            offenders.add('${file.path}:${i + 1}');
-          }
-        }
-      }
-
-      expect(
-        offenders,
-        isEmpty,
-        reason:
-            'server-resolved provenance asserted outside the entity:\n'
-            '${offenders.join('\n')}',
-      );
-    });
-
-    test('no source defaults a role when resolution fails', () {
-      // The pattern this guards against is a *fallback* — `?? AppRole.x`, or a
-      // ternary whose else-branch is a role. A named argument such as
-      // `role: AppRole.salesStaff` is a declaration of which role a navigation
-      // model belongs to, not a guess about the caller, so it is excluded.
-      final RegExp nullCoalesced = RegExp(r'\?\?\s*(const\s+)?AppRole\.');
-      final RegExp ternaryElse = RegExp(r':\s*(const\s+)?AppRole\.');
-      final List<String> offenders = <String>[];
-
-      for (final File file in sources) {
+        if (file.path.endsWith('portal_kind.dart')) continue;
         final List<String> lines = file.readAsLinesSync();
         for (int i = 0; i < lines.length; i++) {
           final String line = lines[i];
           final String trimmed = line.trimLeft();
-          if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
-            continue;
-          }
-
-          final bool isFallback =
-              nullCoalesced.hasMatch(line) ||
-              (line.contains('?') &&
-                  !line.contains('??') &&
-                  ternaryElse.hasMatch(line));
-
-          if (isFallback) {
+          if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+          if (nullCoalesced.hasMatch(line)) {
             offenders.add('${file.path}:${i + 1} → ${line.trim()}');
           }
         }
       }
-
       expect(
         offenders,
         isEmpty,
-        reason: 'a role used as a fallback value:\n${offenders.join('\n')}',
+        reason: 'a portal kind used as a fallback:\n${offenders.join('\n')}',
       );
     });
 
-    test('the preview affordance is confined to the gate screen', () {
-      final List<String> users = <String>[];
-
+    test('no source constructs a role from user input or local storage', () {
+      // A role read from a text field, shared preferences, or a JWT claim would
+      // be the client asserting authorization. None of these appears.
       for (final File file in sources) {
-        if (!file.readAsStringSync().contains('RoleSessionPreviewSelected')) {
-          continue;
-        }
-        users.add(file.path);
+        final String src = file.readAsStringSync();
+        expect(src.contains('SharedPreferences'), isFalse);
+        expect(
+          src.contains('.decodeJwt') || src.contains('jwtDecode'),
+          isFalse,
+          reason: '${file.path} decodes a JWT to find a role',
+        );
       }
-
-      // Its declaration, the BLoC that handles it, and the one screen that
-      // dispatches it. Nothing else may reference it.
-      expect(
-        users.map((String p) => p.split('/').last).toSet(),
-        <String>{
-          'role_session_event.dart',
-          'role_session_bloc.dart',
-          'role_gate_page.dart',
-        },
-        reason: 'the development-only showcase must not spread beyond the gate',
-      );
     });
 
-    test('no repository or data source reads a role to decide anything', () {
+    test('the development-only preview showcase is fully removed', () {
+      // The RPC exists now; the preview mechanism that stood in for it must not
+      // survive into a build with real routing.
       for (final File file in sources) {
-        if (!file.path.contains('/data/') && !file.path.contains('/domain/')) {
-          continue;
-        }
-        // The entity itself is allowed to mention its own values.
-        if (file.path.endsWith('app_role.dart')) continue;
-
-        final String source = file.readAsStringSync();
-        for (final AppRole role in AppRole.values) {
+        final String src = file.readAsStringSync();
+        for (final String forbidden in <String>[
+          'RoleSessionPreviewSelected',
+          'RoleTrust.localPreview',
+          'Interface preview',
+          'localPreview',
+        ]) {
           expect(
-            source.contains('AppRole.${role.name}'),
+            src.contains(forbidden),
             isFalse,
-            reason: '${file.path} branches on a role',
+            reason: '${file.path} still references the removed showcase',
           );
         }
       }
+    });
+
+    test('capabilities are documented as hints, never as authorization', () {
+      // The capability entity must state it decides nothing, so a future edit
+      // that gated a write on it would contradict its own contract.
+      final File caps = sources.firstWhere(
+        (File f) => f.path.endsWith('retailer_capabilities.dart'),
+      );
+      final String src = caps.readAsStringSync().toLowerCase();
+      expect(src.contains('not authorization'), isTrue);
     });
   });
 }

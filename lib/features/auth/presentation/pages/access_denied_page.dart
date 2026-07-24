@@ -1,42 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../app/router/app_routes.dart';
 import '../../../../core/widgets/widgets.dart';
-import '../bloc/role_session_bloc.dart';
+import '../../domain/repositories/auth_repository.dart';
+import '../cubit/logout_cubit.dart';
 
 /// The route that renders the shared, role-neutral access-denied screen.
 ///
-/// Reached in two ways, and it must look identical for both — otherwise the
-/// difference itself becomes information:
+/// Reached two ways, and it must look identical for both — otherwise the
+/// difference itself is information a hostile account could read:
 ///
-/// * The backend answered `kind = 'none'`: a verified identity that qualifies
-///   for no supported experience.
-/// * The route guard caught an attempt to enter a role group the current role
-///   does not own.
+/// * the backend answered `portal_kind: NONE` — a verified identity that
+///   qualifies for no supported experience;
+/// * the route guard caught an attempt to enter a role group the caller's
+///   resolved role does not own.
 ///
-/// The sign-out control currently clears the local role and returns to the gate.
-/// Authentication is not implemented in this milestone, so there is no session
-/// to end; when `supabase.auth.signOut(scope: 'local')` is wired in, it belongs
-/// here — along with purging the secure-storage session, any cached portal
-/// context, and any queued receipts, per § 7.3 of the architecture
-/// recommendation.
+/// Sign-out is the only affordance, matching § 3.17. It runs the real sign-out;
+/// the resulting auth change flows through [SessionBloc], which clears the
+/// context, and the router replaces this screen with the login page. This widget
+/// does not route itself — routing from here would be a second opinion about
+/// where a signed-out user belongs.
 class AccessDeniedPage extends StatelessWidget {
   const AccessDeniedPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return SrAccessDeniedView(
-      onSignOut: () {
-        // Drop the role in effect, then ask again from scratch. Re-resolving
-        // rather than leaving the session empty is what § 4.3 of the
-        // architecture recommendation requires — the role is never cached, it
-        // is re-derived.
-        context.read<RoleSessionBloc>()
-          ..add(const RoleSessionCleared())
-          ..add(const RoleSessionResolveRequested());
-        context.go(AppRoutes.roleGate);
+    return BlocProvider<LogoutCubit>(
+      create: (BuildContext context) =>
+          LogoutCubit(authRepository: context.read<AuthRepository>()),
+      child: const _AccessDeniedView(),
+    );
+  }
+}
+
+class _AccessDeniedView extends StatelessWidget {
+  const _AccessDeniedView();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<LogoutCubit, LogoutStatus>(
+      builder: (BuildContext context, LogoutStatus status) {
+        return SrAccessDeniedView(
+          signingOut: status == LogoutStatus.inProgress,
+          signOutFailed: status == LogoutStatus.failed,
+          onSignOut: status == LogoutStatus.inProgress
+              ? null
+              : () => context.read<LogoutCubit>().signOut(),
+        );
       },
     );
   }

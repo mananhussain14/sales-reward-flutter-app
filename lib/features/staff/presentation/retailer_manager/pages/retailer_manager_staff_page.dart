@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
-import '../../../../auth/domain/entities/app_role.dart';
+import '../../../../auth/domain/entities/portal_kind.dart';
 
 /// The Retailer Manager landing screen.
 ///
@@ -38,7 +38,7 @@ class RetailerManagerStaffPage extends StatelessWidget {
     return SrPageBody(
       children: <Widget>[
         SrPageHeader(
-          eyebrow: AppRole.retailerManager.displayName,
+          eyebrow: PortalKind.retailerManager.displayName,
           title: 'Staff',
           description: 'The active members of your retail organization.',
         ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../features/auth/domain/entities/app_role.dart';
+import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../navigation/role_destination.dart';
 
 /// The Vendor Super Admin navigation.
@@ -118,7 +118,7 @@ abstract final class VendorNavigation {
   ];
 
   static const RoleNavigation model = RoleNavigation(
-    role: AppRole.vendorSuperAdmin,
+    role: PortalKind.vendorSuperAdmin,
     routePrefix: prefix,
     portalName: 'Vendor Admin',
     landingPath: dashboard,

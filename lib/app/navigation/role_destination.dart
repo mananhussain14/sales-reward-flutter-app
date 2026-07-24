@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../features/auth/domain/entities/app_role.dart';
+import '../../features/auth/domain/entities/portal_kind.dart';
+import '../../features/auth/domain/entities/retailer_capabilities.dart';
 
 /// One entry in a role's primary navigation.
 @immutable
@@ -10,6 +11,7 @@ class RoleDestination {
     required this.icon,
     required this.selectedIcon,
     this.path,
+    this.requiredCapability,
   });
 
   /// A destination that is shown but not navigable — the web's "Coming soon"
@@ -23,7 +25,8 @@ class RoleDestination {
     required this.label,
     required this.icon,
     required this.selectedIcon,
-  }) : path = null;
+  }) : path = null,
+       requiredCapability = null;
 
   /// The user-facing label, and the accessibility label for the icon.
   final String label;
@@ -37,7 +40,26 @@ class RoleDestination {
   /// for a "Soon" placeholder, which has no route.
   final String? path;
 
+  /// The Retailer capability that, when explicitly false, hides this
+  /// destination — a **presentation hint**, never authorization.
+  ///
+  /// Set only where a destination maps one-to-one onto a capability the backend
+  /// actually returns. Null means "always shown": the Vendor returns no
+  /// capabilities, and a Sales Staff member's own receipt history is gated by
+  /// nothing.
+  final RetailerCapability? requiredCapability;
+
   bool get isEnabled => path != null;
+
+  /// Whether [capabilities] permit this destination to appear.
+  ///
+  /// A destination with no [requiredCapability] is always visible. This can
+  /// only ever *hide* an entry; it never grants one, and the backend re-decides
+  /// the underlying operation regardless.
+  bool isVisibleUnder(RetailerCapabilities capabilities) {
+    final RetailerCapability? required = requiredCapability;
+    return required == null || capabilities.allows(required);
+  }
 }
 
 /// How a role's shell presents its navigation.
@@ -96,7 +118,7 @@ class RoleNavigation {
     required this.destinations,
   });
 
-  final AppRole role;
+  final PortalKind role;
 
   /// Every route this role owns starts with this prefix, and no other role's
   /// do. Route isolation is asserted against it in the tests.
@@ -118,6 +140,23 @@ class RoleNavigation {
   /// The entries that actually have a route.
   List<RoleDestination> get routableDestinations =>
       destinations.where((RoleDestination d) => d.isEnabled).toList();
+
+  /// The destinations to show given [capabilities], as a **presentation** hint.
+  ///
+  /// Hides any destination whose capability is explicitly false — but never
+  /// returns an empty list. If filtering would hide everything (an empty or
+  /// inconsistent capability block, or a Vendor context that carries none), the
+  /// full list is returned instead: a false hint must never cost a role its
+  /// entire shell.
+  List<RoleDestination> visibleDestinations(RetailerCapabilities capabilities) {
+    if (capabilities.isEmpty) {
+      return destinations;
+    }
+    final List<RoleDestination> visible = destinations
+        .where((RoleDestination d) => d.isVisibleUnder(capabilities))
+        .toList();
+    return visible.isEmpty ? destinations : visible;
+  }
 
   /// The index into [destinations] that owns [location], or 0 if none does.
   ///
