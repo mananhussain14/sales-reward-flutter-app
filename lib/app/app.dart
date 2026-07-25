@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
+import '../features/products/domain/repositories/vendor_product_repository.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
@@ -42,6 +43,7 @@ class SaleRewardApp extends StatefulWidget {
     this.vendorRetailerRepository,
     this.vendorUserRepository,
     this.vendorRoleRepository,
+    this.vendorProductRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -52,6 +54,7 @@ class SaleRewardApp extends StatefulWidget {
   final VendorRetailerRepository? vendorRetailerRepository;
   final VendorUserRepository? vendorUserRepository;
   final VendorRoleRepository? vendorRoleRepository;
+  final VendorProductRepository? vendorProductRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -65,6 +68,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final VendorRetailerRepository _vendorRetailerRepository;
   late final VendorUserRepository _vendorUserRepository;
   late final VendorRoleRepository _vendorRoleRepository;
+  late final VendorProductRepository _vendorProductRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -83,6 +87,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.vendorUserRepository ?? getIt<VendorUserRepository>();
     _vendorRoleRepository =
         widget.vendorRoleRepository ?? getIt<VendorRoleRepository>();
+    _vendorProductRepository =
+        widget.vendorProductRepository ?? getIt<VendorProductRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -129,6 +135,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<VendorRoleRepository>.value(
           value: _vendorRoleRepository,
+        ),
+        RepositoryProvider<VendorProductRepository>.value(
+          value: _vendorProductRepository,
         ),
       ],
       child: MultiBlocProvider(

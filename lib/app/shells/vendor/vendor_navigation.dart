@@ -20,13 +20,16 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** Three destinations are implemented. **Retailers** is backed
+/// **Phase note.** Four destinations are implemented. **Retailers** is backed
 /// by `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
 /// `list_vendor_retailer_shops(uuid)` (`docs/flutter-vendor-retailer-reads.md`);
 /// **Users** by `list_vendor_users()` and `get_vendor_user_detail(uuid)`
 /// (`docs/flutter-vendor-user-reads.md`); **Roles** by `list_vendor_roles()`,
 /// `get_vendor_role_detail(uuid)` and `list_vendor_role_permissions(uuid)`
-/// (`docs/flutter-vendor-role-reads.md`). All three are read-only.
+/// (`docs/flutter-vendor-role-reads.md`); **Products** by
+/// `list_vendor_products()`, `get_vendor_product_detail(uuid)` and
+/// `list_vendor_product_assigned_retailers(uuid)`
+/// (`docs/flutter-vendor-product-reads.md`). All four are read-only.
 ///
 /// Every other Vendor destination is still phase 3 in the feature matrix and
 /// conditional on open question Q4 — whether Vendor administration belongs on
@@ -116,6 +119,30 @@ abstract final class VendorNavigation {
 
   /// Web route `/products`.
   static const String products = '$prefix/products';
+
+  /// The relative segment of the product detail route.
+  ///
+  /// Nested under [products] for the same reasons the Retailer, user and role
+  /// details are nested under theirs: the shell keeps the Products destination
+  /// highlighted while a product is open (`indexForLocation` takes the longest
+  /// matching prefix), and the back gesture pops to the catalogue rather than to
+  /// the dashboard.
+  static const String productDetailSegment = ':productId';
+
+  /// The full path for one product, addressed by `vendor_products.id`.
+  ///
+  /// The id and never the product code. The code is unique **per Vendor**
+  /// (`vendor_products_code_unique_idx (vendor_organization_id, product_code)`),
+  /// so two Vendors may each own `A-100` and a code in a URL would not name one
+  /// row without a tenant beside it — which is exactly the tenant input this
+  /// contract refuses. The uuid names one Vendor's own row and nothing else.
+  ///
+  /// > Holding this id grants nothing. `vendor_products.vendor_organization_id`
+  /// > is `NOT NULL` and immutable by trigger, and both reads behind this route
+  /// > derive the Vendor from `auth.uid()` in SQL and match the row on **both**
+  /// > its own id and that derived Vendor — so another Vendor's id reaches a
+  /// > screen that says the product is not available and nothing else.
+  static String productDetailPath(String productId) => '$products/$productId';
 
   /// Web route `/audit-logs`.
   static const String auditLogs = '$prefix/audit-logs';

@@ -10,6 +10,8 @@ import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/unavailable_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
+import '../../features/products/presentation/vendor/pages/vendor_product_detail_page.dart';
+import '../../features/products/presentation/vendor/pages/vendor_products_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
@@ -288,14 +290,46 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
           ),
         ],
       ),
-      _placeholder(
+      // V-12, V-12a and V-16a. Backed by list_vendor_products(),
+      // get_vendor_product_detail(uuid) and
+      // list_vendor_product_assigned_retailers(uuid). The first takes no
+      // arguments at all; the other two take the opaque vendor_products.id and
+      // nothing beside it, and all three derive the Vendor from auth.uid() in
+      // SQL and match the product on BOTH its own id and that derived Vendor.
+      //
+      // READ-ONLY. The write RPCs (V-13 create/update, V-14 activate/deactivate,
+      // V-16 assign/withdraw) exist and are deliberately not called: their
+      // duplicate code-vs-barcode error is discriminated by an English message
+      // substring, which Flutter must not re-implement (contract fix #3), and
+      // their `void` returns hide "changed" from "already so" (fix #4). No
+      // write affordance is rendered, not even a disabled one.
+      //
+      // An assignment row cross-links to the Retailer detail route above using
+      // `relationship_id` — the same vendor_retailers.id those screens already
+      // accept, which is why the assignment contract returns it. A null
+      // relationship_id is a real state and is simply not navigable.
+      //
+      // Nested for the same reason the other three details are: a `go` into it
+      // stacks the catalogue beneath, so browser back returns to a list that is
+      // still loaded.
+      GoRoute(
         path: VendorNavigation.products,
-        roleName: role,
-        title: 'Products',
-        backendNote:
-            'V-12 to V-16. The RPCs exist. Duplicate code-vs-barcode errors are '
-            'discriminated by an English message substring today — Flutter must '
-            'not re-implement that matching (contract fix #3). Phase 3.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorProductsPage(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: VendorNavigation.productDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                VendorProductDetailPage(
+                  // Passed through verbatim. A malformed value is not rejected
+                  // here: the repository answers exactly as the backend answers
+                  // for an id that names no product — without issuing a
+                  // request — so a mistyped URL, an unknown id and another
+                  // Vendor's id all reach one non-leaking state.
+                  productId: state.pathParameters['productId'] ?? '',
+                ),
+          ),
+        ],
       ),
       _placeholder(
         path: VendorNavigation.auditLogs,

@@ -5,11 +5,13 @@ import 'package:sale_reward/app/theme/app_theme.dart';
 import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
+import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
+import 'vendor_product_fakes.dart';
 import 'vendor_retailer_fakes.dart';
 import 'vendor_role_fakes.dart';
 import 'vendor_user_fakes.dart';
@@ -44,6 +46,7 @@ typedef PumpedApp = ({
   FakeVendorRetailerRepository retailers,
   FakeVendorUserRepository vendorUsers,
   FakeVendorRoleRepository vendorRoles,
+  FakeVendorProductRepository vendorProducts,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -71,6 +74,8 @@ Future<PumpedApp> pumpApp(
   VendorUserRepository? vendorUserRepository,
   FakeVendorRoleRepository? vendorRoles,
   VendorRoleRepository? vendorRoleRepository,
+  FakeVendorProductRepository? vendorProducts,
+  VendorProductRepository? vendorProductRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -92,6 +97,10 @@ Future<PumpedApp> pumpApp(
       vendorRoles ?? FakeVendorRoleRepository();
   final VendorRoleRepository providedRoles =
       vendorRoleRepository ?? roleRepository;
+  final FakeVendorProductRepository productRepository =
+      vendorProducts ?? FakeVendorProductRepository();
+  final VendorProductRepository providedProducts =
+      vendorProductRepository ?? productRepository;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -104,6 +113,7 @@ Future<PumpedApp> pumpApp(
       vendorRetailerRepository: retailerRepository,
       vendorUserRepository: providedUsers,
       vendorRoleRepository: providedRoles,
+      vendorProductRepository: providedProducts,
       initialThemeMode: themeMode,
     ),
   );
@@ -118,6 +128,7 @@ Future<PumpedApp> pumpApp(
     retailers: retailerRepository,
     vendorUsers: userRepository,
     vendorRoles: roleRepository,
+    vendorProducts: productRepository,
   );
 }
 
@@ -133,6 +144,8 @@ Future<PumpedApp> pumpAppInRole(
   VendorUserRepository? vendorUserRepository,
   FakeVendorRoleRepository? vendorRoles,
   VendorRoleRepository? vendorRoleRepository,
+  FakeVendorProductRepository? vendorProducts,
+  VendorProductRepository? vendorProductRepository,
 }) {
   return pumpApp(
     tester,
@@ -146,6 +159,8 @@ Future<PumpedApp> pumpAppInRole(
     vendorUserRepository: vendorUserRepository,
     vendorRoles: vendorRoles,
     vendorRoleRepository: vendorRoleRepository,
+    vendorProducts: vendorProducts,
+    vendorProductRepository: vendorProductRepository,
   );
 }
 

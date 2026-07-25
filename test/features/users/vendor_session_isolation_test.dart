@@ -13,6 +13,13 @@ import 'package:sale_reward/features/auth/domain/entities/portal_context.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/entities/retailer_capabilities.dart';
 import 'package:sale_reward/features/auth/presentation/bloc/session_bloc.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_assigned_retailer.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_status.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_summary.dart';
+import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
+import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
+import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
@@ -31,6 +38,7 @@ import 'package:sale_reward/features/users/presentation/vendor/cubit/vendor_user
 import 'package:sale_reward/features/users/presentation/vendor/pages/vendor_users_page.dart';
 
 import '../../support/pump_app.dart';
+import '../../support/vendor_product_fakes.dart';
 import '../../support/vendor_retailer_fakes.dart';
 import '../../support/vendor_role_fakes.dart';
 import '../../support/vendor_user_fakes.dart';
@@ -93,6 +101,7 @@ void main() {
   late FakeVendorUserRepository users;
   late FakeVendorRetailerRepository retailers;
   late FakeVendorRoleRepository roles;
+  late FakeVendorProductRepository products;
 
   /// The identity the shell starts under: Vendor A in organization one.
   final SessionState vendorA = SessionActive(
@@ -113,6 +122,7 @@ void main() {
     users = FakeVendorUserRepository();
     retailers = FakeVendorRetailerRepository();
     roles = FakeVendorRoleRepository();
+    products = FakeVendorProductRepository();
     whenListen(session, states.stream, initialState: vendorA);
   });
 
@@ -150,6 +160,7 @@ void main() {
           RepositoryProvider<VendorUserRepository>.value(value: users),
           RepositoryProvider<VendorRetailerRepository>.value(value: retailers),
           RepositoryProvider<VendorRoleRepository>.value(value: roles),
+          RepositoryProvider<VendorProductRepository>.value(value: products),
         ],
         child: BlocProvider<SessionBloc>.value(
           value: session,
@@ -162,16 +173,18 @@ void main() {
     );
     await settle(tester);
 
-    // Force all six cubits into existence before any assertion counts calls.
-    // `BlocProvider` builds each on first read, so without this the Retailer and
-    // Role pairs would be created *by the session listener itself* and the call
-    // counts would measure creation rather than reloading.
+    // Force all eight cubits into existence before any assertion counts calls.
+    // `BlocProvider` builds each on first read, so without this the Retailer,
+    // Role and Product pairs would be created *by the session listener itself*
+    // and the call counts would measure creation rather than reloading.
     cubit<VendorUserListCubit>(tester);
     cubit<VendorUserDetailCubit>(tester);
     cubit<VendorRetailerListCubit>(tester);
     cubit<VendorRetailerDetailCubit>(tester);
     cubit<VendorRoleListCubit>(tester);
     cubit<VendorRoleDetailCubit>(tester);
+    cubit<VendorProductListCubit>(tester);
+    cubit<VendorProductDetailCubit>(tester);
     await settle(tester);
   }
 
@@ -681,5 +694,281 @@ void main() {
       expect(retailers.retailersCallCount, 2);
       expect(roles.rolesCallCount, 2);
     });
+  });
+
+  /// The Vendor Product pair, added by the Product milestone.
+  ///
+  /// Unlike the Role catalogue, **nothing** about a product catalogue is
+  /// global: `vendor_products.vendor_organization_id` is `NOT NULL` and
+  /// immutable, so every row — its name, code, barcode, brand, description and
+  /// assignment counts — belongs to exactly one Vendor. The open product carries
+  /// more still: the names and statuses of the Retailers holding it. So there is
+  /// no version of this pair that could be kept as a harmless cache.
+  group('the Vendor Product pair', () {
+    testWidgets('A\'s catalogue is gone before B answers', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      final VendorProductListCubit list = cubit<VendorProductListCubit>(tester);
+      expect(list.state.products, isNotEmpty);
+      expect(list.state.totalActiveAssignments, greaterThan(0));
+
+      // B's catalogue will not answer until this test says so.
+      products.manualProducts = true;
+      await emit(tester, vendorB);
+
+      // The window that matters: B is signed in, B's rows have not arrived, and
+      // A's products must already be out of the cubit.
+      expect(products.pendingProductCount, 1);
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+      expect(
+        cubit<VendorProductListCubit>(tester).state.totalActiveAssignments,
+        0,
+      );
+
+      products.completeProducts(
+        ReadSuccess<List<VendorProductSummary>>(<VendorProductSummary>[
+          decafSummary,
+        ]),
+      );
+      await settle(tester);
+
+      expect(
+        cubit<VendorProductListCubit>(tester).state.products,
+        hasLength(1),
+      );
+    });
+
+    testWidgets('B\'s catalogue loads exactly once', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      expect(products.productsCallCount, 1);
+
+      await emit(tester, vendorB);
+
+      expect(products.productsCallCount, 2);
+    });
+
+    testWidgets('an open product and its assignment rows are cleared', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      await cubit<VendorProductDetailCubit>(tester).open(espressoProductUuid);
+      await settle(tester);
+      expect(cubit<VendorProductDetailCubit>(tester).state.detail, isNotNull);
+      expect(
+        cubit<VendorProductDetailCubit>(tester).state.assignments,
+        isNotEmpty,
+      );
+
+      await emit(tester, vendorB);
+
+      final VendorProductDetailCubit detail = cubit<VendorProductDetailCubit>(
+        tester,
+      );
+      expect(detail.state.detail, isNull);
+      expect(detail.state.productId, isNull);
+      // The Retailer names and statuses that rode on those rows go with them.
+      expect(detail.state.assignments, isEmpty);
+      expect(detail.state.phase, VendorProductDetailPhase.initial);
+      expect(
+        detail.state.assignmentsPhase,
+        VendorProductAssignmentsPhase.initial,
+      );
+    });
+
+    testWidgets('A\'s search term and status filter do not survive', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      final VendorProductListCubit list = cubit<VendorProductListCubit>(tester);
+      list.search('espresso');
+      list.filterByStatus(VendorProductStatus.inactive);
+      await settle(tester);
+
+      await emit(tester, vendorB);
+
+      expect(cubit<VendorProductListCubit>(tester).state.searchTerm, isEmpty);
+      expect(cubit<VendorProductListCubit>(tester).state.statusFilter, isNull);
+    });
+
+    testWidgets('a stale A catalogue response cannot repopulate B\'s screen', (
+      WidgetTester tester,
+    ) async {
+      products.manualProducts = true;
+      await pumpShell(tester);
+      expect(products.pendingProductCount, 1);
+
+      await emit(tester, vendorB);
+      expect(products.pendingProductCount, 2);
+
+      // A's answer lands *after* the switch. It must be discarded, counts and
+      // all.
+      products.completeProducts(
+        ReadSuccess<List<VendorProductSummary>>(productCatalogueSummaries),
+      );
+      await settle(tester);
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+
+      // B's own answer still lands normally.
+      products.completeProducts(
+        ReadSuccess<List<VendorProductSummary>>(<VendorProductSummary>[
+          decafSummary,
+        ]),
+      );
+      await settle(tester);
+      expect(
+        cubit<VendorProductListCubit>(tester).state.products,
+        hasLength(1),
+      );
+    });
+
+    testWidgets('a stale A product-detail response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      products.manualDetail = true;
+      unawaited(
+        cubit<VendorProductDetailCubit>(tester).open(espressoProductUuid),
+      );
+      await settle(tester);
+      expect(products.pendingDetailCount, 1);
+
+      await emit(tester, vendorB);
+
+      products.completeDetail(
+        ReadSuccess<VendorProductDetail?>(espressoDetail),
+      );
+      await settle(tester);
+
+      final VendorProductDetailCubit detail = cubit<VendorProductDetailCubit>(
+        tester,
+      );
+      expect(detail.state.detail, isNull);
+      expect(detail.state.productId, isNull);
+      expect(detail.state.phase, VendorProductDetailPhase.initial);
+    });
+
+    testWidgets('a stale A assignment response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      products.manualAssignments = true;
+      unawaited(
+        cubit<VendorProductDetailCubit>(tester).open(espressoProductUuid),
+      );
+      await settle(tester);
+      // The detail landed; the companion is still in flight.
+      expect(products.pendingAssignmentCount, 1);
+
+      await emit(tester, vendorB);
+
+      products.completeAssignments(
+        ReadSuccess<List<VendorProductAssignedRetailer>>(espressoAssignments),
+      );
+      await settle(tester);
+
+      expect(
+        cubit<VendorProductDetailCubit>(tester).state.assignments,
+        isEmpty,
+      );
+    });
+
+    testWidgets('an identical re-emitted session is a no-op for products', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      cubit<VendorProductListCubit>(tester).search('espresso');
+      await settle(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(products.productsCallCount, 1);
+      expect(cubit<VendorProductListCubit>(tester).state.products, isNotEmpty);
+      expect(
+        cubit<VendorProductListCubit>(tester).state.searchTerm,
+        'espresso',
+      );
+    });
+
+    testWidgets('a changed trusted organization reloads the catalogue', (
+      WidgetTester tester,
+    ) async {
+      // Same person, different Vendor organization: an entirely different
+      // catalogue, so the rows are re-read rather than kept.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgTwo), authUserId: 'user-A'),
+      );
+
+      expect(products.productsCallCount, 2);
+    });
+
+    testWidgets('signing out clears the catalogue and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+      expect(products.productsCallCount, 1);
+    });
+
+    testWidgets('becoming another role clears the catalogue', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+      expect(products.productsCallCount, 1);
+    });
+
+    testWidgets('a session invalidation clears the catalogue', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnavailable(UnavailableFailure()));
+
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+      expect(products.productsCallCount, 1);
+    });
+
+    testWidgets('a denial clears the catalogue', (WidgetTester tester) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionDenied());
+
+      expect(cubit<VendorProductListCubit>(tester).state.products, isEmpty);
+      expect(products.productsCallCount, 1);
+    });
+
+    testWidgets(
+      'the Retailer, User and Role state is still cleared alongside',
+      (WidgetTester tester) async {
+        // The Product milestone must not have displaced any earlier part of the
+        // listener.
+        await pumpShell(tester);
+
+        await emit(tester, vendorB);
+
+        expect(users.usersCallCount, 2);
+        expect(retailers.retailersCallCount, 2);
+        expect(roles.rolesCallCount, 2);
+        expect(products.productsCallCount, 2);
+      },
+    );
   });
 }
