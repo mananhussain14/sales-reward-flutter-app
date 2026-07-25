@@ -41,6 +41,16 @@ final class VendorRetailerListCubit extends Cubit<VendorRetailerListState> {
 
   final VendorRetailerRepository _repository;
 
+  /// Discriminates the answer this cubit is currently waiting for.
+  ///
+  /// Every read captures the token it started under and compares it before
+  /// emitting, so a response that lands after [clear] — after the signed-in
+  /// person changed — is dropped instead of refilling a directory that has just
+  /// been emptied. `isClosed` alone does not cover that: the cubit is owned by
+  /// the Vendor shell and outlives a session change, so it is very much still
+  /// open when the previous identity's answer arrives.
+  int _token = 0;
+
   /// Reads the directory, showing the full loading state.
   Future<void> load() => _fetch(showLoading: true);
 
@@ -59,6 +69,8 @@ final class VendorRetailerListCubit extends Cubit<VendorRetailerListState> {
       return;
     }
 
+    final int token = ++_token;
+
     emit(
       state.copyWith(
         phase: showLoading
@@ -72,7 +84,7 @@ final class VendorRetailerListCubit extends Cubit<VendorRetailerListState> {
     final VendorRetailerResult<List<VendorRetailerSummary>> result =
         await _repository.retailers();
 
-    if (isClosed) {
+    if (isClosed || token != _token) {
       return;
     }
 
@@ -129,5 +141,10 @@ final class VendorRetailerListCubit extends Cubit<VendorRetailerListState> {
   /// private information — it is usually a fragment of a Retailer's name — so
   /// clearing the rows without clearing the term would leave one Vendor's
   /// business relationships legible to the next person on the device.
-  void clear() => emit(const VendorRetailerListState());
+  void clear() {
+    // Advanced before the state is emptied, so a read already in flight for the
+    // previous identity cannot repopulate the directory when it lands.
+    _token++;
+    emit(const VendorRetailerListState());
+  }
 }

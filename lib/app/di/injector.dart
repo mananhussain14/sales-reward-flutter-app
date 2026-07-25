@@ -16,6 +16,9 @@ import '../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_rpc_data_source.dart';
 import '../../features/retailers/data/repositories/supabase_vendor_retailer_repository.dart';
 import '../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
+import '../../features/users/data/repositories/supabase_vendor_user_repository.dart';
+import '../../features/users/domain/repositories/vendor_user_repository.dart';
 import '../config/app_config.dart';
 
 /// The service locator.
@@ -85,6 +88,16 @@ Future<void> configureDependencies() async {
       rpc: VendorRetailerRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor User reads. Two RPCs and no table access at all — the four-table
+  // join, the ACTIVE-role filter, the name composition and the tenant scoping
+  // all happen in SQL, so there is nothing to configure here beyond the client
+  // the calls travel on.
+  getIt.registerLazySingleton<VendorUserRepository>(
+    () => SupabaseVendorUserRepository(
+      rpc: VendorUserRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -132,6 +145,7 @@ void registerTestDependencies({
   ReceiptRepository? receiptRepository,
   ReceiptImageSource? receiptImageSource,
   VendorRetailerRepository? vendorRetailerRepository,
+  VendorUserRepository? vendorUserRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -146,6 +160,11 @@ void registerTestDependencies({
   if (vendorRetailerRepository != null) {
     getIt.registerLazySingleton<VendorRetailerRepository>(
       () => vendorRetailerRepository,
+    );
+  }
+  if (vendorUserRepository != null) {
+    getIt.registerLazySingleton<VendorUserRepository>(
+      () => vendorUserRepository,
     );
   }
 }

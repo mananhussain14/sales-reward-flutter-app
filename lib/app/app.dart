@@ -8,6 +8,7 @@ import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import '../features/users/domain/repositories/vendor_user_repository.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
 import 'theme/app_theme.dart';
@@ -38,6 +39,7 @@ class SaleRewardApp extends StatefulWidget {
     this.receiptRepository,
     this.receiptImageSource,
     this.vendorRetailerRepository,
+    this.vendorUserRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -46,6 +48,7 @@ class SaleRewardApp extends StatefulWidget {
   final ReceiptRepository? receiptRepository;
   final ReceiptImageSource? receiptImageSource;
   final VendorRetailerRepository? vendorRetailerRepository;
+  final VendorUserRepository? vendorUserRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -57,6 +60,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final ReceiptRepository _receiptRepository;
   late final ReceiptImageSource _receiptImageSource;
   late final VendorRetailerRepository _vendorRetailerRepository;
+  late final VendorUserRepository _vendorUserRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -71,6 +75,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.receiptImageSource ?? getIt<ReceiptImageSource>();
     _vendorRetailerRepository =
         widget.vendorRetailerRepository ?? getIt<VendorRetailerRepository>();
+    _vendorUserRepository =
+        widget.vendorUserRepository ?? getIt<VendorUserRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -111,6 +117,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // flow over a fake with no Supabase client.
         RepositoryProvider<VendorRetailerRepository>.value(
           value: _vendorRetailerRepository,
+        ),
+        RepositoryProvider<VendorUserRepository>.value(
+          value: _vendorUserRepository,
         ),
       ],
       child: MultiBlocProvider(

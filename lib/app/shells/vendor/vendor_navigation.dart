@@ -20,13 +20,16 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** **Retailers** is implemented, against
+/// **Phase note.** Two destinations are implemented. **Retailers** is backed by
 /// `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
-/// `list_vendor_retailer_shops(uuid)` — see
-/// `docs/flutter-vendor-retailer-reads.md`. Every other Vendor destination is
-/// still phase 3 in the feature matrix and conditional on open question Q4 —
-/// whether Vendor administration belongs on mobile at all — and none of them has
-/// a mobile backend contract yet, so each renders a placeholder.
+/// `list_vendor_retailer_shops(uuid)` (`docs/flutter-vendor-retailer-reads.md`);
+/// **Users** by `list_vendor_users()` and `get_vendor_user_detail(uuid)`
+/// (`docs/flutter-vendor-user-reads.md`). Both are read-only.
+///
+/// Every other Vendor destination is still phase 3 in the feature matrix and
+/// conditional on open question Q4 — whether Vendor administration belongs on
+/// mobile at all — and none of them has a mobile backend contract yet, so each
+/// renders a placeholder.
 abstract final class VendorNavigation {
   /// Every Vendor route lives under this prefix and no other role's does.
   static const String prefix = '/vendor';
@@ -60,6 +63,28 @@ abstract final class VendorNavigation {
 
   /// Web route `/users`.
   static const String users = '$prefix/users';
+
+  /// The relative segment of the Vendor user detail route.
+  ///
+  /// Nested under [users] for the same reasons the Retailer detail is nested
+  /// under [retailers]: the shell keeps the Users destination highlighted while
+  /// a user is open (`indexForLocation` takes the longest matching prefix), and
+  /// the back gesture pops to the directory rather than to the dashboard.
+  static const String userDetailSegment = ':membershipId';
+
+  /// The full path for one Vendor user, addressed by `organization_members.id`.
+  ///
+  /// The membership id and not the profile id: a membership row names one person
+  /// **in one organization**, so scoping it to the caller's Vendor is a predicate
+  /// on the same row. A profile id names a person globally and would have to be
+  /// narrowed back down before it could be authorized; an auth user id is the
+  /// token subject and the contract neither returns nor accepts it.
+  ///
+  /// > Holding this id grants nothing. The read behind the route derives the
+  /// > Vendor from `auth.uid()` in SQL and matches the row on **both** its own id
+  /// > and that derived Vendor, so another Vendor's id — or a Retailer's — reaches
+  /// > a screen that says the user is not available and nothing else.
+  static String userDetailPath(String membershipId) => '$users/$membershipId';
 
   /// Web route `/roles`.
   static const String roles = '$prefix/roles';

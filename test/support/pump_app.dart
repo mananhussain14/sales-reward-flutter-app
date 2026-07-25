@@ -5,10 +5,12 @@ import 'package:sale_reward/app/theme/app_theme.dart';
 import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
+import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
 import 'vendor_retailer_fakes.dart';
+import 'vendor_user_fakes.dart';
 
 /// A phone-sized surface, so shells that adapt on width render their
 /// narrow-screen chrome (bottom navigation, modal drawer).
@@ -38,6 +40,7 @@ typedef PumpedApp = ({
   FakeReceiptRepository receipts,
   FakeReceiptImageSource images,
   FakeVendorRetailerRepository retailers,
+  FakeVendorUserRepository vendorUsers,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -61,6 +64,8 @@ Future<PumpedApp> pumpApp(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorUserRepository? vendorUsers,
+  VendorUserRepository? vendorUserRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -71,6 +76,13 @@ Future<PumpedApp> pumpApp(
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
   final FakeVendorRetailerRepository retailerRepository =
       retailers ?? FakeVendorRetailerRepository();
+  final FakeVendorUserRepository userRepository =
+      vendorUsers ?? FakeVendorUserRepository();
+  // A test that needs the *real* repository — to exercise its id-shape guard
+  // over a counting data source, say — supplies it here and takes precedence.
+  // The fake is still returned so the record shape stays uniform.
+  final VendorUserRepository providedUsers =
+      vendorUserRepository ?? userRepository;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -81,6 +93,7 @@ Future<PumpedApp> pumpApp(
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
+      vendorUserRepository: providedUsers,
       initialThemeMode: themeMode,
     ),
   );
@@ -93,6 +106,7 @@ Future<PumpedApp> pumpApp(
     receipts: receiptRepository,
     images: imageSource,
     retailers: retailerRepository,
+    vendorUsers: userRepository,
   );
 }
 
@@ -104,6 +118,8 @@ Future<PumpedApp> pumpAppInRole(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorUserRepository? vendorUsers,
+  VendorUserRepository? vendorUserRepository,
 }) {
   return pumpApp(
     tester,
@@ -113,6 +129,8 @@ Future<PumpedApp> pumpAppInRole(
     receipts: receipts,
     images: images,
     retailers: retailers,
+    vendorUsers: vendorUsers,
+    vendorUserRepository: vendorUserRepository,
   );
 }
 
