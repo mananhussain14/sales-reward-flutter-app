@@ -9,6 +9,9 @@ import 'package:sale_reward/app/shells/vendor/vendor_shell.dart';
 import 'package:sale_reward/app/theme/app_theme.dart';
 import 'package:sale_reward/core/errors/failure.dart';
 import 'package:sale_reward/core/result/read_result.dart';
+import 'package:sale_reward/features/audit/domain/entities/vendor_audit_log_entry.dart';
+import 'package:sale_reward/features/audit/domain/repositories/vendor_audit_log_repository.dart';
+import 'package:sale_reward/features/audit/presentation/vendor/cubit/vendor_audit_log_cubit.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_context.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/entities/retailer_capabilities.dart';
@@ -38,6 +41,7 @@ import 'package:sale_reward/features/users/presentation/vendor/cubit/vendor_user
 import 'package:sale_reward/features/users/presentation/vendor/pages/vendor_users_page.dart';
 
 import '../../support/pump_app.dart';
+import '../../support/vendor_audit_log_fakes.dart';
 import '../../support/vendor_product_fakes.dart';
 import '../../support/vendor_retailer_fakes.dart';
 import '../../support/vendor_role_fakes.dart';
@@ -102,6 +106,7 @@ void main() {
   late FakeVendorRetailerRepository retailers;
   late FakeVendorRoleRepository roles;
   late FakeVendorProductRepository products;
+  late FakeVendorAuditLogRepository auditLogs;
 
   /// The identity the shell starts under: Vendor A in organization one.
   final SessionState vendorA = SessionActive(
@@ -123,6 +128,7 @@ void main() {
     retailers = FakeVendorRetailerRepository();
     roles = FakeVendorRoleRepository();
     products = FakeVendorProductRepository();
+    auditLogs = FakeVendorAuditLogRepository();
     whenListen(session, states.stream, initialState: vendorA);
   });
 
@@ -161,6 +167,7 @@ void main() {
           RepositoryProvider<VendorRetailerRepository>.value(value: retailers),
           RepositoryProvider<VendorRoleRepository>.value(value: roles),
           RepositoryProvider<VendorProductRepository>.value(value: products),
+          RepositoryProvider<VendorAuditLogRepository>.value(value: auditLogs),
         ],
         child: BlocProvider<SessionBloc>.value(
           value: session,
@@ -173,7 +180,7 @@ void main() {
     );
     await settle(tester);
 
-    // Force all eight cubits into existence before any assertion counts calls.
+    // Force all nine cubits into existence before any assertion counts calls.
     // `BlocProvider` builds each on first read, so without this the Retailer,
     // Role and Product pairs would be created *by the session listener itself*
     // and the call counts would measure creation rather than reloading.
@@ -185,6 +192,7 @@ void main() {
     cubit<VendorRoleDetailCubit>(tester);
     cubit<VendorProductListCubit>(tester);
     cubit<VendorProductDetailCubit>(tester);
+    cubit<VendorAuditLogCubit>(tester);
     await settle(tester);
   }
 
@@ -968,6 +976,253 @@ void main() {
         expect(retailers.retailersCallCount, 2);
         expect(roles.rolesCallCount, 2);
         expect(products.productsCallCount, 2);
+      },
+    );
+  });
+
+  /// The Vendor Audit Log cubit, added by the Audit Log milestone.
+  ///
+  /// A single cubit rather than a pair — there is no audit detail read to hold —
+  /// but it carries something the other four do not: a **cursor position**. So
+  /// clearing it has to drop three things at once. The loaded events, which name
+  /// colleagues, Retailers, shops and products and the moment each was touched.
+  /// The end-of-history flag, which is a statement about *this* Vendor's record.
+  /// And the cursor itself, which is why the next Vendor cannot continue paging
+  /// from where the previous one stopped.
+  group('the Vendor Audit Log feed', () {
+    testWidgets('A\'s recorded activity is gone before B answers', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      final VendorAuditLogCubit feed = cubit<VendorAuditLogCubit>(tester);
+      expect(feed.state.events, isNotEmpty);
+
+      // B's feed will not answer until this test says so.
+      auditLogs.manual = true;
+      await emit(tester, vendorB);
+
+      // The window that matters: B is signed in, B's rows have not arrived, and
+      // A's activity must already be out of the cubit.
+      expect(auditLogs.pendingCount, 1);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+      expect(cubit<VendorAuditLogCubit>(tester).state.loadedCount, 0);
+
+      auditLogs.complete(
+        ReadSuccess<List<VendorAuditLogEntry>>(<VendorAuditLogEntry>[
+          systemActorEvent,
+        ]),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, hasLength(1));
+    });
+
+    testWidgets('B\'s feed loads exactly once', (WidgetTester tester) async {
+      await pumpShell(tester);
+      expect(auditLogs.callCount, 1);
+
+      await emit(tester, vendorB);
+
+      expect(auditLogs.callCount, 2);
+      // And the reload is a NEWEST-page read: no cursor survives a session
+      // change, so B cannot continue from where A had paged to.
+      expect(auditLogs.newestCallCount, 2);
+      expect(auditLogs.olderCursors, isEmpty);
+    });
+
+    testWidgets('the cursor and the end-of-history flag are cleared too', (
+      WidgetTester tester,
+    ) async {
+      // Page A's feed to its end first, so both are genuinely set. Sixty events
+      // is two pages at the client's fixed fifty.
+      auditLogs.history = auditHistoryOf(60);
+      await pumpShell(tester);
+      await cubit<VendorAuditLogCubit>(tester).loadMore();
+      await settle(tester);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, hasLength(60));
+      expect(cubit<VendorAuditLogCubit>(tester).state.hasReachedEnd, isTrue);
+      expect(auditLogs.olderCursors, hasLength(1));
+
+      await emit(tester, vendorB);
+
+      final VendorAuditLogCubit feed = cubit<VendorAuditLogCubit>(tester);
+      // B holds a fresh FIRST page — not A's sixty, and not a continuation of
+      // them. The end flag went with the rows, because "there is nothing older"
+      // was a statement about A's history.
+      expect(feed.state.events, hasLength(50));
+      expect(feed.state.hasReachedEnd, isFalse);
+      expect(feed.state.isLoadingMore, isFalse);
+      expect(feed.state.isRefreshing, isFalse);
+      expect(feed.state.failure, isNull);
+      expect(feed.state.loadMoreFailure, isNull);
+      // The reload sent NO cursor: B cannot continue from where A stopped.
+      expect(auditLogs.olderCursors, hasLength(1));
+      expect(auditLogs.requestedCursors.last, isNull);
+    });
+
+    testWidgets('a stale A first-page response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      auditLogs.manual = true;
+      await pumpShell(tester);
+      expect(auditLogs.pendingCount, 1);
+
+      await emit(tester, vendorB);
+      expect(auditLogs.pendingCount, 2);
+
+      // A's answer lands *after* the switch. It must be discarded.
+      auditLogs.completeAt(
+        0,
+        ReadSuccess<List<VendorAuditLogEntry>>(auditFirstPage),
+      );
+      await settle(tester);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+
+      // B's own answer still lands normally.
+      auditLogs.complete(
+        ReadSuccess<List<VendorAuditLogEntry>>(<VendorAuditLogEntry>[
+          systemActorEvent,
+        ]),
+      );
+      await settle(tester);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, hasLength(1));
+    });
+
+    testWidgets('a stale A refresh response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      auditLogs.manual = true;
+      unawaited(cubit<VendorAuditLogCubit>(tester).refresh());
+      await settle(tester);
+      expect(auditLogs.pendingCount, 1);
+
+      await emit(tester, vendorB);
+
+      auditLogs.completeAt(
+        0,
+        ReadSuccess<List<VendorAuditLogEntry>>(auditFirstPage),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+    });
+
+    testWidgets('a stale A load-more response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      auditLogs.history = auditHistoryOf(60);
+      await pumpShell(tester);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, hasLength(50));
+
+      auditLogs.manual = true;
+      unawaited(cubit<VendorAuditLogCubit>(tester).loadMore());
+      await settle(tester);
+      expect(auditLogs.pendingCount, 1);
+
+      await emit(tester, vendorB);
+
+      // A's older page answers late. Appending it would splice one Vendor's
+      // history onto another's.
+      auditLogs.completeAt(
+        0,
+        ReadSuccess<List<VendorAuditLogEntry>>(
+          auditHistoryOf(60).skip(50).toList(),
+        ),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+    });
+
+    testWidgets('an identical re-emitted session is a no-op for the feed', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(auditLogs.callCount, 1);
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isNotEmpty);
+    });
+
+    testWidgets('a changed trusted organization reloads the feed', (
+      WidgetTester tester,
+    ) async {
+      // Same person, a different Vendor organization: an entirely different
+      // history, so the rows are re-read rather than kept.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgTwo), authUserId: 'user-A'),
+      );
+
+      expect(auditLogs.callCount, 2);
+    });
+
+    testWidgets('signing out clears the feed and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+      expect(auditLogs.callCount, 1);
+    });
+
+    testWidgets('becoming another role clears the feed', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+      expect(auditLogs.callCount, 1);
+    });
+
+    testWidgets('a session invalidation clears the feed', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnavailable(UnavailableFailure()));
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+      expect(auditLogs.callCount, 1);
+    });
+
+    testWidgets('a denial clears the feed', (WidgetTester tester) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionDenied());
+
+      expect(cubit<VendorAuditLogCubit>(tester).state.events, isEmpty);
+      expect(auditLogs.callCount, 1);
+    });
+
+    testWidgets(
+      'the Retailer, User, Role and Product state is still cleared alongside',
+      (WidgetTester tester) async {
+        // The Audit Log milestone must not have displaced any earlier part of
+        // the listener.
+        await pumpShell(tester);
+
+        await emit(tester, vendorB);
+
+        expect(users.usersCallCount, 2);
+        expect(retailers.retailersCallCount, 2);
+        expect(roles.rolesCallCount, 2);
+        expect(products.productsCallCount, 2);
+        expect(auditLogs.callCount, 2);
       },
     );
   });

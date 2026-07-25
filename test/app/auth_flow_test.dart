@@ -16,6 +16,7 @@ import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.da
 
 import '../support/fakes.dart';
 import '../support/pump_app.dart';
+import '../support/vendor_audit_log_fakes.dart';
 import '../support/receipt_fakes.dart';
 import '../support/vendor_retailer_fakes.dart';
 import '../support/vendor_product_fakes.dart';
@@ -91,6 +92,7 @@ void main() {
           vendorUserRepository: FakeVendorUserRepository(),
           vendorRoleRepository: FakeVendorRoleRepository(),
           vendorProductRepository: FakeVendorProductRepository(),
+          vendorAuditLogRepository: FakeVendorAuditLogRepository(),
         ),
       );
 
@@ -244,6 +246,7 @@ void main() {
             vendorUserRepository: FakeVendorUserRepository(),
             vendorRoleRepository: FakeVendorRoleRepository(),
             vendorProductRepository: FakeVendorProductRepository(),
+            vendorAuditLogRepository: FakeVendorAuditLogRepository(),
           ),
         );
         await tester.pump();
@@ -285,6 +288,7 @@ void main() {
             vendorUserRepository: FakeVendorUserRepository(),
             vendorRoleRepository: FakeVendorRoleRepository(),
             vendorProductRepository: FakeVendorProductRepository(),
+            vendorAuditLogRepository: FakeVendorAuditLogRepository(),
           ),
         );
         await tester.pump();

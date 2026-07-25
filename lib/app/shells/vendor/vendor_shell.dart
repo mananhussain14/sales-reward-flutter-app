@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
+import '../../../features/audit/presentation/vendor/cubit/vendor_audit_log_cubit.dart';
 import '../../../features/auth/domain/entities/portal_context.dart';
 import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../../features/auth/presentation/bloc/session_bloc.dart';
@@ -46,10 +48,10 @@ import 'bloc/vendor_shell_bloc.dart';
 ///   is already showing, so a router refresh or a widget rebuild issues no
 ///   second RPC.
 ///
-/// All four list cubits load on creation, and `BlocProvider` builds each on
+/// All five list cubits load on creation, and `BlocProvider` builds each on
 /// first read — so entering the Vendor shell does not fetch the user directory
 /// until something asks for it, and opening Retailers never fetches Users,
-/// Roles or Products.
+/// Roles, Products or the audit feed.
 ///
 /// ## Session isolation is enforced, not inferred from the widget lifetime
 ///
@@ -65,19 +67,24 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all eight cubits are cleared:
+/// moment the session stops being *this* person's, all nine cubits are cleared:
 /// the Retailer summaries, the open Retailer, its shops, the user summaries with
 /// their names and roles, the open user, the role catalogue with **this
 /// Vendor's own assigned member counts**, the open role and its permissions, the
 /// product catalogue with its codes, barcodes, brands and assignment counts, the
-/// open product with the names and statuses of the Retailers holding it, and
-/// every search term and status filter — which are private too, being fragments
-/// of Retailer, colleague and product names.
+/// open product with the names and statuses of the Retailers holding it, the
+/// loaded pages of the audit feed with the colleague, Retailer, shop and product
+/// names riding on them, and every search term and status filter — which are
+/// private too, being fragments of Retailer, colleague and product names.
+///
+/// Clearing the audit cubit also drops its **cursor position**, which is why the
+/// next Vendor cannot continue paging from where the previous one stopped.
 ///
 /// The role *definitions* are global and are the same for whoever signs in next.
 /// The counts riding on the same rows are not, which is why the Role pair is
 /// cleared rather than kept as a harmless cache. Nothing about the Product pair
-/// is global: a catalogue belongs to exactly one Vendor.
+/// or the audit feed is global: a catalogue and a history each belong to exactly
+/// one Vendor.
 class VendorShell extends StatelessWidget {
   const VendorShell({
     super.key,
@@ -142,6 +149,15 @@ class VendorShell extends StatelessWidget {
           create: (BuildContext providerContext) => VendorProductDetailCubit(
             providerContext.read<VendorProductRepository>(),
           ),
+        ),
+        // The audit feed is private Vendor data in its entirety — it names
+        // colleagues, Retailers, shops and products, and the moment each was
+        // touched — so it is owned and cleared here exactly like the other four.
+        // A single cubit rather than a pair: there is no detail read to hold.
+        BlocProvider<VendorAuditLogCubit>(
+          create: (BuildContext providerContext) => VendorAuditLogCubit(
+            providerContext.read<VendorAuditLogRepository>(),
+          )..load(),
         ),
       ],
       child: _SessionIsolation(
@@ -256,6 +272,8 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorProductListCubit>();
         final VendorProductDetailCubit productDetail = context
             .read<VendorProductDetailCubit>();
+        final VendorAuditLogCubit auditLogs = context
+            .read<VendorAuditLogCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Vendor session must not see the
@@ -271,6 +289,7 @@ class _SessionIsolation extends StatelessWidget {
         roleDetail.clear();
         products.clear();
         productDetail.clear();
+        auditLogs.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —
@@ -281,6 +300,7 @@ class _SessionIsolation extends StatelessWidget {
           users.load();
           roles.load();
           products.load();
+          auditLogs.load();
         }
       },
       child: child,

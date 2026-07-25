@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
@@ -44,6 +45,7 @@ class SaleRewardApp extends StatefulWidget {
     this.vendorUserRepository,
     this.vendorRoleRepository,
     this.vendorProductRepository,
+    this.vendorAuditLogRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -55,6 +57,7 @@ class SaleRewardApp extends StatefulWidget {
   final VendorUserRepository? vendorUserRepository;
   final VendorRoleRepository? vendorRoleRepository;
   final VendorProductRepository? vendorProductRepository;
+  final VendorAuditLogRepository? vendorAuditLogRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -69,6 +72,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final VendorUserRepository _vendorUserRepository;
   late final VendorRoleRepository _vendorRoleRepository;
   late final VendorProductRepository _vendorProductRepository;
+  late final VendorAuditLogRepository _vendorAuditLogRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -89,6 +93,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.vendorRoleRepository ?? getIt<VendorRoleRepository>();
     _vendorProductRepository =
         widget.vendorProductRepository ?? getIt<VendorProductRepository>();
+    _vendorAuditLogRepository =
+        widget.vendorAuditLogRepository ?? getIt<VendorAuditLogRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -138,6 +144,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<VendorProductRepository>.value(
           value: _vendorProductRepository,
+        ),
+        RepositoryProvider<VendorAuditLogRepository>.value(
+          value: _vendorAuditLogRepository,
         ),
       ],
       child: MultiBlocProvider(
