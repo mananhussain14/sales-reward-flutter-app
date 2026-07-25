@@ -15,6 +15,8 @@ import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submi
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
 import '../../features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
+import '../../features/users/presentation/vendor/pages/vendor_user_detail_page.dart';
+import '../../features/users/presentation/vendor/pages/vendor_users_page.dart';
 import '../navigation/role_navigation_registry.dart';
 import '../shells/base/placeholder_destination_page.dart';
 import '../shells/retailer_manager/retailer_manager_navigation.dart';
@@ -223,14 +225,32 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
           ),
         ],
       ),
-      _placeholder(
+      // V-02. Backed by list_vendor_users() and get_vendor_user_detail(uuid),
+      // both of which derive the Vendor from auth.uid() and accept no identity
+      // or tenant argument. The four-table join the web performs in TypeScript
+      // happens in SQL, so Flutter does not re-implement it.
+      //
+      // Nested for the same reason the Retailer detail is: a `go` into it stacks
+      // the directory beneath, so browser back returns to a list that is still
+      // loaded.
+      GoRoute(
         path: VendorNavigation.users,
-        roleName: role,
-        title: 'Users',
-        backendNote:
-            'V-02. Needs list_vendor_organization_members(); the web assembles '
-            'this from a four-query join in TypeScript, which Flutter must not '
-            're-implement. Phase 3.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorUsersPage(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: VendorNavigation.userDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                VendorUserDetailPage(
+                  // Passed through verbatim. A malformed value is not rejected
+                  // here: the repository answers exactly as the backend answers
+                  // for an id that names no row, so a mistyped URL, an unknown
+                  // id, another Vendor's id and a Retailer's membership id all
+                  // reach one non-leaking state.
+                  membershipId: state.pathParameters['membershipId'] ?? '',
+                ),
+          ),
+        ],
       ),
       _placeholder(
         path: VendorNavigation.roles,

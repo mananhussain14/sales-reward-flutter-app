@@ -9,6 +9,7 @@ import 'package:sale_reward/features/auth/domain/repositories/portal_context_rep
 import 'fakes.dart';
 import 'receipt_fakes.dart';
 import 'vendor_retailer_fakes.dart';
+import 'vendor_user_fakes.dart';
 
 /// A phone-sized surface, so shells that adapt on width render their
 /// narrow-screen chrome (bottom navigation, modal drawer).
@@ -38,6 +39,7 @@ typedef PumpedApp = ({
   FakeReceiptRepository receipts,
   FakeReceiptImageSource images,
   FakeVendorRetailerRepository retailers,
+  FakeVendorUserRepository vendorUsers,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -61,6 +63,7 @@ Future<PumpedApp> pumpApp(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorUserRepository? vendorUsers,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -71,6 +74,8 @@ Future<PumpedApp> pumpApp(
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
   final FakeVendorRetailerRepository retailerRepository =
       retailers ?? FakeVendorRetailerRepository();
+  final FakeVendorUserRepository userRepository =
+      vendorUsers ?? FakeVendorUserRepository();
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -81,6 +86,7 @@ Future<PumpedApp> pumpApp(
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
+      vendorUserRepository: userRepository,
       initialThemeMode: themeMode,
     ),
   );
@@ -93,6 +99,7 @@ Future<PumpedApp> pumpApp(
     receipts: receiptRepository,
     images: imageSource,
     retailers: retailerRepository,
+    vendorUsers: userRepository,
   );
 }
 
@@ -104,6 +111,7 @@ Future<PumpedApp> pumpAppInRole(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorUserRepository? vendorUsers,
 }) {
   return pumpApp(
     tester,
@@ -113,6 +121,7 @@ Future<PumpedApp> pumpAppInRole(
     receipts: receipts,
     images: images,
     retailers: retailers,
+    vendorUsers: vendorUsers,
   );
 }
 

@@ -7,6 +7,9 @@ import '../../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
+import '../../../features/users/domain/repositories/vendor_user_repository.dart';
+import '../../../features/users/presentation/vendor/cubit/vendor_user_detail_cubit.dart';
+import '../../../features/users/presentation/vendor/cubit/vendor_user_list_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/vendor_shell_bloc.dart';
 
@@ -19,21 +22,27 @@ import 'bloc/vendor_shell_bloc.dart';
 /// This role uses a drawer rather than a bottom bar because its web counterpart
 /// carries six active modules; see `VendorNavigation` for the reasoning.
 ///
-/// ## Why the Retailer cubits are provided here rather than per route
+/// ## Why the feature cubits are provided here rather than per route
 ///
 /// Three reasons, and each of them is a bug avoided rather than a preference.
+/// They hold for the Retailer pair and the User pair alike.
 ///
-/// * **The directory survives a round trip into a Retailer.** Opening one and
-///   coming back renders rows already held instead of re-reading them, which is
-///   the difference between a back gesture and a reload.
-/// * **The detail cubit is reachable by the session listener below.** A cubit
-///   created inside the detail route would be a level *below* that listener,
+/// * **A directory survives a round trip into one of its rows.** Opening a
+///   Retailer or a user and coming back renders rows already held instead of
+///   re-reading them, which is the difference between a back gesture and a
+///   reload.
+/// * **The detail cubits are reachable by the session listener below.** A cubit
+///   created inside a detail route would be a level *below* that listener,
 ///   which is precisely the subtree that must be emptied when the signed-in
 ///   person changes.
-/// * **Duplicate reads are impossible rather than merely unlikely.** The list is
-///   loaded once, here; `open` on the detail cubit ignores a repeat of the
-///   relationship it is already showing, so a router refresh or a widget rebuild
-///   issues no second RPC.
+/// * **Duplicate reads are impossible rather than merely unlikely.** Each list is
+///   loaded once, here; `open` on a detail cubit ignores a repeat of the id it
+///   is already showing, so a router refresh or a widget rebuild issues no
+///   second RPC.
+///
+/// Both list cubits load on creation, and `BlocProvider` builds each on first
+/// read — so entering the Vendor shell does not fetch the user directory until
+/// something asks for it, and opening Retailers never fetches Users.
 ///
 /// ## Session isolation is enforced, not inferred from the widget lifetime
 ///
@@ -49,9 +58,10 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, both cubits are cleared: the
-/// Retailer summaries, the open Retailer, its shops, and the search term and
-/// status filter — which are private too, being fragments of Retailer names.
+/// moment the session stops being *this* person's, all four cubits are cleared:
+/// the Retailer summaries, the open Retailer, its shops, the user summaries with
+/// their names and roles, the open user, and every search term and status filter
+/// — which are private too, being fragments of Retailer and colleague names.
 class VendorShell extends StatelessWidget {
   const VendorShell({
     super.key,
@@ -79,6 +89,16 @@ class VendorShell extends StatelessWidget {
         BlocProvider<VendorRetailerDetailCubit>(
           create: (BuildContext providerContext) => VendorRetailerDetailCubit(
             providerContext.read<VendorRetailerRepository>(),
+          ),
+        ),
+        BlocProvider<VendorUserListCubit>(
+          create: (BuildContext providerContext) =>
+              VendorUserListCubit(providerContext.read<VendorUserRepository>())
+                ..load(),
+        ),
+        BlocProvider<VendorUserDetailCubit>(
+          create: (BuildContext providerContext) => VendorUserDetailCubit(
+            providerContext.read<VendorUserRepository>(),
           ),
         ),
       ],
@@ -121,22 +141,28 @@ class _SessionIsolation extends StatelessWidget {
       listenWhen: (SessionState previous, SessionState current) =>
           _isVendor(previous) != _isVendor(current),
       listener: (BuildContext context, SessionState state) {
-        final VendorRetailerListCubit list = context
+        final VendorRetailerListCubit retailers = context
             .read<VendorRetailerListCubit>();
-        final VendorRetailerDetailCubit detail = context
+        final VendorRetailerDetailCubit retailerDetail = context
             .read<VendorRetailerDetailCubit>();
+        final VendorUserListCubit users = context.read<VendorUserListCubit>();
+        final VendorUserDetailCubit userDetail = context
+            .read<VendorUserDetailCubit>();
 
         // Always cleared first, in both directions. A new Vendor session must
         // not read the previous one's rows even for the instant before its own
         // response arrives.
-        list.clear();
-        detail.clear();
+        retailers.clear();
+        retailerDetail.clear();
+        users.clear();
+        userDetail.clear();
 
         if (_isVendor(state)) {
           // Everything is read again from the backend under the new caller's own
-          // identity. The open Retailer, if any, is re-read by the detail page,
-          // which notices its cubit returning to `initial`.
-          list.load();
+          // identity. An open Retailer or user, if any, is re-read by its detail
+          // page, which notices its cubit returning to `initial`.
+          retailers.load();
+          users.load();
         }
       },
       child: child,

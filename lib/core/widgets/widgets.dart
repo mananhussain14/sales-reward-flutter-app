@@ -16,5 +16,6 @@ export 'sr_empty_state.dart';
 export 'sr_failure_view.dart';
 export 'sr_loading_view.dart';
 export 'sr_page_header.dart';
+export 'sr_responsive_grid.dart';
 export 'sr_stat_card.dart';
 export 'sr_text_field.dart';
