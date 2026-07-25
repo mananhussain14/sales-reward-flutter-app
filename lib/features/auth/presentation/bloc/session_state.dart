@@ -45,9 +45,36 @@ final class SessionResolving extends SessionState {
 /// A context was resolved. [context] carries the routing decision and, where
 /// the backend supplied them, the organization blocks and capability hints.
 final class SessionActive extends SessionState {
-  const SessionActive(this.portalContext);
+  const SessionActive(this.portalContext, {this.authUserId});
 
   final PortalContext portalContext;
+
+  /// The authenticated subject this context was resolved **for**.
+  ///
+  /// Supplied by [SessionBloc] from the same value it uses to decide whether a
+  /// settled resolution may commit, so it is the identity the state actually
+  /// belongs to rather than a second opinion about who is signed in. It is
+  /// never read from a token, an email, a display name or a role label, and it
+  /// is never sent anywhere — no RPC in this application accepts a user id.
+  ///
+  /// ## Why it is on the state at all
+  ///
+  /// A feature holding private data has to know **when the person it belongs to
+  /// stopped being the person on screen**. Without this, the only signal
+  /// available is "did the portal kind change", which cannot distinguish one
+  /// Vendor Super Admin from another — so a direct A→B switch would look like
+  /// no change at all and one Vendor's colleagues could stay in memory under
+  /// the next Vendor's session.
+  ///
+  /// Relying instead on an intermediate state being emitted between the two
+  /// would be a promise about `SessionBloc`'s internals that nothing enforces.
+  /// This makes the identity explicit and comparable.
+  ///
+  /// Null only where a state is constructed outside the bloc — tests and
+  /// previews. Consumers must treat null as "identity unknown" and fall back to
+  /// whatever trusted organization identity the context carries, never as
+  /// "identity unchanged".
+  final String? authUserId;
 
   @override
   PortalContext get context => portalContext;
@@ -56,7 +83,7 @@ final class SessionActive extends SessionState {
   PortalKind get portalKind => portalContext.portalKind;
 
   @override
-  List<Object?> get props => <Object?>[portalContext];
+  List<Object?> get props => <Object?>[portalContext, authUserId];
 }
 
 /// The backend answered `portal_kind: NONE`.

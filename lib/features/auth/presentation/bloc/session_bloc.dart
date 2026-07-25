@@ -162,8 +162,13 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
 
     _inFlightGeneration = null;
     emit(switch (event.result) {
+      // The owner is carried onto the state. The three checks above have just
+      // established that `event.userId` is still the authenticated subject, so
+      // this is the same value the commit was authorized against — not a second
+      // lookup that could disagree with it.
       PortalContextResolved(:final PortalContext context) => SessionActive(
         context,
+        authUserId: event.userId,
       ),
       PortalContextDenied() => const SessionDenied(),
       PortalContextFailed(:final Failure failure) => SessionUnavailable(

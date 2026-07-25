@@ -113,8 +113,28 @@ class VendorShell extends StatelessWidget {
   }
 }
 
-/// Drops every piece of private Retailer data the moment the session stops being
-/// this person's, and reloads when a new Vendor session settles.
+/// The identity a Vendor shell's private data belongs to.
+///
+/// Null whenever there is no active Vendor session at all — signed out, another
+/// role, resolving, denied or unavailable. Otherwise the pair that together
+/// decides whose data this is:
+///
+/// * the **authenticated subject** the context was resolved for, and
+/// * the **trusted Vendor organization** the backend derived for them.
+///
+/// Both matter. The organization scopes what the RPCs return, so a change of
+/// organization changes the rows. The subject scopes what is *personal* — a
+/// half-typed search term is a fragment of a colleague's name, and it belongs to
+/// the person who typed it even when two administrators share an organization.
+///
+/// Nothing here is inferred from an email, a display name, a role label or a
+/// navigation path. The subject comes from [SessionActive.authUserId], which
+/// `SessionBloc` sets from the value it already validated the resolution
+/// against; the organization comes from the resolved context.
+typedef _VendorIdentity = ({String? authUserId, String organizationId});
+
+/// Drops every piece of private Vendor data the moment the session stops being
+/// this person's, and reloads under whoever replaced them.
 ///
 /// A [BlocListener] rather than a `BlocBuilder`, because the guarantee must not
 /// depend on a frame being built.
@@ -123,23 +143,62 @@ class VendorShell extends StatelessWidget {
 /// application's existing session lifecycle, and this widget only reacts to it.
 /// Subscribing to Supabase's auth stream again here would create a second
 /// opinion about who is signed in, and two opinions is one too many.
+///
+/// ## Why the trigger is an identity and not a boolean
+///
+/// The obvious test — "did this stop being a Vendor session?" — cannot tell one
+/// Vendor Super Admin from another. Under it, a **direct** `Vendor A → Vendor B`
+/// transition is `true → true`, the listener never runs, and A's colleagues,
+/// Retailers, open detail, search terms and filters stay in memory under B's
+/// session.
+///
+/// Today `SessionBloc` happens to emit `SessionInitial` and `SessionResolving`
+/// between the two, so a boolean would flip twice and appear to work. That is
+/// an accident of another bloc's internals, not a guarantee: it is undocumented,
+/// nothing enforces it, and a perfectly reasonable optimisation there would
+/// silently reintroduce the leak here. **This listener therefore assumes no
+/// intermediate state at all** — comparing identities makes the direct
+/// transition detectable on its own terms.
+///
+/// It also makes the *absence* of a change detectable, which the boolean could
+/// not: a re-emitted identical session — the shape a same-user token refresh
+/// takes if it ever reaches this far — compares equal and is ignored, so it
+/// costs no clear and no duplicate load.
 class _SessionIsolation extends StatelessWidget {
   const _SessionIsolation({required this.child});
 
   final Widget child;
 
-  static bool _isVendor(SessionState state) =>
-      state is SessionActive &&
-      state.portalContext.portalKind == PortalKind.vendorSuperAdmin;
+  /// The identity [state] carries, or null if it is not an active Vendor
+  /// session.
+  ///
+  /// A Vendor session with no vendor block is treated as no identity: the
+  /// context is not one this shell can hold data for, and returning something
+  /// comparable would be inventing a tenant.
+  static _VendorIdentity? _identityOf(SessionState state) {
+    if (state is! SessionActive ||
+        state.portalContext.portalKind != PortalKind.vendorSuperAdmin) {
+      return null;
+    }
+    final VendorContext? vendor = state.portalContext.vendor;
+    if (vendor == null) {
+      return null;
+    }
+    return (
+      authUserId: state.authUserId,
+      organizationId: vendor.organizationId,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<SessionBloc, SessionState>(
-      // Fires on entering *and* on leaving the Vendor session. A Vendor→Vendor
-      // switch passes through a non-active state, so it trips this twice: clear,
-      // then reload under the new caller.
+      // Any change of identity, in either direction and with or without an
+      // intermediate state: entering a Vendor session, leaving one, and
+      // swapping one for another. Records compare by value, so this is a
+      // structural comparison of the pair rather than of the state object.
       listenWhen: (SessionState previous, SessionState current) =>
-          _isVendor(previous) != _isVendor(current),
+          _identityOf(previous) != _identityOf(current),
       listener: (BuildContext context, SessionState state) {
         final VendorRetailerListCubit retailers = context
             .read<VendorRetailerListCubit>();
@@ -149,18 +208,22 @@ class _SessionIsolation extends StatelessWidget {
         final VendorUserDetailCubit userDetail = context
             .read<VendorUserDetailCubit>();
 
-        // Always cleared first, in both directions. A new Vendor session must
-        // not read the previous one's rows even for the instant before its own
-        // response arrives.
+        // Always cleared first, in every direction, and before anything is
+        // requested for the new identity. A new Vendor session must not see the
+        // previous one's rows even for the instant before its own response
+        // arrives — and `clear()` on each cubit advances a request token, so a
+        // response already in flight for the previous identity is dropped on
+        // arrival rather than repopulating state that has just been emptied.
         retailers.clear();
         retailerDetail.clear();
         users.clear();
         userDetail.clear();
 
-        if (_isVendor(state)) {
-          // Everything is read again from the backend under the new caller's own
-          // identity. An open Retailer or user, if any, is re-read by its detail
-          // page, which notices its cubit returning to `initial`.
+        if (_identityOf(state) != null) {
+          // Read again from the backend under the new caller's own identity —
+          // which is derived server-side from `auth.uid()`, not from anything
+          // passed from here. An open Retailer or user, if any, is re-read by
+          // its detail page, which notices its cubit returning to `initial`.
           retailers.load();
           users.load();
         }

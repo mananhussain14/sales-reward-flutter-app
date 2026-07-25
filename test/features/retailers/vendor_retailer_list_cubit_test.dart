@@ -344,6 +344,41 @@ void main() {
       expect(cubit.state.isRefreshing, isFalse);
     });
 
+    test('an in-flight read cannot refill a cleared directory', () async {
+      // The cubit is owned by the Vendor shell and outlives a session change,
+      // so `isClosed` is false when the previous identity's answer arrives.
+      // Only the request token stops it repopulating a directory that was
+      // emptied precisely so the next person could not see it.
+      repository.manualRetailers = true;
+      final Future<void> pending = cubit.load();
+
+      cubit.clear();
+      repository.completeRetailers();
+      await pending;
+
+      expect(cubit.state.retailers, isEmpty);
+      expect(cubit.state.phase, VendorRetailerListPhase.initial);
+    });
+
+    test('a load started after a clear still commits', () async {
+      // The token invalidates the *old* read, not every future one.
+      repository.manualRetailers = true;
+      final Future<void> stale = cubit.load();
+      cubit.clear();
+
+      final Future<void> fresh = cubit.load();
+      // Answer the stale request first, then the fresh one.
+      repository.completeRetailers();
+      await stale;
+      expect(cubit.state.retailers, isEmpty);
+
+      repository.completeRetailers();
+      await fresh;
+
+      expect(cubit.state.retailers, hasLength(2));
+      expect(cubit.state.phase, VendorRetailerListPhase.ready);
+    });
+
     test('a read that lands after close is dropped', () async {
       repository.manualRetailers = true;
       final Future<void> pending = cubit.load();

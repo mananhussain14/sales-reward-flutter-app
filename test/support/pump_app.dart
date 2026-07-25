@@ -5,6 +5,7 @@ import 'package:sale_reward/app/theme/app_theme.dart';
 import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
+import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
@@ -64,6 +65,7 @@ Future<PumpedApp> pumpApp(
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
   FakeVendorUserRepository? vendorUsers,
+  VendorUserRepository? vendorUserRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -76,6 +78,11 @@ Future<PumpedApp> pumpApp(
       retailers ?? FakeVendorRetailerRepository();
   final FakeVendorUserRepository userRepository =
       vendorUsers ?? FakeVendorUserRepository();
+  // A test that needs the *real* repository — to exercise its id-shape guard
+  // over a counting data source, say — supplies it here and takes precedence.
+  // The fake is still returned so the record shape stays uniform.
+  final VendorUserRepository providedUsers =
+      vendorUserRepository ?? userRepository;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -86,7 +93,7 @@ Future<PumpedApp> pumpApp(
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
-      vendorUserRepository: userRepository,
+      vendorUserRepository: providedUsers,
       initialThemeMode: themeMode,
     ),
   );
@@ -112,6 +119,7 @@ Future<PumpedApp> pumpAppInRole(
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
   FakeVendorUserRepository? vendorUsers,
+  VendorUserRepository? vendorUserRepository,
 }) {
   return pumpApp(
     tester,
@@ -122,6 +130,7 @@ Future<PumpedApp> pumpAppInRole(
     images: images,
     retailers: retailers,
     vendorUsers: vendorUsers,
+    vendorUserRepository: vendorUserRepository,
   );
 }
 

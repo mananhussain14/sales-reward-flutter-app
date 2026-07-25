@@ -12,6 +12,8 @@ import 'package:sale_reward/core/widgets/widgets.dart';
 import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/presentation/bloc/session_bloc.dart';
+import 'package:sale_reward/features/users/data/datasources/vendor_user_rpc_data_source.dart';
+import 'package:sale_reward/features/users/data/repositories/supabase_vendor_user_repository.dart';
 import 'package:sale_reward/features/users/domain/entities/vendor_user_detail.dart';
 import 'package:sale_reward/features/users/domain/entities/vendor_user_summary.dart';
 import 'package:sale_reward/features/users/presentation/vendor/pages/vendor_user_detail_page.dart';
@@ -712,16 +714,91 @@ void main() {
     testWidgets('a malformed id in the URL reaches the same state', (
       WidgetTester tester,
     ) async {
-      // The real repository refuses the id shape before any request leaves the
-      // client (`vendor_user_repository_test.dart` pins that); what matters here
-      // is that the screen it produces is the *same* one a well-formed foreign
-      // id produces, so the two are not distinguishable by looking.
       final FakeVendorUserRepository repository = FakeVendorUserRepository()
         ..detailResult = const ReadSuccess<VendorUserDetail?>(null);
 
       await onDirectory(tester, users: repository);
       await goTo(tester, '${VendorNavigation.users}/not-a-uuid');
 
+      expect(find.text(VendorUserCopy.detailNotFoundTitle), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+    });
+
+    testWidgets('a malformed id makes ZERO detail RPC calls', (
+      WidgetTester tester,
+    ) async {
+      // Driven through the **real** repository over a counting data source, so
+      // the id-shape guard is genuinely in the path rather than stubbed out.
+      //
+      // `get_vendor_user_detail` takes a PostgreSQL `uuid`, so a malformed
+      // selector that reached it would come back as a `22P02` cast error — an
+      // operational failure wearing the wrong clothes. Nothing may depend on
+      // that: the selector is validated locally and the request is never made.
+      int detailCalls = 0;
+      int listCalls = 0;
+
+      final SupabaseVendorUserRepository real = SupabaseVendorUserRepository(
+        rpc: VendorUserRpcDataSource(
+          users: () async {
+            listCalls++;
+            return userRows();
+          },
+          detail: (String membershipId) async {
+            detailCalls++;
+            return <Map<String, Object?>>[userDetailRow()];
+          },
+        ),
+      );
+
+      await pumpAppInRole(
+        tester,
+        PortalKind.vendorSuperAdmin,
+        vendorUserRepository: real,
+      );
+      await goTo(tester, VendorNavigation.users);
+      expect(listCalls, 1);
+
+      await goTo(tester, '${VendorNavigation.users}/not-a-uuid');
+
+      // The whole point.
+      expect(detailCalls, 0);
+      expect(find.text(VendorUserCopy.detailNotFoundTitle), findsOneWidget);
+      // And nothing raw leaked in place of the safe wording.
+      expect(find.textContaining('22P02'), findsNothing);
+      expect(find.textContaining('uuid'), findsNothing);
+      expect(find.textContaining('PostgrestException'), findsNothing);
+      expect(find.text('Try again'), findsNothing);
+    });
+
+    testWidgets('a well-formed but inaccessible id DOES call the RPC', (
+      WidgetTester tester,
+    ) async {
+      // The counterpart: a valid uuid is a legitimate question, so it is asked —
+      // and its zero-row answer maps to the very same presentation.
+      int detailCalls = 0;
+
+      final SupabaseVendorUserRepository real = SupabaseVendorUserRepository(
+        rpc: VendorUserRpcDataSource(
+          users: () async => userRows(),
+          detail: (String membershipId) async {
+            detailCalls++;
+            return const <Object?>[]; // zero rows
+          },
+        ),
+      );
+
+      await pumpAppInRole(
+        tester,
+        PortalKind.vendorSuperAdmin,
+        vendorUserRepository: real,
+      );
+      await goTo(tester, VendorNavigation.users);
+      await goTo(
+        tester,
+        VendorNavigation.userDetailPath(foreignMembershipUuid),
+      );
+
+      expect(detailCalls, 1);
       expect(find.text(VendorUserCopy.detailNotFoundTitle), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
     });
