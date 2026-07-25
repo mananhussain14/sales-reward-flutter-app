@@ -20,11 +20,13 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** Two destinations are implemented. **Retailers** is backed by
-/// `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
+/// **Phase note.** Three destinations are implemented. **Retailers** is backed
+/// by `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
 /// `list_vendor_retailer_shops(uuid)` (`docs/flutter-vendor-retailer-reads.md`);
 /// **Users** by `list_vendor_users()` and `get_vendor_user_detail(uuid)`
-/// (`docs/flutter-vendor-user-reads.md`). Both are read-only.
+/// (`docs/flutter-vendor-user-reads.md`); **Roles** by `list_vendor_roles()`,
+/// `get_vendor_role_detail(uuid)` and `list_vendor_role_permissions(uuid)`
+/// (`docs/flutter-vendor-role-reads.md`). All three are read-only.
 ///
 /// Every other Vendor destination is still phase 3 in the feature matrix and
 /// conditional on open question Q4 — whether Vendor administration belongs on
@@ -88,6 +90,29 @@ abstract final class VendorNavigation {
 
   /// Web route `/roles`.
   static const String roles = '$prefix/roles';
+
+  /// The relative segment of the role detail route.
+  ///
+  /// Nested under [roles] for the same reasons the Retailer and user details are
+  /// nested under theirs: the shell keeps the Roles destination highlighted while
+  /// a role is open (`indexForLocation` takes the longest matching prefix), and
+  /// the back gesture pops to the catalogue rather than to the dashboard.
+  static const String roleDetailSegment = ':roleId';
+
+  /// The full path for one role definition, addressed by `roles.id`.
+  ///
+  /// The id and never the code. `roles.code` is `UNIQUE` and would address a
+  /// role just as precisely, which is exactly why the backend refuses it: the
+  /// codes are the literals the RLS policies and the authorization helpers match
+  /// on, and putting one in a URL would put authorization vocabulary in a
+  /// client's hands. The uuid is opaque, is what the list already returned, and
+  /// means nothing anywhere else.
+  ///
+  /// > Holding this id grants nothing. The reads behind the route derive the
+  /// > Vendor from `auth.uid()` in SQL and use the id only to select which
+  /// > already-authorized catalogue row is read, so an id that names no role
+  /// > reaches a screen that says the role is not available and nothing else.
+  static String roleDetailPath(String roleId) => '$roles/$roleId';
 
   /// Web route `/products`.
   static const String products = '$prefix/products';

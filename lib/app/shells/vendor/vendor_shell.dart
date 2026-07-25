@@ -7,6 +7,9 @@ import '../../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
+import '../../../features/roles/domain/repositories/vendor_role_repository.dart';
+import '../../../features/roles/presentation/vendor/cubit/vendor_role_detail_cubit.dart';
+import '../../../features/roles/presentation/vendor/cubit/vendor_role_list_cubit.dart';
 import '../../../features/users/domain/repositories/vendor_user_repository.dart';
 import '../../../features/users/presentation/vendor/cubit/vendor_user_detail_cubit.dart';
 import '../../../features/users/presentation/vendor/cubit/vendor_user_list_cubit.dart';
@@ -25,12 +28,12 @@ import 'bloc/vendor_shell_bloc.dart';
 /// ## Why the feature cubits are provided here rather than per route
 ///
 /// Three reasons, and each of them is a bug avoided rather than a preference.
-/// They hold for the Retailer pair and the User pair alike.
+/// They hold for the Retailer pair, the User pair and the Role pair alike.
 ///
 /// * **A directory survives a round trip into one of its rows.** Opening a
-///   Retailer or a user and coming back renders rows already held instead of
-///   re-reading them, which is the difference between a back gesture and a
-///   reload.
+///   Retailer, a user or a role and coming back renders rows already held
+///   instead of re-reading them, which is the difference between a back gesture
+///   and a reload.
 /// * **The detail cubits are reachable by the session listener below.** A cubit
 ///   created inside a detail route would be a level *below* that listener,
 ///   which is precisely the subtree that must be emptied when the signed-in
@@ -40,9 +43,10 @@ import 'bloc/vendor_shell_bloc.dart';
 ///   is already showing, so a router refresh or a widget rebuild issues no
 ///   second RPC.
 ///
-/// Both list cubits load on creation, and `BlocProvider` builds each on first
-/// read — so entering the Vendor shell does not fetch the user directory until
-/// something asks for it, and opening Retailers never fetches Users.
+/// All three list cubits load on creation, and `BlocProvider` builds each on
+/// first read — so entering the Vendor shell does not fetch the user directory
+/// until something asks for it, and opening Retailers never fetches Users or
+/// Roles.
 ///
 /// ## Session isolation is enforced, not inferred from the widget lifetime
 ///
@@ -58,10 +62,16 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all four cubits are cleared:
+/// moment the session stops being *this* person's, all six cubits are cleared:
 /// the Retailer summaries, the open Retailer, its shops, the user summaries with
-/// their names and roles, the open user, and every search term and status filter
-/// — which are private too, being fragments of Retailer and colleague names.
+/// their names and roles, the open user, the role catalogue with **this
+/// Vendor's own assigned member counts**, the open role and its permissions, and
+/// every search term and status filter — which are private too, being fragments
+/// of Retailer and colleague names.
+///
+/// The role *definitions* are global and are the same for whoever signs in next.
+/// The counts riding on the same rows are not, which is why the Role pair is
+/// cleared rather than kept as a harmless cache.
 class VendorShell extends StatelessWidget {
   const VendorShell({
     super.key,
@@ -99,6 +109,19 @@ class VendorShell extends StatelessWidget {
         BlocProvider<VendorUserDetailCubit>(
           create: (BuildContext providerContext) => VendorUserDetailCubit(
             providerContext.read<VendorUserRepository>(),
+          ),
+        ),
+        // The role catalogue's *definitions* are global, but every row carries
+        // this Vendor's own assigned member count — so the pair is owned and
+        // cleared here exactly like the other two.
+        BlocProvider<VendorRoleListCubit>(
+          create: (BuildContext providerContext) =>
+              VendorRoleListCubit(providerContext.read<VendorRoleRepository>())
+                ..load(),
+        ),
+        BlocProvider<VendorRoleDetailCubit>(
+          create: (BuildContext providerContext) => VendorRoleDetailCubit(
+            providerContext.read<VendorRoleRepository>(),
           ),
         ),
       ],
@@ -207,6 +230,9 @@ class _SessionIsolation extends StatelessWidget {
         final VendorUserListCubit users = context.read<VendorUserListCubit>();
         final VendorUserDetailCubit userDetail = context
             .read<VendorUserDetailCubit>();
+        final VendorRoleListCubit roles = context.read<VendorRoleListCubit>();
+        final VendorRoleDetailCubit roleDetail = context
+            .read<VendorRoleDetailCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Vendor session must not see the
@@ -218,6 +244,8 @@ class _SessionIsolation extends StatelessWidget {
         retailerDetail.clear();
         users.clear();
         userDetail.clear();
+        roles.clear();
+        roleDetail.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —
@@ -226,6 +254,7 @@ class _SessionIsolation extends StatelessWidget {
           // its detail page, which notices its cubit returning to `initial`.
           retailers.load();
           users.load();
+          roles.load();
         }
       },
       child: child,

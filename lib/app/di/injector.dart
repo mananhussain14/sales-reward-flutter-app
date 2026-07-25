@@ -16,6 +16,9 @@ import '../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_rpc_data_source.dart';
 import '../../features/retailers/data/repositories/supabase_vendor_retailer_repository.dart';
 import '../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import '../../features/roles/data/datasources/vendor_role_rpc_data_source.dart';
+import '../../features/roles/data/repositories/supabase_vendor_role_repository.dart';
+import '../../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
 import '../../features/users/data/repositories/supabase_vendor_user_repository.dart';
 import '../../features/users/domain/repositories/vendor_user_repository.dart';
@@ -98,6 +101,16 @@ Future<void> configureDependencies() async {
       rpc: VendorUserRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor Role reads. Three RPCs and no table access at all — the
+  // role→permission join, the permission count and the Vendor-scoped assigned
+  // member count all happen in SQL, so there is nothing to configure here
+  // beyond the client the calls travel on.
+  getIt.registerLazySingleton<VendorRoleRepository>(
+    () => SupabaseVendorRoleRepository(
+      rpc: VendorRoleRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -146,6 +159,7 @@ void registerTestDependencies({
   ReceiptImageSource? receiptImageSource,
   VendorRetailerRepository? vendorRetailerRepository,
   VendorUserRepository? vendorUserRepository,
+  VendorRoleRepository? vendorRoleRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -165,6 +179,11 @@ void registerTestDependencies({
   if (vendorUserRepository != null) {
     getIt.registerLazySingleton<VendorUserRepository>(
       () => vendorUserRepository,
+    );
+  }
+  if (vendorRoleRepository != null) {
+    getIt.registerLazySingleton<VendorRoleRepository>(
+      () => vendorRoleRepository,
     );
   }
 }
