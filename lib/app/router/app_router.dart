@@ -14,6 +14,8 @@ import '../../features/receipts/presentation/sales_staff/pages/sales_staff_histo
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
+import '../../features/roles/presentation/vendor/pages/vendor_role_detail_page.dart';
+import '../../features/roles/presentation/vendor/pages/vendor_roles_page.dart';
 import '../../features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
 import '../../features/users/presentation/vendor/pages/vendor_user_detail_page.dart';
 import '../../features/users/presentation/vendor/pages/vendor_users_page.dart';
@@ -252,13 +254,39 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
           ),
         ],
       ),
-      _placeholder(
+      // V-03. Backed by list_vendor_roles(), get_vendor_role_detail(uuid) and
+      // list_vendor_role_permissions(uuid). The first takes no arguments at all;
+      // the other two take the opaque roles.id and nothing beside it, and all
+      // three derive the Vendor from auth.uid() in SQL.
+      //
+      // The catalogue those reads return is GLOBAL — roles, permissions and
+      // role_permissions carry no organization_id — so this route shows the same
+      // definitions to every authorized Vendor, exactly as the web /roles page
+      // does. The one tenant-scoped value is the assigned member count on each
+      // row, which is why the Roles cubits are cleared by the shell's session
+      // isolation like every other piece of private Vendor data.
+      //
+      // Nested for the same reason the other two details are: a `go` into it
+      // stacks the catalogue beneath, so browser back returns to a list that is
+      // still loaded.
+      GoRoute(
         path: VendorNavigation.roles,
-        roleName: role,
-        title: 'Roles',
-        backendNote:
-            'V-03. The roles and permissions catalogue is readable through RLS '
-            'today for a Vendor; only the screen is missing. Phase 3.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorRolesPage(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: VendorNavigation.roleDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                VendorRoleDetailPage(
+                  // Passed through verbatim. A malformed value is not rejected
+                  // here: the repository answers exactly as the backend answers
+                  // for an id that names no role — without issuing a request —
+                  // so a mistyped URL and an unknown id reach one non-leaking
+                  // state.
+                  roleId: state.pathParameters['roleId'] ?? '',
+                ),
+          ),
+        ],
       ),
       _placeholder(
         path: VendorNavigation.products,

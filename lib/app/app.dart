@@ -8,6 +8,7 @@ import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import '../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../features/users/domain/repositories/vendor_user_repository.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
@@ -40,6 +41,7 @@ class SaleRewardApp extends StatefulWidget {
     this.receiptImageSource,
     this.vendorRetailerRepository,
     this.vendorUserRepository,
+    this.vendorRoleRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -49,6 +51,7 @@ class SaleRewardApp extends StatefulWidget {
   final ReceiptImageSource? receiptImageSource;
   final VendorRetailerRepository? vendorRetailerRepository;
   final VendorUserRepository? vendorUserRepository;
+  final VendorRoleRepository? vendorRoleRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -61,6 +64,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final ReceiptImageSource _receiptImageSource;
   late final VendorRetailerRepository _vendorRetailerRepository;
   late final VendorUserRepository _vendorUserRepository;
+  late final VendorRoleRepository _vendorRoleRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -77,6 +81,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.vendorRetailerRepository ?? getIt<VendorRetailerRepository>();
     _vendorUserRepository =
         widget.vendorUserRepository ?? getIt<VendorUserRepository>();
+    _vendorRoleRepository =
+        widget.vendorRoleRepository ?? getIt<VendorRoleRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -120,6 +126,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<VendorUserRepository>.value(
           value: _vendorUserRepository,
+        ),
+        RepositoryProvider<VendorRoleRepository>.value(
+          value: _vendorRoleRepository,
         ),
       ],
       child: MultiBlocProvider(

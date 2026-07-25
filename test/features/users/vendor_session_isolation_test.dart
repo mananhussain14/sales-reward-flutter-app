@@ -16,6 +16,13 @@ import 'package:sale_reward/features/auth/presentation/bloc/session_bloc.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
+import 'package:sale_reward/features/roles/domain/entities/vendor_role_detail.dart';
+import 'package:sale_reward/features/roles/domain/entities/vendor_role_permission.dart';
+import 'package:sale_reward/features/roles/domain/entities/vendor_role_status.dart';
+import 'package:sale_reward/features/roles/domain/entities/vendor_role_summary.dart';
+import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
+import 'package:sale_reward/features/roles/presentation/vendor/cubit/vendor_role_detail_cubit.dart';
+import 'package:sale_reward/features/roles/presentation/vendor/cubit/vendor_role_list_cubit.dart';
 import 'package:sale_reward/features/users/domain/entities/vendor_user_detail.dart';
 import 'package:sale_reward/features/users/domain/entities/vendor_user_summary.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
@@ -25,6 +32,7 @@ import 'package:sale_reward/features/users/presentation/vendor/pages/vendor_user
 
 import '../../support/pump_app.dart';
 import '../../support/vendor_retailer_fakes.dart';
+import '../../support/vendor_role_fakes.dart';
 import '../../support/vendor_user_fakes.dart';
 
 /// Session isolation for the Vendor shell, driven **state by state**.
@@ -84,6 +92,7 @@ void main() {
   late StreamController<SessionState> states;
   late FakeVendorUserRepository users;
   late FakeVendorRetailerRepository retailers;
+  late FakeVendorRoleRepository roles;
 
   /// The identity the shell starts under: Vendor A in organization one.
   final SessionState vendorA = SessionActive(
@@ -103,6 +112,7 @@ void main() {
     states = StreamController<SessionState>.broadcast();
     users = FakeVendorUserRepository();
     retailers = FakeVendorRetailerRepository();
+    roles = FakeVendorRoleRepository();
     whenListen(session, states.stream, initialState: vendorA);
   });
 
@@ -139,6 +149,7 @@ void main() {
         providers: <RepositoryProvider<dynamic>>[
           RepositoryProvider<VendorUserRepository>.value(value: users),
           RepositoryProvider<VendorRetailerRepository>.value(value: retailers),
+          RepositoryProvider<VendorRoleRepository>.value(value: roles),
         ],
         child: BlocProvider<SessionBloc>.value(
           value: session,
@@ -151,14 +162,16 @@ void main() {
     );
     await settle(tester);
 
-    // Force all four cubits into existence before any assertion counts calls.
-    // `BlocProvider` builds each on first read, so without this the Retailer
-    // pair would be created *by the session listener itself* and the call
+    // Force all six cubits into existence before any assertion counts calls.
+    // `BlocProvider` builds each on first read, so without this the Retailer and
+    // Role pairs would be created *by the session listener itself* and the call
     // counts would measure creation rather than reloading.
     cubit<VendorUserListCubit>(tester);
     cubit<VendorUserDetailCubit>(tester);
     cubit<VendorRetailerListCubit>(tester);
     cubit<VendorRetailerDetailCubit>(tester);
+    cubit<VendorRoleListCubit>(tester);
+    cubit<VendorRoleDetailCubit>(tester);
     await settle(tester);
   }
 
@@ -442,6 +455,231 @@ void main() {
 
       expect(cubit<VendorUserListCubit>(tester).state.users, isEmpty);
       expect(users.usersCallCount, 1);
+    });
+  });
+
+  /// The Vendor Role pair, added by the Role milestone.
+  ///
+  /// The role **definitions** are global — every authorized Vendor reads the
+  /// same rows — so it would be tempting to treat the catalogue as a harmless
+  /// cache that survives a session change. It is not:
+  /// `assigned_member_count` rides on those same rows and counts the **calling**
+  /// Vendor's own memberships, so leaving the list in place would leave one
+  /// Vendor's staffing numbers legible to the next person on the device. The
+  /// search term is private for the same reason it is on the other two screens.
+  group('the Vendor Role pair', () {
+    testWidgets('A\'s catalogue and counts are gone before B answers', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      final VendorRoleListCubit list = cubit<VendorRoleListCubit>(tester);
+      expect(list.state.roles, isNotEmpty);
+      expect(list.state.totalAssignments, greaterThan(0));
+
+      // B's catalogue will not answer until this test says so.
+      roles.manualRoles = true;
+      await emit(tester, vendorB);
+
+      // The window that matters: B is signed in, B's rows have not arrived, and
+      // A's member counts must already be out of the cubit.
+      expect(roles.pendingRoleCount, 1);
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, isEmpty);
+      expect(cubit<VendorRoleListCubit>(tester).state.totalAssignments, 0);
+
+      roles.completeRoles(
+        ReadSuccess<List<VendorRoleSummary>>(<VendorRoleSummary>[
+          claimReviewerSummary,
+        ]),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, hasLength(1));
+    });
+
+    testWidgets('B\'s catalogue loads exactly once', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      expect(roles.rolesCallCount, 1);
+
+      await emit(tester, vendorB);
+
+      expect(roles.rolesCallCount, 2);
+    });
+
+    testWidgets('an open role, its permissions and its counts are cleared', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      await cubit<VendorRoleDetailCubit>(tester).open(superAdminRoleUuid);
+      await settle(tester);
+      expect(cubit<VendorRoleDetailCubit>(tester).state.detail, isNotNull);
+      expect(
+        cubit<VendorRoleDetailCubit>(tester).state.permissions,
+        isNotEmpty,
+      );
+
+      await emit(tester, vendorB);
+
+      final VendorRoleDetailCubit detail = cubit<VendorRoleDetailCubit>(tester);
+      expect(detail.state.detail, isNull);
+      expect(detail.state.roleId, isNull);
+      expect(detail.state.permissions, isEmpty);
+      expect(detail.state.phase, VendorRoleDetailPhase.initial);
+    });
+
+    testWidgets('A\'s search term and status filter do not survive', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      final VendorRoleListCubit list = cubit<VendorRoleListCubit>(tester);
+      list.search('legacy');
+      list.filterByStatus(VendorRoleStatus.inactive);
+      await settle(tester);
+
+      await emit(tester, vendorB);
+
+      expect(cubit<VendorRoleListCubit>(tester).state.searchTerm, isEmpty);
+      expect(cubit<VendorRoleListCubit>(tester).state.statusFilter, isNull);
+    });
+
+    testWidgets('a stale A catalogue response cannot repopulate B\'s screen', (
+      WidgetTester tester,
+    ) async {
+      roles.manualRoles = true;
+      await pumpShell(tester);
+      expect(roles.pendingRoleCount, 1);
+
+      await emit(tester, vendorB);
+      expect(roles.pendingRoleCount, 2);
+
+      // A's answer lands *after* the switch. It must be discarded, counts and
+      // all.
+      roles.completeRoles(
+        ReadSuccess<List<VendorRoleSummary>>(catalogueSummaries),
+      );
+      await settle(tester);
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, isEmpty);
+
+      // B's own answer still lands normally.
+      roles.completeRoles(
+        ReadSuccess<List<VendorRoleSummary>>(<VendorRoleSummary>[
+          claimReviewerSummary,
+        ]),
+      );
+      await settle(tester);
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, hasLength(1));
+    });
+
+    testWidgets('a stale A role-detail response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      roles.manualDetail = true;
+      unawaited(cubit<VendorRoleDetailCubit>(tester).open(superAdminRoleUuid));
+      await settle(tester);
+      expect(roles.pendingDetailCount, 1);
+
+      await emit(tester, vendorB);
+
+      roles.completeDetail(ReadSuccess<VendorRoleDetail?>(superAdminSummary));
+      await settle(tester);
+
+      final VendorRoleDetailCubit detail = cubit<VendorRoleDetailCubit>(tester);
+      expect(detail.state.detail, isNull);
+      expect(detail.state.roleId, isNull);
+      expect(detail.state.phase, VendorRoleDetailPhase.initial);
+    });
+
+    testWidgets('a stale A permission response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      roles.manualPermissions = true;
+      unawaited(cubit<VendorRoleDetailCubit>(tester).open(superAdminRoleUuid));
+      await settle(tester);
+      // The detail landed; the companion is still in flight.
+      expect(roles.pendingPermissionCount, 1);
+
+      await emit(tester, vendorB);
+
+      roles.completePermissions(
+        ReadSuccess<List<VendorRolePermission>>(superAdminPermissions),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorRoleDetailCubit>(tester).state.permissions, isEmpty);
+    });
+
+    testWidgets('an identical re-emitted session is a no-op for roles', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      cubit<VendorRoleListCubit>(tester).search('legacy');
+      await settle(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(roles.rolesCallCount, 1);
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, isNotEmpty);
+      expect(cubit<VendorRoleListCubit>(tester).state.searchTerm, 'legacy');
+    });
+
+    testWidgets('a changed trusted organization reloads the catalogue', (
+      WidgetTester tester,
+    ) async {
+      // The definitions would be identical, but the member counts on them are
+      // another organization's — so the rows are re-read rather than kept.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgTwo), authUserId: 'user-A'),
+      );
+
+      expect(roles.rolesCallCount, 2);
+    });
+
+    testWidgets('signing out clears the catalogue and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, isEmpty);
+      expect(roles.rolesCallCount, 1);
+    });
+
+    testWidgets('becoming another role clears the catalogue', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(cubit<VendorRoleListCubit>(tester).state.roles, isEmpty);
+      expect(roles.rolesCallCount, 1);
+    });
+
+    testWidgets('the Retailer and User state is still cleared alongside', (
+      WidgetTester tester,
+    ) async {
+      // The Role milestone must not have displaced either earlier half of the
+      // listener.
+      await pumpShell(tester);
+
+      await emit(tester, vendorB);
+
+      expect(users.usersCallCount, 2);
+      expect(retailers.retailersCallCount, 2);
+      expect(roles.rolesCallCount, 2);
     });
   });
 }
