@@ -7,6 +7,9 @@ import '../../features/auth/data/repositories/supabase_auth_repository.dart';
 import '../../features/auth/data/repositories/supabase_portal_context_repository.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/auth/domain/repositories/portal_context_repository.dart';
+import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
+import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
+import '../../features/products/domain/repositories/vendor_product_repository.dart';
 import '../../features/receipts/data/datasources/receipt_rpc_data_source.dart';
 import '../../features/receipts/data/datasources/submit_receipt_function_client.dart';
 import '../../features/receipts/data/repositories/supabase_receipt_repository.dart';
@@ -111,6 +114,18 @@ Future<void> configureDependencies() async {
       rpc: VendorRoleRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor Product reads. Three RPCs and no table access at all — both
+  // product tables are default-deny with zero RLS policies and no privilege for
+  // `authenticated`, so RPC is the only way in by design. The assignment
+  // aggregation, the Retailer and relationship joins and the tenant scoping all
+  // happen in SQL, and there is no storage client here because no product image
+  // exists anywhere in the product.
+  getIt.registerLazySingleton<VendorProductRepository>(
+    () => SupabaseVendorProductRepository(
+      rpc: VendorProductRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -160,6 +175,7 @@ void registerTestDependencies({
   VendorRetailerRepository? vendorRetailerRepository,
   VendorUserRepository? vendorUserRepository,
   VendorRoleRepository? vendorRoleRepository,
+  VendorProductRepository? vendorProductRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -184,6 +200,11 @@ void registerTestDependencies({
   if (vendorRoleRepository != null) {
     getIt.registerLazySingleton<VendorRoleRepository>(
       () => vendorRoleRepository,
+    );
+  }
+  if (vendorProductRepository != null) {
+    getIt.registerLazySingleton<VendorProductRepository>(
+      () => vendorProductRepository,
     );
   }
 }
