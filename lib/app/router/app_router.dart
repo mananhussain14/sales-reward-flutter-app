@@ -12,6 +12,8 @@ import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owne
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
+import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
+import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
 import '../../features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
 import '../navigation/role_navigation_registry.dart';
 import '../shells/base/placeholder_destination_page.dart';
@@ -194,14 +196,32 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const VendorDashboardPage(),
       ),
-      _placeholder(
+      // V-05 and V-06. Backed by list_vendor_retailers(),
+      // get_vendor_retailer_detail(uuid) and list_vendor_retailer_shops(uuid),
+      // all three of which derive the Vendor from auth.uid() and accept no
+      // identity or tenant argument.
+      //
+      // The detail route is NESTED rather than declared alongside, so a `go`
+      // into it stacks the directory beneath — the back gesture returns to a
+      // list that is still loaded, because the cubit holding it belongs to the
+      // shell above both.
+      GoRoute(
         path: VendorNavigation.retailers,
-        roleName: role,
-        title: 'Retailers',
-        backendNote:
-            'V-05 and V-06. Needs list_vendor_retailers() and '
-            'get_vendor_retailer_detail(); the current reads fetch every shop '
-            'row just to count them. Phase 3.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorRetailersPage(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: VendorNavigation.retailerDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                VendorRetailerDetailPage(
+                  // Passed through verbatim. A malformed value is not rejected
+                  // here: the repository answers exactly as the backend answers
+                  // for an id that names no row, so a mistyped URL, an unknown
+                  // id and another Vendor's id all reach one non-leaking state.
+                  relationshipId: state.pathParameters['relationshipId'] ?? '',
+                ),
+          ),
+        ],
       ),
       _placeholder(
         path: VendorNavigation.users,

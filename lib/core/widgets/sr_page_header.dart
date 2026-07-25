@@ -125,11 +125,21 @@ class SrPageBody extends StatelessWidget {
     required this.children,
     this.scrollable = true,
     this.maxWidth = SrSpacing.contentMaxWidth,
+    this.physics,
   });
 
   final List<Widget> children;
   final bool scrollable;
   final double maxWidth;
+
+  /// The scroll physics, when [scrollable].
+  ///
+  /// Left null for every ordinary page. A page wrapped in a `RefreshIndicator`
+  /// passes `AlwaysScrollableScrollPhysics` so the pull gesture is available
+  /// even when the content is shorter than the viewport — without it, a Vendor
+  /// with two Retailers could not pull to refresh and a Vendor with twenty
+  /// could, which is the kind of inconsistency that reads as a bug.
+  final ScrollPhysics? physics;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +165,11 @@ class SrPageBody extends StatelessWidget {
     );
 
     final Widget body = scrollable
-        ? SingleChildScrollView(padding: gutter, child: content)
+        ? SingleChildScrollView(
+            padding: gutter,
+            physics: physics,
+            child: content,
+          )
         : Padding(padding: gutter, child: content);
 
     return _FadeIn(child: body);

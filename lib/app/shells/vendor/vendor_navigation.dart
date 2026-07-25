@@ -20,10 +20,13 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** Every Vendor feature is phase 3 in the feature matrix and
-/// conditional on open question Q4 — whether Vendor administration belongs on
-/// mobile at all. These destinations exist so the shell can be built and
-/// reviewed; none is backed by an implemented screen.
+/// **Phase note.** **Retailers** is implemented, against
+/// `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
+/// `list_vendor_retailer_shops(uuid)` — see
+/// `docs/flutter-vendor-retailer-reads.md`. Every other Vendor destination is
+/// still phase 3 in the feature matrix and conditional on open question Q4 —
+/// whether Vendor administration belongs on mobile at all — and none of them has
+/// a mobile backend contract yet, so each renders a placeholder.
 abstract final class VendorNavigation {
   /// Every Vendor route lives under this prefix and no other role's does.
   static const String prefix = '/vendor';
@@ -33,6 +36,27 @@ abstract final class VendorNavigation {
 
   /// Web route `/retailers`.
   static const String retailers = '$prefix/retailers';
+
+  /// The relative segment of the Retailer detail route.
+  ///
+  /// Nested under [retailers] so the two share a prefix, the shell keeps the
+  /// Retailers destination highlighted while a Retailer is open
+  /// (`indexForLocation` takes the longest matching prefix), and the back
+  /// gesture pops to the directory rather than to the dashboard.
+  static const String retailerDetailSegment = ':relationshipId';
+
+  /// The full path for one Retailer, addressed by `vendor_retailers.id`.
+  ///
+  /// The same address the web detail route already carries, and the same id
+  /// `list_vendor_retailers()` returns — so a link is portable between the two
+  /// clients.
+  ///
+  /// > Holding this id grants nothing. Every read behind the route derives the
+  /// > Vendor from `auth.uid()` in SQL and matches the row on **both** its own
+  /// > id and that derived Vendor, so another Vendor's id reaches a screen that
+  /// > says the Retailer is not available and nothing else.
+  static String retailerDetailPath(String relationshipId) =>
+      '$retailers/$relationshipId';
 
   /// Web route `/users`.
   static const String users = '$prefix/users';
