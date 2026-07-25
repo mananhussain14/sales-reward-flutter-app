@@ -13,6 +13,9 @@ import '../../features/receipts/data/repositories/supabase_receipt_repository.da
 import '../../features/receipts/data/services/image_picker_receipt_image_source.dart';
 import '../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../features/receipts/domain/services/receipt_image_source.dart';
+import '../../features/retailers/data/datasources/vendor_retailer_rpc_data_source.dart';
+import '../../features/retailers/data/repositories/supabase_vendor_retailer_repository.dart';
+import '../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../config/app_config.dart';
 
 /// The service locator.
@@ -73,6 +76,15 @@ Future<void> configureDependencies() async {
       ),
     ),
   );
+
+  // The Vendor Retailer reads. Three RPCs and no table access at all — the
+  // join, the shop counting and the tenant scoping happen in SQL, so there is
+  // nothing to configure here beyond the client the calls travel on.
+  getIt.registerLazySingleton<VendorRetailerRepository>(
+    () => SupabaseVendorRetailerRepository(
+      rpc: VendorRetailerRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -111,13 +123,15 @@ ReceiptAccessTokenProvider supabaseAccessTokenProvider(SupabaseClient client) {
 /// no Supabase client.
 ///
 /// The two authentication dependencies are required so a test can never
-/// accidentally fall through to the live client. The receipt dependencies are
-/// optional because most tests never enter the Sales Staff shell.
+/// accidentally fall through to the live client. The receipt and Retailer
+/// dependencies are optional because most tests never enter the shell that
+/// needs them.
 void registerTestDependencies({
   required AuthRepository authRepository,
   required PortalContextRepository portalContextRepository,
   ReceiptRepository? receiptRepository,
   ReceiptImageSource? receiptImageSource,
+  VendorRetailerRepository? vendorRetailerRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -128,6 +142,11 @@ void registerTestDependencies({
   }
   if (receiptImageSource != null) {
     getIt.registerLazySingleton<ReceiptImageSource>(() => receiptImageSource);
+  }
+  if (vendorRetailerRepository != null) {
+    getIt.registerLazySingleton<VendorRetailerRepository>(
+      () => vendorRetailerRepository,
+    );
   }
 }
 

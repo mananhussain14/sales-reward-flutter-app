@@ -16,6 +16,7 @@ import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.da
 
 import '../support/fakes.dart';
 import '../support/receipt_fakes.dart';
+import '../support/vendor_retailer_fakes.dart';
 import '../support/pump_app.dart';
 
 /// The whole flow, driven through the real widget tree over fakes.
@@ -83,6 +84,7 @@ void main() {
           portalContextRepository: portal,
           receiptRepository: FakeReceiptRepository(),
           receiptImageSource: FakeReceiptImageSource(),
+          vendorRetailerRepository: FakeVendorRetailerRepository(),
         ),
       );
 
@@ -232,6 +234,7 @@ void main() {
             portalContextRepository: portal,
             receiptRepository: FakeReceiptRepository(),
             receiptImageSource: FakeReceiptImageSource(),
+            vendorRetailerRepository: FakeVendorRetailerRepository(),
           ),
         );
         await tester.pump();
@@ -269,6 +272,7 @@ void main() {
             portalContextRepository: portal,
             receiptRepository: FakeReceiptRepository(),
             receiptImageSource: FakeReceiptImageSource(),
+            vendorRetailerRepository: FakeVendorRetailerRepository(),
           ),
         );
         await tester.pump();

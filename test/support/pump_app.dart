@@ -8,6 +8,7 @@ import 'package:sale_reward/features/auth/domain/repositories/portal_context_rep
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
+import 'vendor_retailer_fakes.dart';
 
 /// A phone-sized surface, so shells that adapt on width render their
 /// narrow-screen chrome (bottom navigation, modal drawer).
@@ -36,6 +37,7 @@ typedef PumpedApp = ({
   FakePortalContextRepository portal,
   FakeReceiptRepository receipts,
   FakeReceiptImageSource images,
+  FakeVendorRetailerRepository retailers,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -44,10 +46,11 @@ typedef PumpedApp = ({
 /// [initialUser] seeds a restored session; leave it null for a cold start with
 /// no session.
 ///
-/// The receipt fakes are always supplied, even for tests that never open the
-/// Sales Staff shell — that shell builds its cubits from them, and a test that
-/// forgot to pass one would fall through to the service locator, which is
-/// exactly the accident the injected graph exists to prevent.
+/// The receipt and Vendor Retailer fakes are always supplied, even for tests
+/// that never open the shell that uses them — those shells build their cubits
+/// from them, and a test that forgot to pass one would fall through to the
+/// service locator, which is exactly the accident the injected graph exists to
+/// prevent.
 Future<PumpedApp> pumpApp(
   WidgetTester tester, {
   AuthUser? initialUser,
@@ -57,6 +60,7 @@ Future<PumpedApp> pumpApp(
   bool settle = true,
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
+  FakeVendorRetailerRepository? retailers,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -65,6 +69,8 @@ Future<PumpedApp> pumpApp(
   final FakeReceiptRepository receiptRepository =
       receipts ?? FakeReceiptRepository();
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
+  final FakeVendorRetailerRepository retailerRepository =
+      retailers ?? FakeVendorRetailerRepository();
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -74,6 +80,7 @@ Future<PumpedApp> pumpApp(
       portalContextRepository: portal,
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
+      vendorRetailerRepository: retailerRepository,
       initialThemeMode: themeMode,
     ),
   );
@@ -85,6 +92,7 @@ Future<PumpedApp> pumpApp(
     portal: portal,
     receipts: receiptRepository,
     images: imageSource,
+    retailers: retailerRepository,
   );
 }
 
@@ -95,6 +103,7 @@ Future<PumpedApp> pumpAppInRole(
   Size surface = phoneSurface,
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
+  FakeVendorRetailerRepository? retailers,
 }) {
   return pumpApp(
     tester,
@@ -103,6 +112,7 @@ Future<PumpedApp> pumpAppInRole(
     surface: surface,
     receipts: receipts,
     images: images,
+    retailers: retailers,
   );
 }
 

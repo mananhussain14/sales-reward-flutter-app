@@ -7,6 +7,7 @@ import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
+import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
 import 'theme/app_theme.dart';
@@ -24,10 +25,11 @@ import 'theme/cubit/theme_cubit.dart';
 /// Every repository argument overrides the injected graph. A real build resolves
 /// each from [getIt]; a test supplies fakes and never touches Supabase.
 ///
-/// The receipt dependencies are provided here rather than resolved inside the
-/// Sales Staff shell for the same reason [AuthRepository] is: a widget test must
-/// be able to stand the whole app up over fakes, and a shell that reached into
-/// [getIt] itself would make that impossible without a global registration.
+/// The receipt and Vendor Retailer dependencies are provided here rather than
+/// resolved inside their shells for the same reason [AuthRepository] is: a
+/// widget test must be able to stand the whole app up over fakes, and a shell
+/// that reached into [getIt] itself would make that impossible without a global
+/// registration.
 class SaleRewardApp extends StatefulWidget {
   const SaleRewardApp({
     super.key,
@@ -35,6 +37,7 @@ class SaleRewardApp extends StatefulWidget {
     this.portalContextRepository,
     this.receiptRepository,
     this.receiptImageSource,
+    this.vendorRetailerRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -42,6 +45,7 @@ class SaleRewardApp extends StatefulWidget {
   final PortalContextRepository? portalContextRepository;
   final ReceiptRepository? receiptRepository;
   final ReceiptImageSource? receiptImageSource;
+  final VendorRetailerRepository? vendorRetailerRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -52,6 +56,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final AuthRepository _authRepository;
   late final ReceiptRepository _receiptRepository;
   late final ReceiptImageSource _receiptImageSource;
+  late final VendorRetailerRepository _vendorRetailerRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -64,6 +69,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
     _receiptRepository = widget.receiptRepository ?? getIt<ReceiptRepository>();
     _receiptImageSource =
         widget.receiptImageSource ?? getIt<ReceiptImageSource>();
+    _vendorRetailerRepository =
+        widget.vendorRetailerRepository ?? getIt<VendorRetailerRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -98,6 +105,12 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         RepositoryProvider<ReceiptRepository>.value(value: _receiptRepository),
         RepositoryProvider<ReceiptImageSource>.value(
           value: _receiptImageSource,
+        ),
+        // Read by the Vendor shell when it constructs its Retailer cubits, for
+        // the same reason: a widget test drives the whole directory and detail
+        // flow over a fake with no Supabase client.
+        RepositoryProvider<VendorRetailerRepository>.value(
+          value: _vendorRetailerRepository,
         ),
       ],
       child: MultiBlocProvider(
