@@ -21,6 +21,7 @@ import '../support/vendor_dashboard_fakes.dart';
 import '../support/receipt_fakes.dart';
 import '../support/vendor_retailer_fakes.dart';
 import '../support/vendor_product_fakes.dart';
+import '../support/vendor_profile_fakes.dart';
 import '../support/vendor_role_fakes.dart';
 import '../support/vendor_user_fakes.dart';
 
@@ -95,6 +96,7 @@ void main() {
           vendorProductRepository: FakeVendorProductRepository(),
           vendorAuditLogRepository: FakeVendorAuditLogRepository(),
           vendorDashboardRepository: FakeVendorDashboardRepository(),
+          vendorProfileRepository: FakeVendorProfileRepository(),
         ),
       );
 
@@ -250,6 +252,7 @@ void main() {
             vendorProductRepository: FakeVendorProductRepository(),
             vendorAuditLogRepository: FakeVendorAuditLogRepository(),
             vendorDashboardRepository: FakeVendorDashboardRepository(),
+            vendorProfileRepository: FakeVendorProfileRepository(),
           ),
         );
         await tester.pump();
@@ -293,6 +296,7 @@ void main() {
             vendorProductRepository: FakeVendorProductRepository(),
             vendorAuditLogRepository: FakeVendorAuditLogRepository(),
             vendorDashboardRepository: FakeVendorDashboardRepository(),
+            vendorProfileRepository: FakeVendorProfileRepository(),
           ),
         );
         await tester.pump();

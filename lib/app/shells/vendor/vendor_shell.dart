@@ -11,6 +11,8 @@ import '../../../features/dashboard/presentation/vendor/cubit/vendor_dashboard_c
 import '../../../features/products/domain/repositories/vendor_product_repository.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
+import '../../../features/profile/domain/repositories/vendor_profile_repository.dart';
+import '../../../features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
 import '../../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
@@ -69,7 +71,7 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all ten cubits are cleared:
+/// moment the session stops being *this* person's, all eleven cubits are cleared:
 /// the Retailer summaries, the open Retailer, its shops, the user summaries with
 /// their names and roles, the open user, the role catalogue with **this
 /// Vendor's own assigned member counts**, the open role and its permissions, the
@@ -77,7 +79,8 @@ import 'bloc/vendor_shell_bloc.dart';
 /// open product with the names and statuses of the Retailers holding it, the
 /// loaded pages of the audit feed with the colleague, Retailer, shop and product
 /// names riding on them, the dashboard summary with **this Vendor's own active
-/// membership count and all-time recorded-event total**, and every search term
+/// membership count and all-time recorded-event total**, the signed-in
+/// administrator's **own name and own active role names**, and every search term
 /// and status filter — which are private too, being fragments of Retailer,
 /// colleague and product names.
 ///
@@ -92,6 +95,14 @@ import 'bloc/vendor_shell_bloc.dart';
 /// deployment-wide catalogue counts — and it is cleared **whole**, because the
 /// four figures are one snapshot from one statement and a summary carrying only
 /// its global half is a shape no backend answer ever produces.
+///
+/// The administrator profile is the most personal of them all — it is a name and
+/// an entitlement about one individual — and it is cleared for a direct
+/// `Vendor A → Vendor B` switch as much as for a sign-out, because that is
+/// precisely the transition in which one administrator's name could otherwise be
+/// left on screen under another's session. The **company** half of that screen
+/// needs no clearing at all: it is read from the session on every build, so it
+/// changes with the session by construction rather than by being emptied.
 class VendorShell extends StatelessWidget {
   const VendorShell({
     super.key,
@@ -175,6 +186,16 @@ class VendorShell extends StatelessWidget {
         BlocProvider<VendorDashboardCubit>(
           create: (BuildContext providerContext) => VendorDashboardCubit(
             providerContext.read<VendorDashboardRepository>(),
+          )..load(),
+        ),
+        // The signed-in administrator's own profile. Personal data in its
+        // entirety — the person's name, and what they are entitled to do in this
+        // organization — so it is owned and cleared here exactly like the other
+        // ten. It holds only the administrator half of that screen: the company
+        // name stays in the session, which is why nothing here caches it.
+        BlocProvider<VendorProfileCubit>(
+          create: (BuildContext providerContext) => VendorProfileCubit(
+            providerContext.read<VendorProfileRepository>(),
           )..load(),
         ),
       ],
@@ -294,6 +315,7 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorAuditLogCubit>();
         final VendorDashboardCubit dashboard = context
             .read<VendorDashboardCubit>();
+        final VendorProfileCubit profile = context.read<VendorProfileCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Vendor session must not see the
@@ -311,6 +333,7 @@ class _SessionIsolation extends StatelessWidget {
         productDetail.clear();
         auditLogs.clear();
         dashboard.clear();
+        profile.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —
@@ -323,6 +346,7 @@ class _SessionIsolation extends StatelessWidget {
           products.load();
           auditLogs.load();
           dashboard.load();
+          profile.load();
         }
       },
       child: child,

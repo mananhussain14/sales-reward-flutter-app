@@ -26,6 +26,9 @@ import 'package:sale_reward/features/products/domain/entities/vendor_product_sum
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
 import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
+import 'package:sale_reward/features/profile/domain/entities/vendor_administrator_profile.dart';
+import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
+import 'package:sale_reward/features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
@@ -47,6 +50,7 @@ import '../../support/pump_app.dart';
 import '../../support/vendor_audit_log_fakes.dart';
 import '../../support/vendor_dashboard_fakes.dart';
 import '../../support/vendor_product_fakes.dart';
+import '../../support/vendor_profile_fakes.dart';
 import '../../support/vendor_retailer_fakes.dart';
 import '../../support/vendor_role_fakes.dart';
 import '../../support/vendor_user_fakes.dart';
@@ -112,6 +116,7 @@ void main() {
   late FakeVendorProductRepository products;
   late FakeVendorAuditLogRepository auditLogs;
   late FakeVendorDashboardRepository dashboard;
+  late FakeVendorProfileRepository profile;
 
   /// The identity the shell starts under: Vendor A in organization one.
   final SessionState vendorA = SessionActive(
@@ -135,6 +140,7 @@ void main() {
     products = FakeVendorProductRepository();
     auditLogs = FakeVendorAuditLogRepository();
     dashboard = FakeVendorDashboardRepository();
+    profile = FakeVendorProfileRepository();
     whenListen(session, states.stream, initialState: vendorA);
   });
 
@@ -175,6 +181,7 @@ void main() {
           RepositoryProvider<VendorProductRepository>.value(value: products),
           RepositoryProvider<VendorAuditLogRepository>.value(value: auditLogs),
           RepositoryProvider<VendorDashboardRepository>.value(value: dashboard),
+          RepositoryProvider<VendorProfileRepository>.value(value: profile),
         ],
         child: BlocProvider<SessionBloc>.value(
           value: session,
@@ -187,7 +194,7 @@ void main() {
     );
     await settle(tester);
 
-    // Force all ten cubits into existence before any assertion counts calls.
+    // Force all eleven cubits into existence before any assertion counts calls.
     // `BlocProvider` builds each on first read, so without this the Retailer,
     // Role and Product pairs would be created *by the session listener itself*
     // and the call counts would measure creation rather than reloading.
@@ -201,6 +208,7 @@ void main() {
     cubit<VendorProductDetailCubit>(tester);
     cubit<VendorAuditLogCubit>(tester);
     cubit<VendorDashboardCubit>(tester);
+    cubit<VendorProfileCubit>(tester);
     await settle(tester);
   }
 
@@ -1486,6 +1494,304 @@ void main() {
         expect(products.productsCallCount, 2);
         expect(auditLogs.callCount, 2);
         expect(dashboard.callCount, 2);
+      },
+    );
+  });
+
+  /// The Vendor administrator profile, added by the company/profile milestone.
+  ///
+  /// The most personal cubit in this shell: it holds one individual's **name**
+  /// and one individual's **entitlements**, and nothing about either is global.
+  /// A direct `Vendor A → Vendor B` transition is exactly the case in which A's
+  /// name could otherwise sit under B's session on a screen headed "Signed-in
+  /// administrator" — which is a misidentification, not merely a stale card.
+  ///
+  /// Note what is *not* cleared, and why it does not need to be: the Vendor
+  /// organization **name** on that screen is read from the session on every
+  /// build rather than cached here, so it changes with the session by
+  /// construction. This group therefore asserts the two halves separately — the
+  /// profile clears, and the company name follows PortalContext.
+  group('the Vendor administrator profile', () {
+    testWidgets('A\'s name and roles are gone before B answers', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      expect(
+        cubit<VendorProfileCubit>(tester).state.profile,
+        aminaAdministratorProfile,
+      );
+
+      // B's profile will not answer until this test says so.
+      profile.manual = true;
+      await emit(tester, vendorB);
+
+      // The window that matters: B is signed in, B's profile has not arrived,
+      // and A's name and role names must already be out of the cubit.
+      expect(profile.pendingCount, 1);
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+      expect(
+        cubit<VendorProfileCubit>(tester).state.phase,
+        VendorProfilePhase.loading,
+      );
+
+      profile.complete(
+        const ReadSuccess<VendorAdministratorProfile>(joAdministratorProfile),
+      );
+      await settle(tester);
+
+      expect(
+        cubit<VendorProfileCubit>(tester).state.profile,
+        joAdministratorProfile,
+      );
+    });
+
+    testWidgets('the role list is cleared alongside the name', (
+      WidgetTester tester,
+    ) async {
+      // Not a partially cleared identity — a name with no roles, or roles with
+      // no name, is a shape no backend answer ever produces.
+      profile.nextProfile = multiRoleAdministratorProfile;
+      await pumpShell(tester);
+      expect(
+        cubit<VendorProfileCubit>(tester).state.profile!.roleNames,
+        hasLength(3),
+      );
+
+      profile.manual = true;
+      await emit(tester, vendorB);
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+    });
+
+    testWidgets('B\'s profile loads exactly once', (WidgetTester tester) async {
+      await pumpShell(tester);
+      expect(profile.callCount, 1);
+
+      await emit(tester, vendorB);
+
+      expect(profile.callCount, 2);
+    });
+
+    testWidgets('a stale A first response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      profile.manual = true;
+      await pumpShell(tester);
+      expect(profile.pendingCount, 1);
+
+      await emit(tester, vendorB);
+      expect(profile.pendingCount, 2);
+
+      // A's answer lands *after* the switch. It must be discarded — A's name
+      // under B's session is a misidentification dressed as a profile.
+      profile.completeAt(
+        0,
+        const ReadSuccess<VendorAdministratorProfile>(
+          aminaAdministratorProfile,
+        ),
+      );
+      await settle(tester);
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+
+      // B's own answer still lands normally.
+      profile.complete(
+        const ReadSuccess<VendorAdministratorProfile>(joAdministratorProfile),
+      );
+      await settle(tester);
+      expect(
+        cubit<VendorProfileCubit>(tester).state.profile,
+        joAdministratorProfile,
+      );
+    });
+
+    testWidgets('a stale A refresh response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      profile.manual = true;
+      unawaited(cubit<VendorProfileCubit>(tester).refresh());
+      await settle(tester);
+      expect(profile.pendingCount, 1);
+
+      await emit(tester, vendorB);
+
+      profile.completeAt(
+        0,
+        const ReadSuccess<VendorAdministratorProfile>(
+          aminaAdministratorProfile,
+        ),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+    });
+
+    testWidgets('a stale A failure cannot set an error on B\'s screen', (
+      WidgetTester tester,
+    ) async {
+      profile.manual = true;
+      await pumpShell(tester);
+
+      await emit(tester, vendorB);
+
+      profile.completeAt(
+        0,
+        unavailableProfileRead<VendorAdministratorProfile>(),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorProfileCubit>(tester).state.failure, isNull);
+    });
+
+    testWidgets('the refresh and failure state are cleared too', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      profile.result = unavailableProfileRead<VendorAdministratorProfile>();
+      await cubit<VendorProfileCubit>(tester).refresh();
+      await settle(tester);
+      expect(cubit<VendorProfileCubit>(tester).state.isStale, isTrue);
+
+      profile.result = null;
+      profile.manual = true;
+      await emit(tester, vendorB);
+
+      final VendorProfileCubit held = cubit<VendorProfileCubit>(tester);
+      expect(held.state.profile, isNull);
+      expect(held.state.failure, isNull);
+      expect(held.state.isStale, isFalse);
+      expect(held.state.hasFailedFirstRead, isFalse);
+    });
+
+    testWidgets('an identical re-emitted session is a no-op for the profile', (
+      WidgetTester tester,
+    ) async {
+      // The shape a same-user token refresh takes. Nothing about the effective
+      // identity changed, so there is nothing to protect and nothing to re-read.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(profile.callCount, 1);
+      expect(
+        cubit<VendorProfileCubit>(tester).state.profile,
+        aminaAdministratorProfile,
+      );
+    });
+
+    testWidgets('a changed trusted organization reloads the profile', (
+      WidgetTester tester,
+    ) async {
+      // Same person, a different Vendor organization: the roles are that
+      // membership's, not this one's, so the profile is re-read rather than kept.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgTwo), authUserId: 'user-A'),
+      );
+
+      expect(profile.callCount, 2);
+    });
+
+    testWidgets('the company name follows PortalContext, not the cubit', (
+      WidgetTester tester,
+    ) async {
+      // The other half of the screen. It is never cached by this feature, so a
+      // changed trusted organization changes it without anything being cleared.
+      await pumpShell(tester);
+
+      const PortalContext before = PortalContext(
+        contextVersion: supportedPortalContextVersion,
+        portalKind: PortalKind.vendorSuperAdmin,
+        vendor: VendorContext(
+          organizationId: orgOne,
+          organizationName: 'Example Vendor',
+        ),
+      );
+      const PortalContext after = PortalContext(
+        contextVersion: supportedPortalContextVersion,
+        portalKind: PortalKind.vendorSuperAdmin,
+        vendor: VendorContext(
+          organizationId: orgTwo,
+          organizationName: 'Northwind Trading',
+        ),
+      );
+
+      expect(before.vendor!.organizationName, 'Example Vendor');
+      expect(after.vendor!.organizationName, 'Northwind Trading');
+      // And nothing in the profile cubit's state holds either of them.
+      expect(
+        cubit<VendorProfileCubit>(tester).state.toString(),
+        isNot(contains('Vendor Trading')),
+      );
+    });
+
+    testWidgets('signing out clears the profile and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+      expect(profile.callCount, 1);
+    });
+
+    testWidgets('becoming another role clears the profile', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+      expect(profile.callCount, 1);
+    });
+
+    testWidgets('a session invalidation clears the profile', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnavailable(UnavailableFailure()));
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+      expect(profile.callCount, 1);
+    });
+
+    testWidgets('a denial clears the profile', (WidgetTester tester) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionDenied());
+
+      expect(cubit<VendorProfileCubit>(tester).state.profile, isNull);
+      expect(profile.callCount, 1);
+    });
+
+    testWidgets(
+      'the Retailer, User, Role, Product, Audit and Dashboard state is still '
+      'cleared alongside',
+      (WidgetTester tester) async {
+        // The company/profile milestone must not have displaced any earlier part
+        // of the listener.
+        await pumpShell(tester);
+
+        await emit(tester, vendorB);
+
+        expect(users.usersCallCount, 2);
+        expect(retailers.retailersCallCount, 2);
+        expect(roles.rolesCallCount, 2);
+        expect(products.productsCallCount, 2);
+        expect(auditLogs.callCount, 2);
+        expect(dashboard.callCount, 2);
+        expect(profile.callCount, 2);
       },
     );
   });

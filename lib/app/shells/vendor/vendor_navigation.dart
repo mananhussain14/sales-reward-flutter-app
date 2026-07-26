@@ -7,8 +7,11 @@ import '../../navigation/role_destination.dart';
 ///
 /// A SEPARATE list from every other role's, not a filtered view of a shared one.
 ///
-/// Matches § 3 of `docs/mobile-role-flow-map.md`: **six active destinations plus
-/// six deliberate "Coming soon" placeholders**, presented in a drawer.
+/// Twelve entries in the web's own order, presented in a drawer. § 3 of
+/// `docs/mobile-role-flow-map.md` describes six active destinations plus six
+/// deliberate "Coming soon" placeholders; **Settings** has since moved from the
+/// second group to the first, so the split is now **seven active plus five**.
+/// Its position in the list is unchanged.
 ///
 /// The placeholders are kept on purpose. The role-flow map is explicit:
 ///
@@ -20,7 +23,7 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** All six destinations are implemented. **Dashboard** is backed
+/// **Phase note.** All seven destinations are implemented. **Dashboard** is backed
 /// by `get_vendor_admin_dashboard_summary()`
 /// (`docs/flutter-vendor-dashboard-summary.md`), a zero-argument read returning
 /// exactly one row of four `bigint` counts; **Retailers** is backed
@@ -35,14 +38,18 @@ import '../../navigation/role_destination.dart';
 /// (`docs/flutter-vendor-product-reads.md`); and **Audit Logs** by
 /// `list_vendor_audit_logs(p_limit, p_before_occurred_at, p_before_audit_log_id)`
 /// (`docs/flutter-vendor-audit-log-reads.md`), which is list-only — there is no
-/// audit detail read to open. All five are read-only.
+/// audit detail read to open; and **Settings** by `get_my_vendor_profile()`
+/// composed with the session's own trusted organization name
+/// (`docs/flutter-vendor-company-profile.md`), a zero-argument self-read
+/// returning exactly one row of two personal fields. All seven are read-only.
 ///
-/// The remaining six Vendor destinations are still phase 3 in the feature matrix
+/// The remaining five Vendor destinations are still phase 3 in the feature matrix
 /// and conditional on open question Q4 — whether Vendor administration belongs on
 /// mobile at all — and none of them has a mobile backend contract yet, so each
 /// renders a "Soon" entry. That is also why the Dashboard's quick links reach
-/// only the six routes above: a shortcut to an unbuilt module would advertise a
-/// capability that does not exist.
+/// only five of the routes above: a shortcut to an unbuilt module would advertise
+/// a capability that does not exist, and the company/profile screen is reached
+/// from the drawer rather than duplicated as a shortcut it never had.
 abstract final class VendorNavigation {
   /// Every Vendor route lives under this prefix and no other role's does.
   static const String prefix = '/vendor';
@@ -155,6 +162,28 @@ abstract final class VendorNavigation {
   /// Web route `/audit-logs`.
   static const String auditLogs = '$prefix/audit-logs';
 
+  /// The Vendor company and administrator profile.
+  ///
+  /// **There is no web counterpart.** The web's Settings entry is a
+  /// `disabled: true` placeholder with no route behind it, and there is no
+  /// `/company`, `/organization`, `/profile` or `/account` route either — the
+  /// only company and profile values the web displays live in its admin header.
+  /// So this path is named after the navigation entry it enables rather than
+  /// after a web route it mirrors.
+  ///
+  /// One address for both halves of the screen, because both are about "me and
+  /// mine" and neither is addressable: the administrator read takes **zero
+  /// arguments** and the organization comes from the session. There is therefore
+  /// no detail route beneath this one and nothing here holds an address for
+  /// anything.
+  ///
+  /// > Reaching this path grants nothing. `get_my_vendor_profile()` derives the
+  /// > person from `auth.uid()` and the Vendor from `get_vendor_super_admin_
+  /// > context()` in SQL, and refuses every other caller with one generic
+  /// > denial — so another role that typed this URL past a broken guard would
+  /// > reach a screen that says the profile is not available and nothing else.
+  static const String settings = '$prefix/settings';
+
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
       label: 'Dashboard',
@@ -193,7 +222,7 @@ abstract final class VendorNavigation {
       path: auditLogs,
     ),
 
-    // The six roadmap placeholders, in the web's order.
+    // The five roadmap placeholders, in the web's order.
     RoleDestination.soon(
       label: 'Campaigns',
       icon: Icons.campaign_outlined,
@@ -219,10 +248,15 @@ abstract final class VendorNavigation {
       icon: Icons.bar_chart_outlined,
       selectedIcon: Icons.bar_chart_rounded,
     ),
-    RoleDestination.soon(
+    // No longer a placeholder. It keeps its position — last, exactly where the
+    // web's nav list puts it — and its label, because "Settings" is where a
+    // reader of either client already looks for their own account. What changed
+    // is only that it now has a route.
+    RoleDestination(
       label: 'Settings',
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings_rounded,
+      path: settings,
     ),
   ];
 

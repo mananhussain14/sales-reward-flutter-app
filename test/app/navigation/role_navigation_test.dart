@@ -95,10 +95,13 @@ void main() {
   });
 
   group('destination sets match the role-flow map', () {
-    test('Vendor: six active plus six "Soon"', () {
+    test('Vendor: seven active plus five "Soon"', () {
+      // Settings moved from the placeholder half to the routable half when the
+      // company/profile screen shipped. It keeps its position — last, exactly
+      // where the web's nav list puts it — so the drawer order is unchanged.
       const RoleNavigation model = VendorNavigation.model;
 
-      expect(model.routableDestinations, hasLength(6));
+      expect(model.routableDestinations, hasLength(7));
       expect(model.destinations, hasLength(12));
       expect(
         model.routableDestinations.map((RoleDestination d) => d.label),
@@ -109,20 +112,14 @@ void main() {
           'Roles',
           'Products',
           'Audit Logs',
+          'Settings',
         ],
       );
       expect(
         model.destinations
             .where((RoleDestination d) => !d.isEnabled)
             .map((RoleDestination d) => d.label),
-        <String>[
-          'Campaigns',
-          'Claims',
-          'Coins',
-          'Payouts',
-          'Reports',
-          'Settings',
-        ],
+        <String>['Campaigns', 'Claims', 'Coins', 'Payouts', 'Reports'],
       );
     });
 

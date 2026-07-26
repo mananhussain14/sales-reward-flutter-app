@@ -197,7 +197,10 @@ void main() {
 
       expect(find.byType(Drawer), findsOneWidget);
       expect(find.text('Audit Logs'), findsWidgets);
-      expect(find.text('SOON'), findsNWidgets(6));
+      // Five, not six: Settings became a real destination when the
+      // company/profile screen shipped.
+      expect(find.text('SOON'), findsNWidgets(5));
+      expect(find.text('Settings'), findsWidgets);
     });
   });
 

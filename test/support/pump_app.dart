@@ -8,6 +8,7 @@ import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
 import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
+import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
 import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
@@ -16,6 +17,7 @@ import 'receipt_fakes.dart';
 import 'vendor_audit_log_fakes.dart';
 import 'vendor_dashboard_fakes.dart';
 import 'vendor_product_fakes.dart';
+import 'vendor_profile_fakes.dart';
 import 'vendor_retailer_fakes.dart';
 import 'vendor_role_fakes.dart';
 import 'vendor_user_fakes.dart';
@@ -53,6 +55,7 @@ typedef PumpedApp = ({
   FakeVendorProductRepository vendorProducts,
   FakeVendorAuditLogRepository vendorAuditLogs,
   FakeVendorDashboardRepository vendorDashboard,
+  FakeVendorProfileRepository vendorProfile,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -86,6 +89,8 @@ Future<PumpedApp> pumpApp(
   VendorAuditLogRepository? vendorAuditLogRepository,
   FakeVendorDashboardRepository? vendorDashboard,
   VendorDashboardRepository? vendorDashboardRepository,
+  FakeVendorProfileRepository? vendorProfile,
+  VendorProfileRepository? vendorProfileRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -119,6 +124,10 @@ Future<PumpedApp> pumpApp(
       vendorDashboard ?? FakeVendorDashboardRepository();
   final VendorDashboardRepository providedDashboard =
       vendorDashboardRepository ?? dashboardRepository;
+  final FakeVendorProfileRepository profileRepository =
+      vendorProfile ?? FakeVendorProfileRepository();
+  final VendorProfileRepository providedProfile =
+      vendorProfileRepository ?? profileRepository;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -134,6 +143,7 @@ Future<PumpedApp> pumpApp(
       vendorProductRepository: providedProducts,
       vendorAuditLogRepository: providedAuditLogs,
       vendorDashboardRepository: providedDashboard,
+      vendorProfileRepository: providedProfile,
       initialThemeMode: themeMode,
     ),
   );
@@ -151,6 +161,7 @@ Future<PumpedApp> pumpApp(
     vendorProducts: productRepository,
     vendorAuditLogs: auditLogRepository,
     vendorDashboard: dashboardRepository,
+    vendorProfile: profileRepository,
   );
 }
 
@@ -172,6 +183,8 @@ Future<PumpedApp> pumpAppInRole(
   VendorAuditLogRepository? vendorAuditLogRepository,
   FakeVendorDashboardRepository? vendorDashboard,
   VendorDashboardRepository? vendorDashboardRepository,
+  FakeVendorProfileRepository? vendorProfile,
+  VendorProfileRepository? vendorProfileRepository,
 }) {
   return pumpApp(
     tester,
@@ -191,6 +204,8 @@ Future<PumpedApp> pumpAppInRole(
     vendorAuditLogRepository: vendorAuditLogRepository,
     vendorDashboard: vendorDashboard,
     vendorDashboardRepository: vendorDashboardRepository,
+    vendorProfile: vendorProfile,
+    vendorProfileRepository: vendorProfileRepository,
   );
 }
 
