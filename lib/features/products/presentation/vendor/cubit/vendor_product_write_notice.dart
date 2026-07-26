@@ -37,4 +37,36 @@ enum VendorProductWriteNotice {
 
   /// A status change answered 2xx with a body this build could not read.
   statusUnconfirmed,
+
+  /// `assign_vendor_product_to_retailer` succeeded for a Retailer that had no
+  /// assignment row.
+  ///
+  /// Covers the backend no-op too: assigning a pairing that is already `ACTIVE`
+  /// writes nothing and records no audit row, and succeeds silently. The wording
+  /// is true either way, because it points at the re-read history rather than
+  /// claiming a row was created.
+  assigned,
+
+  /// `assign_vendor_product_to_retailer` succeeded for a Retailer whose
+  /// assignment row existed and was withdrawn.
+  ///
+  /// The **same** RPC as [assigned]; a separate member only because the sentence
+  /// a reader needs is different — this one has to say that the assignment date
+  /// on screen is the new activation time.
+  reactivated,
+
+  /// `unassign_vendor_product_from_retailer` succeeded.
+  ///
+  /// Covers its no-op too, and its wording never says "deleted" or "removed":
+  /// the row survives as `INACTIVE`, keeps its `assigned_at`, and stays in the
+  /// history and in `assignment_count`.
+  withdrawn,
+
+  /// An assignment write answered 2xx with a body this build could not read.
+  ///
+  /// One member for both directions. The transaction committed either way — the
+  /// functions raise rather than return on every refusal — so this never says
+  /// the change was lost, and nothing retries it: a repeated withdrawal after
+  /// somebody else reactivated the pairing would undo their work.
+  assignmentUnconfirmed,
 }

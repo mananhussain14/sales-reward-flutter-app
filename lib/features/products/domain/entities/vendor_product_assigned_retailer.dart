@@ -111,11 +111,22 @@ final class VendorProductAssignedRetailer extends Equatable {
   /// Whether the Retailer holds this product now. Never null.
   final VendorProductAssignmentStatus assignmentStatus;
 
-  /// When the assignment row was created. UTC.
+  /// When the **current** assignment began. UTC.
   ///
-  /// The moment the product was *first* assigned to this Retailer. Because the
-  /// row survives withdrawal and re-assignment, this is not "when the current
-  /// assignment began" and is never worded as such.
+  /// Verified against backdated rows on the backend, because `now()` is
+  /// transaction-constant and cannot witness this by itself:
+  /// `assign_vendor_product_to_retailer` **overwrites `assigned_at` with
+  /// `now()`** when it reactivates a withdrawn row, and
+  /// `unassign_vendor_product_from_retailer` **preserves** it on withdrawal.
+  ///
+  /// So this is when the pairing last became active, and it is emphatically
+  /// **not** "first assigned" — a pairing assigned, withdrawn and reactivated
+  /// carries the reactivation date here. The first-ever assignment is not
+  /// recoverable from this row at all; it lives in the audit log, which retains
+  /// one entry per real transition. Nothing on this screen labels or speaks this
+  /// value as a first-assignment date, and the reactivation confirmation states
+  /// the consequence before it happens rather than leaving a reader to notice a
+  /// date that moved.
   final DateTime assignedAt;
 
   /// The assignment row's own `updated_at`. UTC.

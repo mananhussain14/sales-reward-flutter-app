@@ -1,5 +1,6 @@
 import '../../../../core/result/read_result.dart';
 import '../entities/vendor_product_assigned_retailer.dart';
+import '../entities/vendor_product_assignment_request.dart';
 import '../entities/vendor_product_detail.dart';
 import '../entities/vendor_product_draft.dart';
 import '../entities/vendor_product_edit.dart';
@@ -7,9 +8,9 @@ import '../entities/vendor_product_status_change.dart';
 import '../entities/vendor_product_summary.dart';
 import 'vendor_product_write_result.dart';
 
-/// The three Vendor Product reads and the three Vendor Product writes.
+/// The three Vendor Product reads and the five Vendor Product writes.
 ///
-/// One repository for all six deliberately: they share a Vendor derivation, a
+/// One repository for all eight deliberately: they share a Vendor derivation, a
 /// selector vocabulary, an id-shape guard and a failure contract, and splitting
 /// them would create two places for those to drift — while every write is
 /// immediately followed by one of the reads, so a caller would have needed both
@@ -21,18 +22,26 @@ import 'vendor_product_write_result.dart';
 /// which has a third case a read cannot need — "it happened, but the answer could
 /// not be read". See that file for why conflating the two would be unsafe.
 ///
-/// ## The write surface is exactly three operations
+/// ## The write surface is exactly five operations
 ///
-/// Create, edit, and status. There is deliberately **no delete** — no control, no
-/// action, no RPC and no `DELETE` statement exists anywhere in the schema, so a
-/// method here would be one this client could never fulfil. There is deliberately
-/// **no assign, withdraw or bulk-assignment** method either: those are two
-/// separate functions gated on a *different* permission
-/// (`PRODUCT_RETAILER_ASSIGN`, not `PRODUCTS_MANAGE`), they are a separate
-/// milestone, and the existing assigned-Retailer section stays read-only. Product
-/// create, edit and status neither create, read nor mutate an assignment row —
-/// the backend's own suite proves a full create → edit → deactivate → activate
-/// lifecycle produces zero of them.
+/// Create, edit, status — and, on a **different entitlement**, assign and
+/// withdraw. There is deliberately **no delete** — no control, no action, no RPC
+/// and no `DELETE` statement exists anywhere in the schema, so a method here
+/// would be one this client could never fulfil — and deliberately **no bulk
+/// assignment**, because the backend offers no bulk function and building one
+/// out of N calls would invent a transaction boundary that does not exist.
+///
+/// The three Product-record writes are gated on `PRODUCTS_MANAGE`; the two
+/// assignment writes on `PRODUCT_RETAILER_ASSIGN`, which the backend proved is
+/// distinct from it in both directions. This client names, sends, inspects and
+/// displays **neither** code: the split is enforced entirely in SQL, on every
+/// call, and both refusals arrive here as the same generic [DeniedFailure].
+///
+/// The two halves do not touch each other's rows. Product create, edit and
+/// status neither create, read nor mutate an assignment row — the backend's own
+/// suite proves a full create → edit → deactivate → activate lifecycle produces
+/// zero of them — and neither assignment write touches a Product record, a
+/// Retailer organization or a `vendor_retailers` row.
 ///
 /// And no image upload, price, stock, reward, incentive or campaign method,
 /// because none of those columns exists anywhere in the schema.
@@ -184,5 +193,65 @@ abstract interface class VendorProductRepository {
   Future<VendorProductWriteResult<void>> setProductStatus(
     String productId,
     VendorProductStatusChange change,
+  );
+
+  /// `public.assign_vendor_product_to_retailer(p_product_id,
+  /// p_retailer_organization_id)` — `returns void`.
+  ///
+  /// **Creation and reactivation are one call.** The function inserts when no
+  /// row exists for the pairing and flips an existing `INACTIVE` row back to
+  /// `ACTIVE`; `vendor_product_retailer_assign_unique_idx` is UNIQUE and
+  /// unpartial, so there is one row per pairing for all time and a
+  /// withdraw-then-assign cycle reuses it rather than accumulating a second.
+  ///
+  /// Requires the Product `ACTIVE`, the Vendor–Retailer relationship `ACTIVE`
+  /// **and** the Retailer organization `ACTIVE`. An ineligible Product answers
+  /// `55000` and arrives here as [NotReadyFailure]; an ineligible, unknown,
+  /// foreign or suspended Retailer answers `42501` and arrives as one generic
+  /// [DeniedFailure], identical to the refusal an unauthorized caller receives —
+  /// deliberately, so a caller cannot learn that a Retailer exists but is
+  /// suspended.
+  ///
+  /// **Assigning an already-`ACTIVE` pairing is a silent backend no-op** — no
+  /// row version written, no audit row — and arrives here as a plain success,
+  /// indistinguishably from a real change. That is what stops a double tap
+  /// recording two decisions, and it is why nothing here retries.
+  ///
+  /// **`assigned_at` is overwritten with the moment of reactivation**, so it is
+  /// when the *current* assignment began and never when the pairing was first
+  /// created. The canonical value comes from re-reading [assignedRetailers];
+  /// nothing is computed from the moment the call returned.
+  ///
+  /// Both ids are addresses. A malformed one is refused locally, without a
+  /// request leaving the device, and joins the same generic [DeniedFailure] the
+  /// backend answers for an id naming nothing.
+  Future<VendorProductWriteResult<void>> assignRetailer(
+    VendorProductAssignmentRequest request,
+  );
+
+  /// `public.unassign_vendor_product_from_retailer(p_product_id,
+  /// p_retailer_organization_id)` — `returns void`.
+  ///
+  /// **This is not a deletion.** It sets `status = 'INACTIVE'`; the row survives
+  /// as the record that this Product was once available at this Retailer, stays
+  /// returned by [assignedRetailers], and stays counted by `assignment_count`.
+  /// There is no `DELETE` in the function, no delete RPC in the schema, and no
+  /// `DELETE` privilege for the browser roles.
+  ///
+  /// **Its gate is deliberately weaker than [assignRetailer]'s**: none of the
+  /// Product, the relationship or the Retailer organization need be `ACTIVE`. A
+  /// Vendor must be able to withdraw a Product from a Retailer it has since
+  /// suspended, which is exactly when withdrawal matters most, and a status gate
+  /// would strand historical assignments as permanently un-endable.
+  ///
+  /// **`assigned_at` is preserved**; the row's `updated_at` moves, and it moves
+  /// only on a real transition. Withdrawing an already-`INACTIVE` pairing — or
+  /// one that never existed — is a silent no-op that creates no row, so "no row"
+  /// and "`INACTIVE` row" stay distinct.
+  ///
+  /// It touches no Product record, no Retailer organization and no
+  /// `vendor_retailers` row.
+  Future<VendorProductWriteResult<void>> withdrawRetailer(
+    VendorProductAssignmentRequest request,
   );
 }

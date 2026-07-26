@@ -973,18 +973,19 @@ void main() {
       // included.
       //
       // There is no deletion anywhere in this product — no control, no action, no
-      // RPC and no `DELETE` in the schema — and assignment writes are a separate
-      // milestone on a separate permission, so the assigned-Retailer section stays
-      // read-only.
+      // RPC and no `DELETE` in the schema — and no bulk assignment, because no
+      // bulk function exists. The assignment controls that DO exist are named
+      // below; "Unassign" is not among them, because the vocabulary is
+      // *withdraw*.
       for (final String forbidden in <String>[
         'Delete',
         'Delete product',
         'Remove',
         'Archive',
-        'Assign',
-        'Assign to Retailer',
-        'Withdraw',
         'Unassign',
+        'Assign all Retailers',
+        'Remove assignment',
+        'Delete assignment',
         'Upload image',
         'Set price',
         'Add product',
@@ -995,7 +996,8 @@ void main() {
           reason: 'the detail offers a "$forbidden" control',
         );
       }
-      // Navigation, Edit, and the one status action. Nothing else.
+      // Navigation, Edit, the one status action, and the assignment controls.
+      // Nothing else.
       for (final SrButton button in tester.widgetList<SrButton>(
         find.byType(SrButton),
       )) {
@@ -1005,6 +1007,9 @@ void main() {
             VendorProductCopy.viewRetailer,
             VendorProductCopy.edit,
             VendorProductCopy.deactivate,
+            VendorProductCopy.assignRetailer,
+            VendorProductCopy.withdrawAssignment,
+            VendorProductCopy.reactivateAssignment,
           ].contains(button.label),
           isTrue,
           reason: 'an unexpected control "${button.label}" is on the detail',
@@ -1477,6 +1482,7 @@ void main() {
               },
             ),
             writes: unusedVendorProductWrites(),
+            assignments: unusedVendorProductAssignments(),
           );
 
       await pumpAppInRole(
@@ -1520,6 +1526,7 @@ void main() {
               },
             ),
             writes: unusedVendorProductWrites(),
+            assignments: unusedVendorProductAssignments(),
           );
 
       await pumpAppInRole(

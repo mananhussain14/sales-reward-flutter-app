@@ -46,11 +46,24 @@ import 'vendor_product_formatting.dart';
 /// [VendorProductCopy.relationshipUnavailable] in its place, omits the
 /// relationship pill entirely — there is no relationship row to have a status —
 /// and stays in the list, counted like any other.
+///
+/// ## The assignment action is supplied, not decided here
+///
+/// [action] is built by the section, which is the only place that knows the
+/// Product's own status — a fact about the whole screen rather than about any
+/// one row. This widget renders it and nothing more, so the row stays a
+/// rendering of one backend answer.
+///
+/// It sits **outside** the descriptive `Semantics`, whose `excludeSemantics`
+/// collapses the facts above into one spoken sentence. A control swallowed by
+/// that collapse would be invisible to a screen reader and unreachable by
+/// keyboard, so every interactive element on this row keeps its own node.
 class VendorProductAssignmentTile extends StatelessWidget {
   const VendorProductAssignmentTile({
     super.key,
     required this.assignment,
     required this.onOpenRetailer,
+    this.action,
   });
 
   final VendorProductAssignedRetailer assignment;
@@ -59,6 +72,11 @@ class VendorProductAssignmentTile extends StatelessWidget {
   /// unlinkable row: the action is not rendered at all in that case, rather than
   /// rendered disabled.
   final ValueChanged<String> onOpenRetailer;
+
+  /// The Withdraw or Reactivate control for this row, or null when the screen
+  /// offers none — a read-only context, or a state in which no transition is
+  /// available.
+  final Widget? action;
 
   /// The one spoken sentence this row presents.
   ///
@@ -93,96 +111,115 @@ class VendorProductAssignmentTile extends StatelessWidget {
     final SrColorScheme sr = context.sr;
     final bool isActive = assignment.assignmentStatus.isActive;
 
-    return Semantics(
-      label: semanticsFor(assignment),
-      excludeSemantics: true,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: SrSpacing.md),
-        padding: const EdgeInsets.all(SrSpacing.lg),
-        decoration: BoxDecoration(
-          // A withdrawn assignment sits on the muted surface, so a reader
-          // scanning shapes sees at once that it is not a current one. The
-          // pill's word and glyph carry the same fact for a reader who cannot
-          // see the difference.
-          color: isActive ? sr.surface : sr.surfaceMuted,
-          borderRadius: BorderRadius.circular(SrRadii.control),
-          border: Border.all(color: sr.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              assignment.retailerName,
-              style: SrTypography.body.copyWith(
-                color: isActive ? sr.foreground : sr.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-              // No maxLines: a long organization name wraps onto as many lines
-              // as it needs rather than being cut, because there is no code
-              // beside it to disambiguate a truncated one.
+    return Container(
+      margin: const EdgeInsets.only(bottom: SrSpacing.md),
+      padding: const EdgeInsets.all(SrSpacing.lg),
+      decoration: BoxDecoration(
+        // A withdrawn assignment sits on the muted surface, so a reader
+        // scanning shapes sees at once that it is not a current one. The
+        // pill's word and glyph carry the same fact for a reader who cannot
+        // see the difference.
+        color: isActive ? sr.surface : sr.surfaceMuted,
+        borderRadius: BorderRadius.circular(SrRadii.control),
+        border: Border.all(color: sr.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // Every fact about this assignment, collapsed into one spoken
+          // sentence. The controls below are deliberately not inside it.
+          Semantics(
+            label: semanticsFor(assignment),
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  assignment.retailerName,
+                  style: SrTypography.body.copyWith(
+                    color: isActive ? sr.foreground : sr.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  // No maxLines: a long organization name wraps onto as many
+                  // lines as it needs rather than being cut, because there is no
+                  // code beside it to disambiguate a truncated one.
+                ),
+                const SizedBox(height: SrSpacing.sm),
+                // Wrap, so three pills stack onto separate lines on a 360px
+                // phone at large text scale instead of overflowing sideways.
+                Wrap(
+                  spacing: SrSpacing.sm,
+                  runSpacing: SrSpacing.sm,
+                  children: <Widget>[
+                    VendorProductAssignmentStatusBadge(
+                      status: assignment.assignmentStatus,
+                    ),
+                    VendorProductRetailerStatusBadge(
+                      status: assignment.retailerStatus,
+                      subject: VendorProductCopy.retailerStatusSubject,
+                    ),
+                    // Rendered only when there is a relationship row to
+                    // describe. A null status is the absence of a row, not an
+                    // unfamiliar value, so it must not become an "Unknown" pill.
+                    if (assignment.relationshipStatus != null)
+                      VendorProductRetailerStatusBadge(
+                        status: assignment.relationshipStatus!,
+                        subject: VendorProductCopy.relationshipStatusSubject,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: SrSpacing.md),
+                _DateLine(
+                  icon: Icons.event_available_outlined,
+                  label: VendorProductCopy.assignedOnLabel,
+                  value: formatProductDate(assignment.assignedAt),
+                ),
+                const SizedBox(height: SrSpacing.xs),
+                // Labelled for what the column is. It is not a withdrawal date,
+                // not even on an inactive row, and it is never spoken as one.
+                _DateLine(
+                  icon: Icons.update_rounded,
+                  label: VendorProductCopy.assignmentUpdatedLabel,
+                  value: formatProductDate(assignment.assignmentUpdatedAt),
+                ),
+              ],
             ),
-            const SizedBox(height: SrSpacing.sm),
-            // Wrap, so three pills stack onto separate lines on a 360px phone at
-            // large text scale instead of overflowing sideways.
+          ),
+          const SizedBox(height: SrSpacing.md),
+          // Not a disabled button. A control a reader can see and cannot use
+          // asks them to work out why; a sentence says it. It spans the row
+          // rather than sitting in the button flow, because it is prose.
+          if (!assignment.isCrossLinkable) ...<Widget>[
+            const _RelationshipUnavailableNote(),
+            if (action != null) const SizedBox(height: SrSpacing.md),
+          ],
+          // Wrap rather than a Row: on a 360px phone at large text scale the
+          // cross-link and the assignment action stack instead of overflowing.
+          if (assignment.isCrossLinkable || action != null)
             Wrap(
               spacing: SrSpacing.sm,
               runSpacing: SrSpacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: <Widget>[
-                VendorProductAssignmentStatusBadge(
-                  status: assignment.assignmentStatus,
-                ),
-                VendorProductRetailerStatusBadge(
-                  status: assignment.retailerStatus,
-                  subject: VendorProductCopy.retailerStatusSubject,
-                ),
-                // Rendered only when there is a relationship row to describe.
-                // A null status is the absence of a row, not an unfamiliar
-                // value, so it must not become an "Unknown" pill.
-                if (assignment.relationshipStatus != null)
-                  VendorProductRetailerStatusBadge(
-                    status: assignment.relationshipStatus!,
-                    subject: VendorProductCopy.relationshipStatusSubject,
+                if (assignment.isCrossLinkable)
+                  Semantics(
+                    button: true,
+                    label:
+                        '${VendorProductCopy.viewRetailer}: '
+                        '${assignment.retailerName}',
+                    child: SrButton(
+                      label: VendorProductCopy.viewRetailer,
+                      variant: SrButtonVariant.outline,
+                      size: SrButtonSize.sm,
+                      icon: Icons.storefront_outlined,
+                      onPressed: () =>
+                          onOpenRetailer(assignment.relationshipId!),
+                    ),
                   ),
+                ?action,
               ],
             ),
-            const SizedBox(height: SrSpacing.md),
-            _DateLine(
-              icon: Icons.event_available_outlined,
-              label: VendorProductCopy.assignedOnLabel,
-              value: formatProductDate(assignment.assignedAt),
-            ),
-            const SizedBox(height: SrSpacing.xs),
-            // Labelled for what the column is. It is not a withdrawal date, not
-            // even on an inactive row, and it is never spoken as one.
-            _DateLine(
-              icon: Icons.update_rounded,
-              label: VendorProductCopy.assignmentUpdatedLabel,
-              value: formatProductDate(assignment.assignmentUpdatedAt),
-            ),
-            const SizedBox(height: SrSpacing.md),
-            if (assignment.isCrossLinkable)
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Semantics(
-                  button: true,
-                  label:
-                      '${VendorProductCopy.viewRetailer}: '
-                      '${assignment.retailerName}',
-                  child: SrButton(
-                    label: VendorProductCopy.viewRetailer,
-                    variant: SrButtonVariant.outline,
-                    size: SrButtonSize.sm,
-                    icon: Icons.storefront_outlined,
-                    onPressed: () => onOpenRetailer(assignment.relationshipId!),
-                  ),
-                ),
-              )
-            else
-              // Not a disabled button. A control a reader can see and cannot use
-              // asks them to work out why; a sentence says it.
-              const _RelationshipUnavailableNote(),
-          ],
-        ),
+        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import '../../../../core/errors/failure.dart';
 import '../../../../core/errors/failure_mapper.dart';
 import '../../../../core/result/read_result.dart';
 import '../../domain/entities/vendor_product_assigned_retailer.dart';
+import '../../domain/entities/vendor_product_assignment_request.dart';
 import '../../domain/entities/vendor_product_detail.dart';
 import '../../domain/entities/vendor_product_draft.dart';
 import '../../domain/entities/vendor_product_edit.dart';
@@ -9,6 +10,7 @@ import '../../domain/entities/vendor_product_status_change.dart';
 import '../../domain/entities/vendor_product_summary.dart';
 import '../../domain/repositories/vendor_product_repository.dart';
 import '../../domain/repositories/vendor_product_write_result.dart';
+import '../datasources/vendor_product_assignment_rpc_data_source.dart';
 import '../datasources/vendor_product_rpc_data_source.dart';
 import '../datasources/vendor_product_write_rpc_data_source.dart';
 import '../models/vendor_product_parsers.dart';
@@ -48,15 +50,25 @@ import '../models/vendor_product_write_parsers.dart';
 /// against an allowed transition table, and no local decision about whether a
 /// product "can" be edited. A loaded product's status decides which *label* the
 /// status action carries and nothing else.
+/// ## The assignment writes are a third source, for a third reason
+///
+/// They are gated on `PRODUCT_RETAILER_ASSIGN` rather than `PRODUCTS_MANAGE` —
+/// a split the backend proved holds in both directions — and their payload
+/// vocabulary is two addresses rather than five Product fields. Keeping them in
+/// their own data source is what lets each boundary test assert one exact
+/// parameter set. Neither code is named, sent or compared anywhere in this file.
 final class SupabaseVendorProductRepository implements VendorProductRepository {
   const SupabaseVendorProductRepository({
     required VendorProductRpcDataSource rpc,
     required VendorProductWriteRpcDataSource writes,
+    required VendorProductAssignmentRpcDataSource assignments,
   }) : _rpc = rpc,
-       _writes = writes;
+       _writes = writes,
+       _assignments = assignments;
 
   final VendorProductRpcDataSource _rpc;
   final VendorProductWriteRpcDataSource _writes;
+  final VendorProductAssignmentRpcDataSource _assignments;
 
   @override
   Future<ReadResult<List<VendorProductSummary>>> products() {
@@ -188,6 +200,95 @@ final class SupabaseVendorProductRepository implements VendorProductRepository {
         status: change.code,
       ),
     );
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> assignRetailer(
+    VendorProductAssignmentRequest request,
+  ) {
+    return _assignmentWrite(
+      request,
+      () => _assignments.assign(
+        productId: request.productId,
+        retailerOrganizationId: request.retailerOrganizationId,
+        // Two arguments, and there is no third to pass: no Vendor, no tenant,
+        // no actor, no relationship id, no assignment status and no audit
+        // metadata. The function has a parameter for none of them.
+      ),
+    );
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> withdrawRetailer(
+    VendorProductAssignmentRequest request,
+  ) {
+    return _assignmentWrite(
+      request,
+      () => _assignments.withdraw(
+        productId: request.productId,
+        retailerOrganizationId: request.retailerOrganizationId,
+      ),
+    );
+  }
+
+  /// A `void` assignment write against one pairing: guard both ids, call,
+  /// classify.
+  ///
+  /// The id-shape guard is the rule the Product writes apply, applied to **both**
+  /// addresses. A malformed uuid comes back as a `22P02` cast error raised
+  /// *before* the function body runs and therefore before any authorization
+  /// check, which is neither an authorization answer nor an outage; it is decided
+  /// locally and answered as [DeniedFailure], which is byte-identically what the
+  /// backend answers for an id naming no Product, an id belonging to another
+  /// Vendor and a null id. It says nothing about whether anything exists.
+  ///
+  /// In the shipped flow the guard is unreachable — both ids come from a
+  /// canonical read that already returned them — so it is defence in depth at the
+  /// boundary that talks to PostgREST.
+  ///
+  /// ## The error mapping is [mapSupabaseError] directly, with nothing on top
+  ///
+  /// Unlike the Product-record writes, these two accept **no text input at all**,
+  /// so there is no duplicate to attribute to a form field and no reason to read
+  /// a message literal. Every outcome is decided by SQLSTATE alone: `42501` — the
+  /// backend's single answer for an unauthorized caller, an unknown Product, a
+  /// foreign Product, an unknown Retailer, a foreign Retailer, a suspended
+  /// Retailer, a suspended relationship and a missing relationship alike —
+  /// becomes one generic [DeniedFailure]; `55000`, which only an ineligible
+  /// Product produces, becomes [NotReadyFailure]; the theoretical `23505` of a
+  /// uniqueness race becomes [DuplicateFailure]; an `AuthException` becomes
+  /// [UnauthenticatedFailure]; and every transport fault becomes
+  /// [UnavailableFailure]. No backend message travels past this line.
+  Future<VendorProductWriteResult<void>> _assignmentWrite(
+    VendorProductAssignmentRequest request,
+    Future<Object?> Function() call,
+  ) async {
+    if (!request.isAddressable) {
+      return const VendorProductWriteFailure<void>(DeniedFailure());
+    }
+
+    final Object? raw;
+    try {
+      raw = await call();
+    } on Object catch (error) {
+      // Nothing was written. Authorization, eligibility, the mutation and the
+      // audit insert are one plpgsql body and therefore one transaction, so a
+      // refusal leaves no assignment row, no status change and no audit row —
+      // and the person may safely be offered another attempt.
+      return VendorProductWriteFailure<void>(mapSupabaseError(error));
+    }
+
+    // `null` is the established shape for a `returns void` function. A body is a
+    // response this build cannot read — but a 2xx from either function means the
+    // row and its audit row are already committed, so it is emphatically NOT a
+    // failure and is emphatically not retried: a repeated assign of a pairing
+    // that is now `ACTIVE` is a no-op, but a repeated *withdraw* after a
+    // reactivation elsewhere would undo somebody's work. It becomes
+    // "unconfirmed", and the canonical reads say what the pairing now looks
+    // like.
+    return isVoidWriteResponse(raw)
+        ? const VendorProductWriteSuccess<void>(null)
+        : const VendorProductWriteUnconfirmed<void>();
   }
 
   /// A `void` write against one product id: guard the id, call, classify.

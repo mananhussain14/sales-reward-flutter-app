@@ -83,12 +83,22 @@ part 'vendor_product_detail_state.dart';
 ///   [VendorProductDetailState.refreshFailure] as a stale-data warning with a
 ///   Reload — never as "the save failed", and never as a reason to write again.
 ///
-/// **The assignment rows are not re-read.** A product create, edit or status
-/// change touches no assignment row — not even its `updated_at`, which the
-/// backend's own suite asserts — so a second assignment read would spend a call
-/// to learn nothing, and would replace a good answer for reasons unconnected to
-/// it. `assignment_count` and `active_assignment_count` still come from the
-/// freshly-read product row, so nothing here fabricates a count after a write.
+/// **After a product write the assignment rows are not re-read.** A product
+/// create, edit or status change touches no assignment row — not even its
+/// `updated_at`, which the backend's own suite asserts — so a second assignment
+/// read would spend a call to learn nothing, and would replace a good answer for
+/// reasons unconnected to it. `assignment_count` and `active_assignment_count`
+/// still come from the freshly-read product row, so nothing here fabricates a
+/// count after a write.
+///
+/// **After an assignment write both are re-read**, through
+/// [refreshAfterAssignment], because an assign or a withdrawal moves values in
+/// both: the history gains or changes a row, and both counts are recomputed by
+/// the detail statement. The two answers are applied in **one** emission, so a
+/// count and the rows it describes are never rendered a frame apart. Nothing is
+/// inserted, removed or re-statused locally on the way — both assignment RPCs
+/// return `void`, so the backend is the only authority on what a pairing now
+/// looks like, and an optimistic row would be this client inventing one.
 final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
   VendorProductDetailCubit(this._repository)
     : super(const VendorProductDetailState());
@@ -141,10 +151,47 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
   /// truthfully; passing null keeps whatever notice is already showing, which is
   /// what the Reload affordance does.
   ///
+  /// The assignment rows are **not** re-read: a product create, edit or status
+  /// change touches no assignment row — not even its `updated_at` — so a second
+  /// call would spend a request to learn nothing.
+  Future<void> refreshDetail({VendorProductWriteNotice? notice}) =>
+      _refresh(notice: notice, includeAssignments: false);
+
+  /// Re-reads the canonical product row **and** its assignment history, after a
+  /// successful assignment write.
+  ///
+  /// Both reads, because an assignment transition moves values in both: the
+  /// history gains or changes a row, and `assignment_count` /
+  /// `active_assignment_count` are recomputed by the detail statement. Neither
+  /// figure is ever counted from the loaded list, and no row is inserted,
+  /// removed or re-statused locally — the write returns `void`, so the backend
+  /// is the only authority on what the pairing now looks like.
+  ///
+  /// **One emission when both succeed.** The two answers are gathered and
+  /// applied together, so the count and the rows it describes can never be
+  /// rendered a frame apart.
+  Future<void> refreshAfterAssignment({VendorProductWriteNotice? notice}) =>
+      _refresh(notice: notice, includeAssignments: true);
+
+  /// Re-runs whichever canonical refresh the last one was.
+  ///
+  /// The Reload affordance a stale-data warning offers. It repeats the *scope*
+  /// that failed rather than always re-reading everything: a stale product after
+  /// an edit needs the product row, and a stale product after an assignment
+  /// needs both. It never re-attempts the write, which has already committed.
+  Future<void> reloadCanonical() => _refresh(
+    notice: null,
+    includeAssignments: state.refreshIncludesAssignments,
+  );
+
   /// A no-op when nothing is open, when the open product is not on screen, or
   /// while a refresh is already running — the last of which is the duplicate-tap
-  /// guard for Reload.
-  Future<void> refreshDetail({VendorProductWriteNotice? notice}) async {
+  /// guard for Reload, and the guard that stops two assignment writes settling
+  /// into two overlapping re-reads.
+  Future<void> _refresh({
+    required VendorProductWriteNotice? notice,
+    required bool includeAssignments,
+  }) async {
     final String? productId = state.productId;
     if (productId == null ||
         state.phase != VendorProductDetailPhase.ready ||
@@ -157,6 +204,7 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
     emit(
       state.copyWith(
         isRefreshing: true,
+        refreshIncludesAssignments: includeAssignments,
         clearRefreshFailure: true,
         notice: notice,
         noticeProductId: notice == null ? null : productId,
@@ -174,12 +222,12 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
       case ReadSuccess<VendorProductDetail?>(:final VendorProductDetail? value):
         if (value == null) {
           // The product stopped being addressable between the write and the
-          // re-read. No product write can cause that, so this is somebody else's
-          // change or a session that is no longer what it was — and the one safe
-          // answer is the same non-leaking state a foreign id produces. The stale
-          // row is dropped rather than shown as current, and the notice goes with
-          // it: acknowledging a change to a product that is no longer there would
-          // be the least useful sentence available.
+          // re-read. No product or assignment write can cause that, so this is
+          // somebody else's change or a session that is no longer what it was —
+          // and the one safe answer is the same non-leaking state a foreign id
+          // produces. The stale row is dropped rather than shown as current, and
+          // the notice goes with it: acknowledging a change to a product that is
+          // no longer there would be the least useful sentence available.
           emit(
             state.copyWith(
               phase: VendorProductDetailPhase.notFound,
@@ -190,12 +238,71 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
           );
           return;
         }
-        emit(state.copyWith(detail: value, isRefreshing: false));
+        if (!includeAssignments) {
+          emit(state.copyWith(detail: value, isRefreshing: false));
+          return;
+        }
+        await _refreshAssignmentsAfter(productId, token, value);
 
       case ReadFailure<VendorProductDetail?>(:final Failure failure):
         // The write stands. Only the picture of it is stale, so the product
-        // already on screen is kept and the screen says it may be out of date.
+        // already on screen — and, after an assignment write, its existing
+        // assignment rows — are kept and the screen says they may be out of
+        // date. The assignment companion is not issued at all: the detail read
+        // is what establishes that the id is still addressable, and issuing the
+        // companion without that answer would be reading assignments for a
+        // product this client can no longer vouch for.
         emit(state.copyWith(isRefreshing: false, refreshFailure: failure));
+    }
+  }
+
+  /// The second half of an assignment refresh: the history, applied together
+  /// with the product row the first half returned.
+  Future<void> _refreshAssignmentsAfter(
+    String productId,
+    int token,
+    VendorProductDetail detail,
+  ) async {
+    final ReadResult<List<VendorProductAssignedRetailer>> result =
+        await _repository.assignedRetailers(productId);
+
+    if (isClosed || token != _token) {
+      return;
+    }
+
+    switch (result) {
+      case ReadSuccess<List<VendorProductAssignedRetailer>>(
+        :final List<VendorProductAssignedRetailer> value,
+      ):
+        // One emission carrying both answers, so the counts and the rows they
+        // describe are never a frame out of step.
+        emit(
+          state.copyWith(
+            detail: detail,
+            assignmentsPhase: VendorProductAssignmentsPhase.ready,
+            assignments: value,
+            clearAssignmentsFailure: true,
+            isRefreshing: false,
+          ),
+        );
+
+      case ReadFailure<List<VendorProductAssignedRetailer>>(
+        :final Failure failure,
+      ):
+        // Partial success, and the state this whole path exists to model: the
+        // write committed and the product row is fresh, but the history could
+        // not be re-read. The rows already on screen are the last thing the
+        // backend said and are kept — replacing a real history with an empty one
+        // would make ending an assignment look like erasing every assignment —
+        // and the screen says they may be out of date and offers a Reload. It is
+        // never worded as a failed write, and it never re-issues one.
+        emit(
+          state.copyWith(
+            detail: detail,
+            isRefreshing: false,
+            refreshFailure: failure,
+          ),
+        );
     }
   }
 

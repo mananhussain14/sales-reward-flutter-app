@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:sale_reward/core/errors/failure.dart';
 import 'package:sale_reward/core/result/read_result.dart';
+import 'package:sale_reward/features/products/data/datasources/vendor_product_assignment_rpc_data_source.dart';
 import 'package:sale_reward/features/products/data/datasources/vendor_product_write_rpc_data_source.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assigned_retailer.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_assignment_request.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assignment_status.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_draft.dart';
@@ -13,7 +15,9 @@ import 'package:sale_reward/features/products/domain/entities/vendor_product_sta
 import 'package:sale_reward/features/products/domain/entities/vendor_product_summary.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_write_result.dart';
+import 'package:sale_reward/features/retailers/domain/entities/retailer_owner_state.dart';
 import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_status.dart';
+import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_summary.dart';
 
 /// A hand-written [VendorProductRepository] fake.
 ///
@@ -299,6 +303,68 @@ class FakeVendorProductRepository implements VendorProductRepository {
     }
     return Future<VendorProductWriteResult<void>>.value(
       statusResult ?? const VendorProductWriteSuccess<void>(null),
+    );
+  }
+
+  // -- the assignment half ---------------------------------------------------
+
+  /// Every assignment payload, in order, paired with which of the two RPCs it
+  /// reached. A test asserts the exact two fields — and, just as importantly,
+  /// that no relationship id, tenant, actor or status travels beside them.
+  final List<({VendorProductAssignmentRequest request, bool isWithdrawal})>
+  submittedAssignments =
+      <({VendorProductAssignmentRequest request, bool isWithdrawal})>[];
+
+  /// When set, every assign answers this. Otherwise an assign succeeds.
+  VendorProductWriteResult<void>? assignResult;
+
+  /// When set, every withdrawal answers this. Otherwise a withdrawal succeeds.
+  VendorProductWriteResult<void>? withdrawResult;
+
+  /// Holds each assignment write pending until [completeAssignment], so a double
+  /// submit and a stale response are deterministic rather than a
+  /// sleep-and-hope.
+  bool manualAssignmentWrites = false;
+  final List<Completer<VendorProductWriteResult<void>>>
+  _pendingAssignmentWrites = <Completer<VendorProductWriteResult<void>>>[];
+
+  int get pendingAssignmentWriteCount => _pendingAssignmentWrites.length;
+
+  void completeAssignment([VendorProductWriteResult<void>? override]) {
+    _pendingAssignmentWrites
+        .removeAt(0)
+        .complete(override ?? const VendorProductWriteSuccess<void>(null));
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> assignRetailer(
+    VendorProductAssignmentRequest request,
+  ) {
+    submittedAssignments.add((request: request, isWithdrawal: false));
+    callLog.add('assign');
+    return _assignmentWrite(assignResult);
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> withdrawRetailer(
+    VendorProductAssignmentRequest request,
+  ) {
+    submittedAssignments.add((request: request, isWithdrawal: true));
+    callLog.add('withdraw');
+    return _assignmentWrite(withdrawResult);
+  }
+
+  Future<VendorProductWriteResult<void>> _assignmentWrite(
+    VendorProductWriteResult<void>? scripted,
+  ) {
+    if (manualAssignmentWrites) {
+      final Completer<VendorProductWriteResult<void>> completer =
+          Completer<VendorProductWriteResult<void>>();
+      _pendingAssignmentWrites.add(completer);
+      return completer.future;
+    }
+    return Future<VendorProductWriteResult<void>>.value(
+      scripted ?? const VendorProductWriteSuccess<void>(null),
     );
   }
 
@@ -680,6 +746,202 @@ Map<String, Object?> assignedRetailerRow({
   'assignment_updated_at': assignmentUpdatedAt,
 };
 
+// ---------------------------------------------------------------------------
+// Candidate-composition fixtures
+//
+// A Retailer directory and an assignment history that between them produce
+// every one of the five candidate states, plus the two ordering hazards: two
+// Retailers whose names sort adjacently, and an assignment row for a Retailer
+// the directory does not contain.
+// ---------------------------------------------------------------------------
+
+const String lakesideRelationshipId = '74b5c6d7-e8f0-4a1b-92c3-d4e5f6071829';
+const String riversideRelationshipId = '85c6d7e8-f001-4b2c-a3d4-e5f607182930';
+const String summitRelationshipId = '96d7e8f0-0112-4c3d-b4e5-f60718293041';
+
+const String lakesideOrgId = 'a7e8f001-1223-4d4e-85f6-071829304152';
+const String riversideOrgId = 'b8f00112-2334-4e5f-9607-182930415263';
+const String summitOrgId = 'c9011223-3445-4f60-a718-293041526374';
+
+/// `list_vendor_retailers()` as the assignment surface reads it.
+///
+///   * **Harbour Provisions** — SUSPENDED organization, SUSPENDED relationship,
+///     and an assignment that is nevertheless still `ACTIVE`. A real, reachable
+///     state, and the one that proves an active assignment outranks every other
+///     consideration.
+///   * **Lakeside Market** — active, active, never assigned. The only genuinely
+///     assignable row.
+///   * **Northwind Retail** — active, active, already actively assigned.
+///   * **Riverside Foods** — active, active, with a withdrawn assignment.
+///     Reactivatable.
+///   * **Summit Stores** — active organization, SUSPENDED relationship, with a
+///     withdrawn assignment. Ineligible, and the pair with Riverside is what
+///     shows the relationship status is consulted rather than assumed.
+final List<VendorRetailerSummary> assignmentDirectory = <VendorRetailerSummary>[
+  _directoryRow(
+    relationshipId: harbourRelationshipId,
+    retailerOrganizationId: harbourOrgId,
+    retailerName: 'Harbour Provisions',
+    retailerStatus: VendorRetailerStatus.suspended,
+    relationshipStatus: VendorRetailerStatus.suspended,
+  ),
+  _directoryRow(
+    relationshipId: lakesideRelationshipId,
+    retailerOrganizationId: lakesideOrgId,
+    retailerName: 'Lakeside Market',
+  ),
+  _directoryRow(
+    relationshipId: northwindRelationshipId,
+    retailerOrganizationId: northwindOrgId,
+    retailerName: 'Northwind Retail',
+  ),
+  _directoryRow(
+    relationshipId: riversideRelationshipId,
+    retailerOrganizationId: riversideOrgId,
+    retailerName: 'Riverside Foods',
+  ),
+  _directoryRow(
+    relationshipId: summitRelationshipId,
+    retailerOrganizationId: summitOrgId,
+    retailerName: 'Summit Stores',
+    relationshipStatus: VendorRetailerStatus.suspended,
+  ),
+];
+
+VendorRetailerSummary _directoryRow({
+  required String relationshipId,
+  required String retailerOrganizationId,
+  required String retailerName,
+  VendorRetailerStatus retailerStatus = VendorRetailerStatus.active,
+  VendorRetailerStatus relationshipStatus = VendorRetailerStatus.active,
+}) => VendorRetailerSummary(
+  relationshipId: relationshipId,
+  retailerOrganizationId: retailerOrganizationId,
+  retailerName: retailerName,
+  retailerStatus: retailerStatus,
+  relationshipStatus: relationshipStatus,
+  relationshipCreatedAt: DateTime.utc(2026, 1, 5),
+  shopCount: 2,
+  activeShopCount: 2,
+  ownerState: RetailerOwnerState.active,
+);
+
+/// The assignment history the directory above is composed against.
+///
+/// In the backend's `retailer_name, retailer_organization_id` order, and
+/// including one row — Old Town Grocers — whose Retailer is **not** in the
+/// directory at all, which is the state the read publishes as a null
+/// `relationship_id`.
+final List<VendorProductAssignedRetailer> compositionAssignments =
+    <VendorProductAssignedRetailer>[
+      VendorProductAssignedRetailer(
+        relationshipId: harbourRelationshipId,
+        retailerOrganizationId: harbourOrgId,
+        retailerName: 'Harbour Provisions',
+        retailerStatus: VendorRetailerStatus.suspended,
+        relationshipStatus: VendorRetailerStatus.suspended,
+        assignmentStatus: VendorProductAssignmentStatus.active,
+        assignedAt: DateTime.utc(2026, 4, 20, 10),
+        assignmentUpdatedAt: DateTime.utc(2026, 4, 20, 10),
+      ),
+      VendorProductAssignedRetailer(
+        relationshipId: northwindRelationshipId,
+        retailerOrganizationId: northwindOrgId,
+        retailerName: 'Northwind Retail',
+        retailerStatus: VendorRetailerStatus.active,
+        relationshipStatus: VendorRetailerStatus.active,
+        assignmentStatus: VendorProductAssignmentStatus.active,
+        assignedAt: DateTime.utc(2026, 4, 19, 9, 30),
+        assignmentUpdatedAt: DateTime.utc(2026, 4, 19, 9, 30),
+      ),
+      VendorProductAssignedRetailer(
+        relationshipId: null,
+        retailerOrganizationId: orphanedOrgId,
+        retailerName: 'Old Town Grocers',
+        retailerStatus: VendorRetailerStatus.deactivated,
+        relationshipStatus: null,
+        assignmentStatus: VendorProductAssignmentStatus.inactive,
+        assignedAt: DateTime.utc(2026, 4, 21, 8),
+        assignmentUpdatedAt: DateTime.utc(2026, 5, 30, 12),
+      ),
+      VendorProductAssignedRetailer(
+        relationshipId: riversideRelationshipId,
+        retailerOrganizationId: riversideOrgId,
+        retailerName: 'Riverside Foods',
+        retailerStatus: VendorRetailerStatus.active,
+        relationshipStatus: VendorRetailerStatus.active,
+        assignmentStatus: VendorProductAssignmentStatus.inactive,
+        assignedAt: DateTime.utc(2026, 3, 2, 9),
+        assignmentUpdatedAt: DateTime.utc(2026, 5, 1, 9),
+      ),
+      VendorProductAssignedRetailer(
+        relationshipId: summitRelationshipId,
+        retailerOrganizationId: summitOrgId,
+        retailerName: 'Summit Stores',
+        retailerStatus: VendorRetailerStatus.active,
+        relationshipStatus: VendorRetailerStatus.suspended,
+        assignmentStatus: VendorProductAssignmentStatus.inactive,
+        assignedAt: DateTime.utc(2026, 2, 11, 9),
+        assignmentUpdatedAt: DateTime.utc(2026, 4, 4, 9),
+      ),
+    ];
+
+/// The espresso product as the assignment-management tests read it back.
+///
+/// The same product, counted against [compositionAssignments]: **five**
+/// assignment rows in total, **two** of them active. Both figures come from the
+/// detail row exactly as the backend computes them, so a test that recounted the
+/// rendered list instead would visibly differ.
+final VendorProductDetail assignmentDetail = VendorProductDetail(
+  productId: espressoProductUuid,
+  productCode: 'ESP-1000',
+  barcode: '5012345678900',
+  productName: 'Espresso Blend 1kg',
+  brand: 'Harvest Roasters',
+  description: 'A dark roast blend for espresso machines.',
+  status: VendorProductStatus.active,
+  assignmentCount: 5,
+  activeAssignmentCount: 2,
+  createdAt: espressoCreatedAt,
+  updatedAt: espressoUpdatedAt,
+);
+
+/// The same, deactivated — the case in which assignment and reactivation are
+/// refused while withdrawal stays available.
+final VendorProductDetail inactiveAssignmentDetail = VendorProductDetail(
+  productId: espressoProductUuid,
+  productCode: 'ESP-1000',
+  barcode: '5012345678900',
+  productName: 'Espresso Blend 1kg',
+  brand: 'Harvest Roasters',
+  description: 'A dark roast blend for espresso machines.',
+  status: VendorProductStatus.inactive,
+  assignmentCount: 5,
+  activeAssignmentCount: 2,
+  createdAt: espressoCreatedAt,
+  updatedAt: espressoUpdatedAt,
+);
+
+/// Points the espresso product at the five-row assignment history.
+///
+/// A helper rather than a fixture swap at the call site, so every test that
+/// needs the assignment surface starts from the same, count-consistent state.
+void useAssignmentFixtures(
+  FakeVendorProductRepository products, {
+  bool productIsActive = true,
+}) {
+  products.knownDetails = <String, VendorProductDetail>{
+    ...products.knownDetails,
+    espressoProductUuid: productIsActive
+        ? assignmentDetail
+        : inactiveAssignmentDetail,
+  };
+  products.knownAssignments = <String, List<VendorProductAssignedRetailer>>{
+    ...products.knownAssignments,
+    espressoProductUuid: compositionAssignments,
+  };
+}
+
 /// A write data source whose invokers must never be reached.
 ///
 /// For tests that stand the **real** repository up to exercise a *read* path: the
@@ -709,6 +971,30 @@ VendorProductWriteRpcDataSource unusedVendorProductWrites() {
         }) async => boom('update'),
     setStatus: ({required String productId, required String status}) async =>
         boom('status'),
+  );
+}
+
+/// An assignment data source whose invokers must never be reached.
+///
+/// For tests that stand the **real** repository up to exercise a read or a
+/// product-record write: the constructor requires an assignment source, and one
+/// that throws is how those tests keep proving that neither path assigns or
+/// withdraws anything.
+VendorProductAssignmentRpcDataSource unusedVendorProductAssignments() {
+  Never boom(String reason) =>
+      throw StateError('a non-assignment path invoked the $reason RPC');
+
+  return VendorProductAssignmentRpcDataSource(
+    assign:
+        ({
+          required String productId,
+          required String retailerOrganizationId,
+        }) async => boom('assign'),
+    withdraw:
+        ({
+          required String productId,
+          required String retailerOrganizationId,
+        }) async => boom('withdraw'),
   );
 }
 

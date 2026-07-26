@@ -115,6 +115,7 @@ void main() {
               },
             ),
             writes: unusedVendorProductWrites(),
+            assignments: unusedVendorProductAssignments(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -147,6 +148,7 @@ void main() {
               },
             ),
             writes: unusedVendorProductWrites(),
+            assignments: unusedVendorProductAssignments(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -168,6 +170,7 @@ void main() {
                   fail('the assignment read must not be issued'),
             ),
             writes: unusedVendorProductWrites(),
+            assignments: unusedVendorProductAssignments(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -888,6 +891,256 @@ void main() {
       await cubit.retryDetail();
 
       expect(cubit.state.phase, VendorProductDetailPhase.ready);
+      expect(cubit.state.currentNotice, isNull);
+    });
+  });
+
+  /// The canonical read after an **assignment** write.
+  ///
+  /// Different from the product-record refresh in exactly one way, and it is the
+  /// way that matters: an assign or a withdrawal moves values in *both* reads —
+  /// the history gains or changes a row, and both counts are recomputed by the
+  /// detail statement — so both are re-read, and applied together.
+  group('the canonical read after an assignment write', () {
+    test('it re-reads the product row AND the assignment history', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      expect(repository.callLog, <String>['detail', 'assignments']);
+
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.withdrawn,
+      );
+
+      expect(repository.callLog, <String>[
+        'detail',
+        'assignments',
+        'detail',
+        'assignments',
+      ]);
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.withdrawn);
+    });
+
+    test(
+      'the detail read goes first, and the companion only after a row',
+      () async {
+        // The same load-bearing order as the initial read: an empty assignment
+        // list means "never assigned" only once the detail read has confirmed the
+        // id is still addressable.
+        final VendorProductDetailCubit cubit = build();
+        await cubit.open(espressoProductUuid);
+        repository.detailResult = const ReadSuccess<VendorProductDetail?>(null);
+        final int assignmentsBefore = repository.assignmentsCallCount;
+
+        await cubit.refreshAfterAssignment(
+          notice: VendorProductWriteNotice.withdrawn,
+        );
+
+        expect(cubit.state.phase, VendorProductDetailPhase.notFound);
+        expect(
+          repository.assignmentsCallCount,
+          assignmentsBefore,
+          reason:
+              'a product that is no longer addressable has no assignments to '
+              'read',
+        );
+      },
+    );
+
+    test('the product and its history land in ONE emission', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      final List<VendorProductDetailState> emitted =
+          <VendorProductDetailState>[];
+      final StreamSubscription<VendorProductDetailState> subscription = cubit
+          .stream
+          .listen(emitted.add);
+      addTearDown(subscription.cancel);
+
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.assigned,
+      );
+      await Future<void>.value();
+
+      // One emission to start the refresh, and one to finish it. A count and the
+      // rows it describes are never rendered a frame apart.
+      expect(emitted.length, 2);
+      expect(emitted.first.isRefreshing, isTrue);
+      expect(emitted.last.isRefreshing, isFalse);
+      expect(
+        emitted.last.assignmentsPhase,
+        VendorProductAssignmentsPhase.ready,
+      );
+    });
+
+    test('nothing is inserted, removed or re-statused locally', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.withdrawn,
+      );
+
+      // The fake does not simulate storage, so the re-read returns the same
+      // three rows and the same counts. A client that had patched anything would
+      // now disagree with what it just read back.
+      expect(cubit.state.assignments, espressoAssignments);
+      expect(cubit.state.detail!.assignmentCount, 3);
+      expect(cubit.state.detail!.activeAssignmentCount, 2);
+    });
+
+    test(
+      'a failed detail re-read keeps BOTH the product and the rows',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+        await cubit.open(espressoProductUuid);
+        repository.detailResult = unavailableProductRead();
+
+        await cubit.refreshAfterAssignment(
+          notice: VendorProductWriteNotice.withdrawn,
+        );
+
+        expect(cubit.state.phase, VendorProductDetailPhase.ready);
+        expect(cubit.state.detail, espressoDetail);
+        expect(cubit.state.assignments, espressoAssignments);
+        expect(cubit.state.refreshFailure, const UnavailableFailure());
+        expect(
+          cubit.state.currentNotice,
+          VendorProductWriteNotice.withdrawn,
+          reason: 'the mutation committed; only the picture of it is stale',
+        );
+      },
+    );
+
+    test(
+      'a failed HISTORY re-read is a partial success, not a failed write',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+        await cubit.open(espressoProductUuid);
+        repository.assignmentsResult = unavailableProductRead();
+
+        await cubit.refreshAfterAssignment(
+          notice: VendorProductWriteNotice.assigned,
+        );
+
+        // The fresh product row is kept — it answered — and so are the previous
+        // rows, because replacing a real history with an empty one would make
+        // ending one assignment look like erasing every assignment.
+        expect(cubit.state.detail, espressoDetail);
+        expect(cubit.state.assignments, espressoAssignments);
+        expect(
+          cubit.state.assignmentsPhase,
+          VendorProductAssignmentsPhase.ready,
+          reason:
+              'the section is not degraded; the whole screen is marked stale',
+        );
+        expect(cubit.state.refreshFailure, const UnavailableFailure());
+        expect(cubit.state.currentNotice, VendorProductWriteNotice.assigned);
+      },
+    );
+
+    test('the refresh scope is recorded, so a Reload repeats it', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+      expect(cubit.state.refreshIncludesAssignments, isFalse);
+
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.withdrawn,
+      );
+      expect(cubit.state.refreshIncludesAssignments, isTrue);
+    });
+
+    test('reloadCanonical repeats the assignment scope', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.withdrawn,
+      );
+      repository.callLog.clear();
+
+      await cubit.reloadCanonical();
+
+      expect(repository.callLog, <String>['detail', 'assignments']);
+    });
+
+    test('reloadCanonical repeats the product-only scope', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+      repository.callLog.clear();
+
+      await cubit.reloadCanonical();
+
+      expect(repository.callLog, <String>['detail']);
+    });
+
+    test('a reload keeps the acknowledgement already showing', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.reactivated,
+      );
+
+      await cubit.reloadCanonical();
+
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.reactivated);
+    });
+
+    test('a second refresh while one runs is refused', () async {
+      repository.manualDetail = true;
+      final VendorProductDetailCubit cubit = build();
+      repository.manualDetail = false;
+      await cubit.open(espressoProductUuid);
+      repository.manualDetail = true;
+
+      unawaited(
+        cubit.refreshAfterAssignment(
+          notice: VendorProductWriteNotice.withdrawn,
+        ),
+      );
+      await Future<void>.value();
+      final int pending = repository.pendingDetailCount;
+
+      unawaited(
+        cubit.refreshAfterAssignment(notice: VendorProductWriteNotice.assigned),
+      );
+      await Future<void>.value();
+
+      expect(repository.pendingDetailCount, pending);
+    });
+
+    test('a stale assignment refresh cannot land after a clear', () async {
+      repository.manualAssignments = true;
+      final VendorProductDetailCubit cubit = build();
+      repository.manualAssignments = false;
+      await cubit.open(espressoProductUuid);
+      repository.manualAssignments = true;
+
+      unawaited(
+        cubit.refreshAfterAssignment(
+          notice: VendorProductWriteNotice.withdrawn,
+        ),
+      );
+      await Future<void>.value();
+      await Future<void>.value();
+
+      cubit.clear();
+      repository.completeAssignments();
+      await Future<void>.value();
+
+      expect(cubit.state, const VendorProductDetailState());
+    });
+
+    test('it does nothing when nothing is open', () async {
+      final VendorProductDetailCubit cubit = build();
+
+      await cubit.refreshAfterAssignment(
+        notice: VendorProductWriteNotice.withdrawn,
+      );
+
+      expect(repository.callLog, isEmpty);
       expect(cubit.state.currentNotice, isNull);
     });
   });

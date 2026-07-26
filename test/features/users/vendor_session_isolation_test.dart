@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:sale_reward/app/shells/vendor/vendor_shell.dart';
 import 'package:sale_reward/app/theme/app_theme.dart';
 import 'package:sale_reward/core/errors/failure.dart';
-import 'package:sale_reward/core/result/read_result.dart';
 import 'package:sale_reward/features/audit/domain/entities/vendor_audit_log_entry.dart';
 import 'package:sale_reward/features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import 'package:sale_reward/features/audit/presentation/vendor/cubit/vendor_audit_log_cubit.dart';
@@ -20,16 +19,21 @@ import 'package:sale_reward/features/dashboard/domain/entities/vendor_dashboard_
 import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import 'package:sale_reward/features/dashboard/presentation/vendor/cubit/vendor_dashboard_cubit.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assigned_retailer.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_assignment_action.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_status.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_summary.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
+import 'package:sale_reward/features/products/domain/repositories/vendor_product_write_result.dart';
+import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_assignment_cubit.dart';
 import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
 import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
 import 'package:sale_reward/features/profile/domain/entities/vendor_administrator_profile.dart';
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
 import 'package:sale_reward/features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
+import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_summary.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_result.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
 import 'package:sale_reward/features/roles/domain/entities/vendor_role_detail.dart';
@@ -206,6 +210,7 @@ void main() {
     cubit<VendorRoleDetailCubit>(tester);
     cubit<VendorProductListCubit>(tester);
     cubit<VendorProductDetailCubit>(tester);
+    cubit<VendorProductAssignmentCubit>(tester);
     cubit<VendorAuditLogCubit>(tester);
     cubit<VendorDashboardCubit>(tester);
     cubit<VendorProfileCubit>(tester);
@@ -992,6 +997,280 @@ void main() {
         expect(retailers.retailersCallCount, 2);
         expect(roles.rolesCallCount, 2);
         expect(products.productsCallCount, 2);
+      },
+    );
+  });
+
+  /// The Vendor Product **assignment** cubit, added by the assignment-writes
+  /// milestone.
+  ///
+  /// It holds more than a pending decision: the names and trading statuses of
+  /// every Retailer one Vendor works with, a search term that is a fragment of
+  /// one of those names, and any in-flight assign or withdrawal. All of it is
+  /// one Vendor's, and none of it may survive into another's session.
+  group('the Vendor Product assignment surface', () {
+    Future<void> loadCandidates(WidgetTester tester) async {
+      await cubit<VendorProductAssignmentCubit>(tester).loadCandidates(
+        productId: espressoProductUuid,
+        assignments: compositionAssignments,
+      );
+      await settle(tester);
+    }
+
+    testWidgets('a direct A → B switch clears the candidate Retailers', (
+      WidgetTester tester,
+    ) async {
+      retailers.retailersResult =
+          VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+            assignmentDirectory,
+          );
+      await pumpShell(tester);
+      await loadCandidates(tester);
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidates,
+        isNotEmpty,
+      );
+
+      await emit(tester, vendorB);
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidates,
+        isEmpty,
+      );
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidatesPhase,
+        VendorProductAssignmentCandidatesPhase.initial,
+      );
+    });
+
+    testWidgets('it clears the search term, the selection and the notice', (
+      WidgetTester tester,
+    ) async {
+      retailers.retailersResult =
+          VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+            assignmentDirectory,
+          );
+      await pumpShell(tester);
+      await loadCandidates(tester);
+      cubit<VendorProductAssignmentCubit>(tester).searchCandidates('lakeside');
+      await cubit<VendorProductAssignmentCubit>(tester).apply(
+        productId: espressoProductUuid,
+        retailerOrganizationId: lakesideOrgId,
+        action: VendorProductAssignmentAction.assign,
+      );
+      await settle(tester);
+
+      await emit(tester, vendorB);
+
+      final VendorProductAssignmentState state =
+          cubit<VendorProductAssignmentCubit>(tester).state;
+      expect(state.searchTerm, isEmpty);
+      expect(state.productId, isNull);
+      expect(state.pendingRetailerOrganizationId, isNull);
+      expect(state.pendingAction, isNull);
+      expect(state.notice, isNull);
+      expect(state.failure, isNull);
+      expect(state.phase, VendorProductAssignmentPhase.idle);
+    });
+
+    testWidgets('a stale ASSIGN answer cannot land under the new Vendor', (
+      WidgetTester tester,
+    ) async {
+      products.manualAssignmentWrites = true;
+      await pumpShell(tester);
+
+      unawaited(
+        cubit<VendorProductAssignmentCubit>(tester).apply(
+          productId: espressoProductUuid,
+          retailerOrganizationId: lakesideOrgId,
+          action: VendorProductAssignmentAction.assign,
+        ),
+      );
+      await settle(tester);
+      expect(products.pendingAssignmentWriteCount, 1);
+
+      await emit(tester, vendorB);
+      products.completeAssignment();
+      await settle(tester);
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.notice,
+        isNull,
+        reason: 'A\'s acknowledgement must never appear over B\'s product',
+      );
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.phase,
+        VendorProductAssignmentPhase.idle,
+      );
+    });
+
+    testWidgets('a stale WITHDRAW answer cannot land either', (
+      WidgetTester tester,
+    ) async {
+      products.manualAssignmentWrites = true;
+      await pumpShell(tester);
+
+      unawaited(
+        cubit<VendorProductAssignmentCubit>(tester).apply(
+          productId: espressoProductUuid,
+          retailerOrganizationId: northwindOrgId,
+          action: VendorProductAssignmentAction.withdraw,
+        ),
+      );
+      await settle(tester);
+
+      await emit(tester, vendorB);
+      products.completeAssignment();
+      await settle(tester);
+
+      expect(cubit<VendorProductAssignmentCubit>(tester).state.notice, isNull);
+    });
+
+    testWidgets('a stale refusal cannot appear under the new Vendor', (
+      WidgetTester tester,
+    ) async {
+      products.manualAssignmentWrites = true;
+      await pumpShell(tester);
+
+      unawaited(
+        cubit<VendorProductAssignmentCubit>(tester).apply(
+          productId: espressoProductUuid,
+          retailerOrganizationId: lakesideOrgId,
+          action: VendorProductAssignmentAction.assign,
+        ),
+      );
+      await settle(tester);
+
+      await emit(tester, vendorB);
+      products.completeAssignment(
+        const VendorProductWriteFailure<void>(DeniedFailure()),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorProductAssignmentCubit>(tester).state.failure, isNull);
+    });
+
+    testWidgets('a stale candidate read cannot repopulate the picker', (
+      WidgetTester tester,
+    ) async {
+      retailers.manualRetailers = true;
+      await pumpShell(tester);
+      unawaited(loadCandidates(tester));
+      await settle(tester);
+
+      await emit(tester, vendorB);
+      // The listener reloads the directory for B, so the pending queue holds A's
+      // read first and B's second. Completing A's must change nothing.
+      retailers.completeRetailers(
+        VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+          assignmentDirectory,
+        ),
+      );
+      await settle(tester);
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidates,
+        isEmpty,
+      );
+    });
+
+    testWidgets('the assignment surface is NOT reloaded for the new Vendor', (
+      WidgetTester tester,
+    ) async {
+      // It has nothing to load until a product is open and a picker is asked
+      // for, so eagerly re-reading the directory into it would be a request
+      // nobody made.
+      await pumpShell(tester);
+      final int before = retailers.retailersCallCount;
+
+      await emit(tester, vendorB);
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidatesPhase,
+        VendorProductAssignmentCandidatesPhase.initial,
+      );
+      // Exactly the directory screen's own reload, and no second one.
+      expect(retailers.retailersCallCount, before + 1);
+    });
+
+    testWidgets('signing out clears it and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      retailers.retailersResult =
+          VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+            assignmentDirectory,
+          );
+      await pumpShell(tester);
+      await loadCandidates(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state,
+        const VendorProductAssignmentState(),
+      );
+    });
+
+    testWidgets('becoming a Retailer clears it', (WidgetTester tester) async {
+      retailers.retailersResult =
+          VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+            assignmentDirectory,
+          );
+      await pumpShell(tester);
+      await loadCandidates(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidates,
+        isEmpty,
+      );
+    });
+
+    testWidgets('an identical re-emitted session leaves an open picker alone', (
+      WidgetTester tester,
+    ) async {
+      retailers.retailersResult =
+          VendorRetailerReadSuccess<List<VendorRetailerSummary>>(
+            assignmentDirectory,
+          );
+      await pumpShell(tester);
+      await loadCandidates(tester);
+      cubit<VendorProductAssignmentCubit>(tester).searchCandidates('lakeside');
+      await settle(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.candidates,
+        isNotEmpty,
+      );
+      expect(
+        cubit<VendorProductAssignmentCubit>(tester).state.searchTerm,
+        'lakeside',
+      );
+    });
+
+    testWidgets(
+      'the Product create, edit and status isolation is still intact',
+      (WidgetTester tester) async {
+        // The assignment milestone must not have displaced any earlier part of
+        // the listener.
+        await pumpShell(tester);
+
+        await emit(tester, vendorB);
+
+        expect(users.usersCallCount, 2);
+        expect(retailers.retailersCallCount, 2);
+        expect(roles.rolesCallCount, 2);
+        expect(products.productsCallCount, 2);
+        expect(products.submittedAssignments, isEmpty);
       },
     );
   });
