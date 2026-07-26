@@ -10,6 +10,7 @@ import 'package:sale_reward/features/products/domain/entities/vendor_product_ass
 import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_status.dart';
 import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
+import 'package:sale_reward/features/products/presentation/vendor/cubit/vendor_product_write_notice.dart';
 
 import '../../support/vendor_product_fakes.dart';
 
@@ -113,6 +114,7 @@ void main() {
                 return const <Object?>[];
               },
             ),
+            writes: unusedVendorProductWrites(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -144,6 +146,7 @@ void main() {
                 return <Map<String, Object?>>[assignedRetailerRow()];
               },
             ),
+            writes: unusedVendorProductWrites(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -164,6 +167,7 @@ void main() {
               assignedRetailers: (String productId) async =>
                   fail('the assignment read must not be issued'),
             ),
+            writes: unusedVendorProductWrites(),
           );
 
       final VendorProductDetailCubit cubit = VendorProductDetailCubit(real);
@@ -603,6 +607,288 @@ void main() {
       expect(cubit.state.inactiveAssignments, isEmpty);
       expect(cubit.state.hasUnlinkedAssignments, isFalse);
       expect(cubit.state.hasNoAssignments, isFalse);
+    });
+  });
+
+  group('the canonical read after a write', () {
+    test(
+      'openCreated loads the product and remembers that it was created',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+
+        await cubit.openCreated(createdProductUuid);
+
+        expect(cubit.state.phase, VendorProductDetailPhase.ready);
+        expect(cubit.state.detail, createdDetail);
+        expect(cubit.state.currentNotice, VendorProductWriteNotice.created);
+        // The canonical sequence, unchanged: detail first, then the companion.
+        expect(repository.callLog, <String>['detail', 'assignments']);
+      },
+    );
+
+    test('openCreated always starts a fresh load', () async {
+      // A create always names a product this cubit has never held, so idempotence
+      // would be wrong here.
+      final VendorProductDetailCubit cubit = build();
+      await cubit.openCreated(createdProductUuid);
+      await cubit.openCreated(createdProductUuid);
+
+      expect(repository.requestedDetailIds.length, 2);
+    });
+
+    test('the created notice survives a failed canonical read', () async {
+      // The case the notice exists for: the product WAS created, and only the read
+      // of it did not answer.
+      repository.detailResult = unavailableProductRead();
+      final VendorProductDetailCubit cubit = build();
+
+      await cubit.openCreated(createdProductUuid);
+
+      expect(cubit.state.phase, VendorProductDetailPhase.failed);
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.created);
+    });
+
+    test('the notice is dropped when a different product is opened', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.openCreated(createdProductUuid);
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.created);
+
+      await cubit.open(espressoProductUuid);
+
+      expect(cubit.state.currentNotice, isNull);
+      expect(cubit.state.notice, isNull);
+    });
+
+    test('a notice never outlives its subject', () async {
+      // Keyed to a product id, so an acknowledgement can never start describing
+      // whatever the reader opened next.
+      final VendorProductDetailCubit cubit = build();
+      await cubit.openCreated(createdProductUuid);
+      await cubit.open(espressoProductUuid);
+      expect(cubit.state.currentNotice, isNull);
+    });
+
+    test(
+      'refreshDetail replaces the row in place, keeping it visible',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+        await cubit.open(espressoProductUuid);
+        expect(repository.callLog, <String>['detail', 'assignments']);
+
+        // The product as the backend now reports it — a real change would arrive
+        // exactly this way.
+        final VendorProductDetail renamed = VendorProductDetail(
+          productId: espressoProductUuid,
+          productCode: 'ESP-1000',
+          barcode: null,
+          productName: 'Espresso Blend 1kg (renamed)',
+          brand: null,
+          description: null,
+          status: VendorProductStatus.inactive,
+          assignmentCount: 3,
+          activeAssignmentCount: 2,
+          createdAt: espressoCreatedAt,
+          updatedAt: espressoUpdatedAt,
+        );
+        repository.knownDetails = <String, VendorProductDetail>{
+          espressoProductUuid: renamed,
+        };
+
+        await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+        expect(cubit.state.phase, VendorProductDetailPhase.ready);
+        expect(cubit.state.detail, renamed);
+        expect(cubit.state.currentNotice, VendorProductWriteNotice.updated);
+        expect(cubit.state.isRefreshing, isFalse);
+        expect(cubit.state.refreshFailure, isNull);
+      },
+    );
+
+    test('the assignment rows are NOT re-read', () async {
+      // A product create, edit or status change touches no assignment row — not even
+      // its `updated_at` — so a second companion call would spend a round trip to
+      // learn nothing, and would replace a good answer for unrelated reasons.
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      final int before = repository.assignmentsCallCount;
+      final List<VendorProductAssignedRetailer> rows = cubit.state.assignments;
+
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.statusChanged);
+
+      expect(repository.assignmentsCallCount, before);
+      expect(cubit.state.assignments, same(rows));
+      expect(repository.callLog, <String>['detail', 'assignments', 'detail']);
+    });
+
+    test('both counts still come from the re-read product row', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+      expect(cubit.state.detail!.assignmentCount, 3);
+      expect(cubit.state.detail!.activeAssignmentCount, 2);
+      // Nothing was computed from the loaded list.
+      expect(cubit.state.assignments.length, 3);
+    });
+
+    test('a failed refresh keeps the product and records the failure', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+      final VendorProductDetail before = cubit.state.detail!;
+
+      repository.detailResult = unavailableProductRead();
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+      // The write stands: only the picture of it is stale.
+      expect(cubit.state.phase, VendorProductDetailPhase.ready);
+      expect(cubit.state.detail, before);
+      expect(cubit.state.refreshFailure, const UnavailableFailure());
+      expect(cubit.state.isRefreshing, isFalse);
+      // And the acknowledgement is still shown, because the change did happen.
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.updated);
+    });
+
+    test('a denied refresh is never presented as a failed write', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      repository.detailResult = deniedProductRead();
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.statusChanged);
+
+      expect(cubit.state.phase, VendorProductDetailPhase.ready);
+      expect(cubit.state.detail, isNotNull);
+      expect(cubit.state.refreshFailure, const DeniedFailure());
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.statusChanged);
+    });
+
+    test(
+      'a Reload keeps the existing notice and clears the stale warning',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+        await cubit.open(espressoProductUuid);
+
+        repository.detailResult = unavailableProductRead();
+        await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+        expect(cubit.state.refreshFailure, isNotNull);
+
+        repository.detailResult = null;
+        await cubit.refreshDetail();
+
+        expect(cubit.state.refreshFailure, isNull);
+        expect(cubit.state.currentNotice, VendorProductWriteNotice.updated);
+        expect(cubit.state.detail, espressoDetail);
+      },
+    );
+
+    test('a repeated Reload while one is running is a no-op', () async {
+      repository.manualDetail = true;
+      final VendorProductDetailCubit cubit = build();
+      final Future<void> opening = cubit.open(espressoProductUuid);
+      repository.completeDetail();
+      await opening;
+
+      final Future<void> first = cubit.refreshDetail(
+        notice: VendorProductWriteNotice.updated,
+      );
+      expect(cubit.state.isRefreshing, isTrue);
+
+      await cubit.refreshDetail();
+      await cubit.refreshDetail();
+      expect(repository.pendingDetailCount, 1);
+
+      repository.completeDetail();
+      await first;
+      expect(cubit.state.isRefreshing, isFalse);
+    });
+
+    test('a refresh with nothing open is a no-op', () async {
+      final VendorProductDetailCubit cubit = build();
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+      expect(repository.callLog, isEmpty);
+      expect(cubit.state.currentNotice, isNull);
+    });
+
+    test('a refresh over an unaddressable product is a no-op', () async {
+      // Nothing on screen to refresh, and no notice to attach to it.
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(unknownProductUuid);
+      expect(cubit.state.phase, VendorProductDetailPhase.notFound);
+
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+      expect(repository.requestedDetailIds.length, 1);
+    });
+
+    test('a product that stopped being addressable drops the stale row', () async {
+      // No product write can cause this, so it is somebody else's change or a
+      // session that is no longer what it was — and the one safe answer is the
+      // non-leaking state a foreign id produces.
+      final VendorProductDetailCubit cubit = build();
+      await cubit.open(espressoProductUuid);
+
+      repository.detailResult = const ReadSuccess<VendorProductDetail?>(null);
+      await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+      expect(cubit.state.phase, VendorProductDetailPhase.notFound);
+      expect(cubit.state.detail, isNull);
+      // Acknowledging a change to a product that is no longer there would be the
+      // least useful sentence available.
+      expect(cubit.state.currentNotice, isNull);
+    });
+
+    test('a refresh that lands after clear() is dropped', () async {
+      repository.manualDetail = true;
+      final VendorProductDetailCubit cubit = build();
+      final Future<void> opening = cubit.open(espressoProductUuid);
+      repository.completeDetail();
+      await opening;
+
+      final Future<void> pending = cubit.refreshDetail(
+        notice: VendorProductWriteNotice.updated,
+      );
+      cubit.clear();
+
+      repository.completeDetail();
+      await pending;
+
+      // The previous Vendor's product, and the acknowledgement of their write, are
+      // both gone.
+      expect(cubit.state, const VendorProductDetailState());
+      expect(cubit.state.currentNotice, isNull);
+      expect(cubit.state.refreshFailure, isNull);
+    });
+
+    test(
+      'clear() drops the notice, the progress and the stale warning',
+      () async {
+        final VendorProductDetailCubit cubit = build();
+        await cubit.openCreated(createdProductUuid);
+        repository.detailResult = unavailableProductRead();
+        await cubit.refreshDetail(notice: VendorProductWriteNotice.updated);
+
+        cubit.clear();
+
+        expect(cubit.state.notice, isNull);
+        expect(cubit.state.noticeProductId, isNull);
+        expect(cubit.state.isRefreshing, isFalse);
+        expect(cubit.state.refreshFailure, isNull);
+      },
+    );
+
+    test('a full retry from a failed read clears the notice', () async {
+      // retryDetail re-runs the whole sequence, which is a fresh load rather than a
+      // read-after-write, so it carries no acknowledgement.
+      repository.detailResult = unavailableProductRead();
+      final VendorProductDetailCubit cubit = build();
+      await cubit.openCreated(createdProductUuid);
+      expect(cubit.state.currentNotice, VendorProductWriteNotice.created);
+
+      repository.detailResult = null;
+      await cubit.retryDetail();
+
+      expect(cubit.state.phase, VendorProductDetailPhase.ready);
+      expect(cubit.state.currentNotice, isNull);
     });
   });
 }

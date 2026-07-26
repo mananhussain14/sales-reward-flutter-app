@@ -40,6 +40,10 @@ final class VendorProductDetailState extends Equatable {
     this.assignmentsPhase = VendorProductAssignmentsPhase.initial,
     this.assignments = const <VendorProductAssignedRetailer>[],
     this.assignmentsFailure,
+    this.isRefreshing = false,
+    this.refreshFailure,
+    this.notice,
+    this.noticeProductId,
   });
 
   /// The product currently open, or null when nothing is.
@@ -68,6 +72,39 @@ final class VendorProductDetailState extends Equatable {
   final List<VendorProductAssignedRetailer> assignments;
 
   final Failure? assignmentsFailure;
+
+  /// A canonical re-read is in flight over a product that is still on screen.
+  ///
+  /// Distinct from [VendorProductDetailPhase.loading], which replaces the whole
+  /// page: this one drives a spinner beside the product while every one of its
+  /// fields stays legible, because a saved change must not look like a page reset.
+  /// It is also the duplicate-tap guard for Reload.
+  final bool isRefreshing;
+
+  /// Why the canonical re-read after a successful write did not answer.
+  ///
+  /// **This is never a failed write.** The mutation is committed — the RPC
+  /// answered before this read was issued — and the only casualty is the freshness
+  /// of what is displayed. The screen therefore keeps [detail], says it may be out
+  /// of date, and offers a Reload. A discriminant, never the backend's message.
+  final Failure? refreshFailure;
+
+  /// The write this screen has just performed, if any.
+  final VendorProductWriteNotice? notice;
+
+  /// The product [notice] is about.
+  ///
+  /// Held so an acknowledgement can never outlive its subject. A notice is only
+  /// rendered while it names the product on screen, which is what makes "Product
+  /// created" a permanently true sentence rather than one that starts describing
+  /// whatever the reader opened next.
+  final String? noticeProductId;
+
+  /// The acknowledgement to show, or null when there is none for this product.
+  VendorProductWriteNotice? get currentNotice =>
+      notice != null && noticeProductId != null && noticeProductId == productId
+      ? notice
+      : null;
 
   bool get isDetailLoading => phase == VendorProductDetailPhase.loading;
 
@@ -138,22 +175,37 @@ final class VendorProductDetailState extends Equatable {
     String? productId,
     VendorProductDetailPhase? phase,
     VendorProductDetail? detail,
+    bool clearDetail = false,
     Failure? failure,
     VendorProductAssignmentsPhase? assignmentsPhase,
     List<VendorProductAssignedRetailer>? assignments,
     Failure? assignmentsFailure,
     bool clearAssignmentsFailure = false,
+    bool? isRefreshing,
+    Failure? refreshFailure,
+    bool clearRefreshFailure = false,
+    VendorProductWriteNotice? notice,
+    String? noticeProductId,
+    bool clearNotice = false,
   }) {
     return VendorProductDetailState(
       productId: productId ?? this.productId,
       phase: phase ?? this.phase,
-      detail: detail ?? this.detail,
+      detail: clearDetail ? null : (detail ?? this.detail),
       failure: failure ?? this.failure,
       assignmentsPhase: assignmentsPhase ?? this.assignmentsPhase,
       assignments: assignments ?? this.assignments,
       assignmentsFailure: clearAssignmentsFailure
           ? null
           : (assignmentsFailure ?? this.assignmentsFailure),
+      isRefreshing: isRefreshing ?? this.isRefreshing,
+      refreshFailure: clearRefreshFailure
+          ? null
+          : (refreshFailure ?? this.refreshFailure),
+      notice: clearNotice ? null : (notice ?? this.notice),
+      noticeProductId: clearNotice
+          ? null
+          : (noticeProductId ?? this.noticeProductId),
     );
   }
 
@@ -166,5 +218,9 @@ final class VendorProductDetailState extends Equatable {
     assignmentsPhase,
     assignments,
     assignmentsFailure,
+    isRefreshing,
+    refreshFailure,
+    notice,
+    noticeProductId,
   ];
 }

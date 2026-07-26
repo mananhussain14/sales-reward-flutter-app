@@ -14,6 +14,7 @@ import '../../features/dashboard/data/datasources/vendor_dashboard_rpc_data_sour
 import '../../features/dashboard/data/repositories/supabase_vendor_dashboard_repository.dart';
 import '../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
+import '../../features/products/data/datasources/vendor_product_write_rpc_data_source.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
 import '../../features/products/domain/repositories/vendor_product_repository.dart';
 import '../../features/profile/data/datasources/vendor_profile_rpc_data_source.dart';
@@ -124,15 +125,24 @@ Future<void> configureDependencies() async {
     ),
   );
 
-  // The Vendor Product reads. Three RPCs and no table access at all — both
-  // product tables are default-deny with zero RLS policies and no privilege for
-  // `authenticated`, so RPC is the only way in by design. The assignment
-  // aggregation, the Retailer and relationship joins and the tenant scoping all
-  // happen in SQL, and there is no storage client here because no product image
-  // exists anywhere in the product.
+  // The Vendor Product reads and writes. Six RPCs and no table access at all —
+  // both product tables are default-deny with zero RLS policies and no privilege
+  // for `authenticated`, so RPC is the only way in by design. The assignment
+  // aggregation, the Retailer and relationship joins, the tenant scoping, every
+  // normalization rule, both uniqueness authorities and the audit row for each
+  // write all happen in SQL, and there is no storage client here because no
+  // product image exists anywhere in the product.
+  //
+  // Two data sources behind one repository: the reads take no argument or one
+  // product id, the writes take product fields, and keeping the two payload
+  // vocabularies in separate files is what makes each one's boundary test able to
+  // assert its parameter set exactly. Both travel on the caller's own token —
+  // there is no service-role client here, and a service-role connection has no
+  // `auth.uid()` for the functions to derive an identity from.
   getIt.registerLazySingleton<VendorProductRepository>(
     () => SupabaseVendorProductRepository(
       rpc: VendorProductRpcDataSource.forClient(client),
+      writes: VendorProductWriteRpcDataSource.forClient(client),
     ),
   );
 

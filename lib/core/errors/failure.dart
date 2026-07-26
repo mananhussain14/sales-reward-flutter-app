@@ -33,8 +33,18 @@ final class DeniedFailure extends Failure {
 
 /// `23505` — the value already exists.
 ///
-/// [field] is a client-side hint for which input to highlight, set by the caller
-/// from a machine code, never by parsing an English message.
+/// [field] is a client-side hint for which input to highlight — a **form-field
+/// key**, never a database column name, and never the backend's own text.
+///
+/// It is set by the caller, from the strongest discriminator the operation
+/// actually offers. Usually that is a machine code. The Vendor Product writes are
+/// the one exception in the deployed contract: `create_vendor_product` and
+/// `update_vendor_product` share SQLSTATE `23505` for both of their per-Vendor
+/// unique indexes, so the *only* thing telling a duplicate product code apart from
+/// a duplicate barcode is one of two fixed message literals the functions raise
+/// themselves. `mapVendorProductWriteError` matches those two, in one place, and
+/// carries forward only this field key; see that function for why that is safe and
+/// why an unrecognized message degrades to a hint-less duplicate instead.
 final class DuplicateFailure extends Failure {
   const DuplicateFailure({this.field});
 

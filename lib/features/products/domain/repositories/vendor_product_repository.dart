@@ -1,37 +1,53 @@
 import '../../../../core/result/read_result.dart';
 import '../entities/vendor_product_assigned_retailer.dart';
 import '../entities/vendor_product_detail.dart';
+import '../entities/vendor_product_draft.dart';
+import '../entities/vendor_product_edit.dart';
+import '../entities/vendor_product_status_change.dart';
 import '../entities/vendor_product_summary.dart';
+import 'vendor_product_write_result.dart';
 
-/// The three Vendor Product reads, and nothing else.
+/// The three Vendor Product reads and the three Vendor Product writes.
 ///
-/// One repository for all three deliberately: they share a Vendor derivation, a
-/// selector vocabulary and a failure contract, and splitting them would create
-/// three places for those to drift.
+/// One repository for all six deliberately: they share a Vendor derivation, a
+/// selector vocabulary, an id-shape guard and a failure contract, and splitting
+/// them would create two places for those to drift — while every write is
+/// immediately followed by one of the reads, so a caller would have needed both
+/// halves anyway.
 ///
-/// ## This milestone is read-only, and the interface is the proof
+/// ## Reads and writes are separate result types, on purpose
 ///
-/// There is no create, update, delete, activate, deactivate, assign, withdraw,
-/// image-upload, price or reward method here, and no place to add one without
-/// changing this file. Those RPCs *do* exist on the backend — unlike the Roles
-/// surface, where no write backend exists at all — which makes the absence a
-/// deliberate scope decision rather than a limitation, and makes it worth
-/// stating: the write contracts discriminate a duplicate code from a duplicate
-/// barcode by an **English message substring** and return `void` where "changed"
-/// and "already so" would need telling apart, both of which the backend contract
-/// records as defects to fix before a client depends on them.
+/// The reads answer [ReadResult]; the writes answer [VendorProductWriteResult],
+/// which has a third case a read cannot need — "it happened, but the answer could
+/// not be read". See that file for why conflating the two would be unsafe.
 ///
-/// No disabled affordance is offered either. An action a screen shows and cannot
-/// perform is a promise about a feature that has not been built.
+/// ## The write surface is exactly three operations
+///
+/// Create, edit, and status. There is deliberately **no delete** — no control, no
+/// action, no RPC and no `DELETE` statement exists anywhere in the schema, so a
+/// method here would be one this client could never fulfil. There is deliberately
+/// **no assign, withdraw or bulk-assignment** method either: those are two
+/// separate functions gated on a *different* permission
+/// (`PRODUCT_RETAILER_ASSIGN`, not `PRODUCTS_MANAGE`), they are a separate
+/// milestone, and the existing assigned-Retailer section stays read-only. Product
+/// create, edit and status neither create, read nor mutate an assignment row —
+/// the backend's own suite proves a full create → edit → deactivate → activate
+/// lifecycle produces zero of them.
+///
+/// And no image upload, price, stock, reward, incentive or campaign method,
+/// because none of those columns exists anywhere in the schema.
 ///
 /// ## What the signatures make impossible
 ///
 /// [products] takes **no arguments**. [productDetail] and [assignedRetailers]
-/// take exactly one each, and it is a product id. There is no auth user id,
-/// profile id, membership id, Vendor organization id, tenant id, Retailer
-/// organization id, product code, product status, assignment status, role code,
-/// permission code, search term or page cursor anywhere on this interface — not
-/// as an optional, not as a named argument with a default.
+/// take exactly one each, and it is a product id. [createProduct] takes the five
+/// product fields and nothing beside them — there is no organization id to send.
+/// [updateProduct] and [setProductStatus] take a product id plus the values being
+/// changed. There is no auth user id, profile id, membership id, Vendor
+/// organization id, tenant id, Retailer organization id, product code on the edit
+/// path, product status on the create or edit path, assignment status, role code,
+/// permission code, actor, audit metadata, search term or page cursor anywhere on
+/// this interface — not as an optional, not as a named argument with a default.
 ///
 /// The absence is the point. The Vendor is derived from `auth.uid()` in SQL by
 /// `get_vendor_super_admin_context()`, and the product id **selects** which
@@ -109,5 +125,64 @@ abstract interface class VendorProductRepository {
   /// same generic [DeniedFailure] every other refusal does.
   Future<ReadResult<List<VendorProductAssignedRetailer>>> assignedRetailers(
     String productId,
+  );
+
+  /// `public.create_vendor_product(p_product_code, p_product_name, p_barcode,
+  /// p_brand, p_description)` — five text arguments, and `returns uuid`.
+  ///
+  /// The new product is `ACTIVE`, because the function says so; there is no
+  /// initial-status argument to pass and none is invented. It creates **no
+  /// assignment row**, and it writes exactly one `PRODUCT_CREATED` audit row in
+  /// the same transaction — which this client neither performs nor supplements.
+  ///
+  /// On success the value is the new `vendor_products.id`, and it is the *only*
+  /// thing the write returns. The canonical product is obtained by reading
+  /// [productDetail] with it: a screen must never assemble a product from the
+  /// values it submitted, because the backend normalizes every one of them and the
+  /// stored result can legitimately differ from what was typed.
+  ///
+  /// A success whose value is not shaped like a uuid answers
+  /// [VendorProductWriteUnconfirmed] — the product exists and cannot be
+  /// addressed — and is never retried.
+  Future<VendorProductWriteResult<String>> createProduct(
+    VendorProductDraft draft,
+  );
+
+  /// `public.update_vendor_product(p_product_id, p_product_name, p_barcode,
+  /// p_brand, p_description)` — `returns void`.
+  ///
+  /// [productId] is an **address**, not an authorization: the row is matched on
+  /// both its own id and the Vendor derived from `auth.uid()`, so an unknown id,
+  /// another Vendor's id and a null one are refused byte-identically and arrive
+  /// here as one generic [DeniedFailure]. A **malformed** id is refused locally,
+  /// without a request leaving the device, and joins that same set rather than
+  /// becoming a fourth outcome.
+  ///
+  /// There is no product-code and no status parameter. Assignment rows are
+  /// untouched. A submission that changes nothing succeeds silently and writes no
+  /// audit row.
+  Future<VendorProductWriteResult<void>> updateProduct(
+    String productId,
+    VendorProductEdit edit,
+  );
+
+  /// `public.set_vendor_product_status(p_product_id, p_status)` — `returns void`.
+  ///
+  /// [change] can only be `ACTIVE` or `INACTIVE`, because
+  /// [VendorProductStatusChange] has only those two members; the response enum's
+  /// forward-compatibility `unknown` is not expressible here.
+  ///
+  /// Both transitions are permitted in both directions, and setting the status a
+  /// product already has is an idempotent no-op in SQL — no write, no `updated_at`
+  /// movement, **no audit row** — which is what stops a double tap recording two
+  /// decisions.
+  ///
+  /// **Deactivation is not deletion, and it does not cascade.** The row, its
+  /// `created_at` and every one of its assignment rows survive untouched, down to
+  /// their `updated_at`. It makes the product ineligible for a *new* assignment
+  /// and removes it from the Retailer-facing list, and that is all.
+  Future<VendorProductWriteResult<void>> setProductStatus(
+    String productId,
+    VendorProductStatusChange change,
   );
 }

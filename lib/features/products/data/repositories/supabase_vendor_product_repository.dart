@@ -3,16 +3,24 @@ import '../../../../core/errors/failure_mapper.dart';
 import '../../../../core/result/read_result.dart';
 import '../../domain/entities/vendor_product_assigned_retailer.dart';
 import '../../domain/entities/vendor_product_detail.dart';
+import '../../domain/entities/vendor_product_draft.dart';
+import '../../domain/entities/vendor_product_edit.dart';
+import '../../domain/entities/vendor_product_status_change.dart';
 import '../../domain/entities/vendor_product_summary.dart';
 import '../../domain/repositories/vendor_product_repository.dart';
+import '../../domain/repositories/vendor_product_write_result.dart';
 import '../datasources/vendor_product_rpc_data_source.dart';
+import '../datasources/vendor_product_write_rpc_data_source.dart';
 import '../models/vendor_product_parsers.dart';
+import '../models/vendor_product_write_parsers.dart';
 
 /// The real [VendorProductRepository].
 ///
 /// Each read does exactly three things, in order: call the RPC, parse the body,
-/// classify the answer. Each of the three is somebody else's code — the data
-/// source, the parser, and `mapSupabaseError` — so this class contains no
+/// classify the answer. Each write does the same three, with one addition — an
+/// unreadable answer from a write that already committed is a *third* outcome
+/// rather than a failure. Each of those steps is somebody else's code — the data
+/// sources, the parsers, and the error mappers — so this class contains no
 /// branching of its own beyond "did it throw?" and the id-shape guards below.
 ///
 /// ## It reproduces no backend authorization logic
@@ -30,12 +38,25 @@ import '../models/vendor_product_parsers.dart';
 /// Nor is ownership inferred. A product's status, its counts, its dates and the
 /// statuses of the Retailers it is assigned to are all *display* data; none of
 /// them decides whether anything may be read.
+/// ## Authorization is still nowhere in this file, including for the writes
+///
+/// Whether this caller may *manage* products is decided in SQL by
+/// `get_vendor_super_admin_context()` and `has_organization_permission` on every
+/// single call — and the write permission is a **different** one from the read
+/// permission, a split this client neither knows nor could enforce. There is no
+/// permission code here, no check of a product's owner, no comparison of a status
+/// against an allowed transition table, and no local decision about whether a
+/// product "can" be edited. A loaded product's status decides which *label* the
+/// status action carries and nothing else.
 final class SupabaseVendorProductRepository implements VendorProductRepository {
   const SupabaseVendorProductRepository({
     required VendorProductRpcDataSource rpc,
-  }) : _rpc = rpc;
+    required VendorProductWriteRpcDataSource writes,
+  }) : _rpc = rpc,
+       _writes = writes;
 
   final VendorProductRpcDataSource _rpc;
+  final VendorProductWriteRpcDataSource _writes;
 
   @override
   Future<ReadResult<List<VendorProductSummary>>> products() {
@@ -96,6 +117,123 @@ final class SupabaseVendorProductRepository implements VendorProductRepository {
       () => _rpc.fetchAssignedRetailers(productId),
       VendorProductAssignedRetailerParser.parseList,
     );
+  }
+
+  @override
+  Future<VendorProductWriteResult<String>> createProduct(
+    VendorProductDraft draft,
+  ) async {
+    // No id guard: create addresses nothing. There is also no organization to
+    // resolve, no status to choose and no assignment to seed — the five values
+    // below are the whole payload.
+    final Object? raw;
+    try {
+      raw = await _writes.createProduct(
+        productCode: draft.productCode,
+        productName: draft.productName,
+        barcode: draft.barcode,
+        brand: draft.brand,
+        description: draft.description,
+      );
+    } on Object catch (error) {
+      // Nothing was written: every refusal these functions raise rolls the whole
+      // transaction back, so a failure here leaves no product and no audit row.
+      return VendorProductWriteFailure<String>(
+        mapVendorProductWriteError(error),
+      );
+    }
+
+    try {
+      return VendorProductWriteSuccess<String>(parseCreatedProductId(raw));
+    } on VendorProductFormatException {
+      // The product EXISTS. The call returned success, which for this function
+      // means the insert and its audit row committed — only the id could not be
+      // read. Reporting a failure here would be false, and re-arming a create
+      // button would invite a duplicate.
+      return const VendorProductWriteUnconfirmed<String>();
+    }
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> updateProduct(
+    String productId,
+    VendorProductEdit edit,
+  ) {
+    return _write(
+      productId,
+      () => _writes.updateProduct(
+        productId: productId,
+        productName: edit.productName,
+        barcode: edit.barcode,
+        brand: edit.brand,
+        description: edit.description,
+        // No product code, and no status. Neither is a parameter of the deployed
+        // function, so neither can be sent from here.
+      ),
+    );
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> setProductStatus(
+    String productId,
+    VendorProductStatusChange change,
+  ) {
+    return _write(
+      productId,
+      () => _writes.setProductStatus(
+        productId: productId,
+        // The only source of this token is the two-member request enum, so
+        // `unknown` — the response enum's forward-compatibility case — cannot
+        // reach the wire.
+        status: change.code,
+      ),
+    );
+  }
+
+  /// A `void` write against one product id: guard the id, call, classify.
+  ///
+  /// The id-shape guard is the same rule the reads apply, for the same reason and
+  /// with a different answer. A malformed id put into a `uuid` parameter comes back
+  /// as `22P02` from the type system — raised *before* the function body runs and
+  /// therefore before any authorization check — which is neither an authorization
+  /// answer nor an outage, and would surface as a database fault offering a retry
+  /// that could never succeed.
+  ///
+  /// So it is decided locally, and answered as [DeniedFailure]: that is precisely
+  /// what the backend answers for an id naming no product, an id belonging to
+  /// another Vendor and a null id, byte-identically. Adding a malformed id to that
+  /// same set keeps this client's write error model to the outcomes that are real,
+  /// and says nothing about whether any product exists.
+  ///
+  /// In the shipped flow this branch is unreachable — a form is only rendered
+  /// after the canonical detail read returned a row, and a malformed id can never
+  /// return one — so it is defence in depth at the boundary that talks to
+  /// PostgREST.
+  Future<VendorProductWriteResult<void>> _write(
+    String productId,
+    Future<Object?> Function() call,
+  ) async {
+    if (!isProductIdShaped(productId)) {
+      return const VendorProductWriteFailure<void>(DeniedFailure());
+    }
+
+    final Object? raw;
+    try {
+      raw = await call();
+    } on Object catch (error) {
+      return VendorProductWriteFailure<void>(mapVendorProductWriteError(error));
+    }
+
+    // `null` is the established shape for a `returns void` function, and it is
+    // the only one this build was written against. A body is a response this
+    // build cannot read — but a 2xx from either function means the row and its
+    // audit row are already committed, so it is emphatically NOT a failure. It
+    // becomes "unconfirmed": the caller re-reads the canonical detail, which is
+    // the authority on what the product now looks like, and says something
+    // truthful rather than claiming a save it cannot vouch for.
+    return isVoidWriteResponse(raw)
+        ? const VendorProductWriteSuccess<void>(null)
+        : const VendorProductWriteUnconfirmed<void>();
   }
 
   /// Call → parse → classify, with the two failure modes kept apart.

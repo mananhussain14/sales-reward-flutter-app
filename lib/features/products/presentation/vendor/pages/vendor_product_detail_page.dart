@@ -8,10 +8,13 @@ import '../../../../../core/widgets/widgets.dart';
 import '../../../domain/entities/vendor_product_assigned_retailer.dart';
 import '../../../domain/entities/vendor_product_detail.dart';
 import '../cubit/vendor_product_detail_cubit.dart';
+import '../cubit/vendor_product_write_notice.dart';
 import '../widgets/vendor_product_assignment_tile.dart';
 import '../widgets/vendor_product_badges.dart';
 import '../widgets/vendor_product_copy.dart';
 import '../widgets/vendor_product_formatting.dart';
+import '../widgets/vendor_product_status_action.dart';
+import '../widgets/vendor_product_write_notices.dart';
 
 /// One product, addressed by `product_id` from the route.
 ///
@@ -40,6 +43,37 @@ import '../widgets/vendor_product_formatting.dart';
 /// currently active", and both figures come from the detail row rather than from
 /// counting the loaded list — the counts are the backend's, and the list is one
 /// rendering of them.
+///
+/// ## Two write affordances, kept apart on purpose
+///
+/// **Edit** opens a form for the four mutable display fields.
+/// **Activate / Deactivate** is a separate section with its own confirmation,
+/// because `update_vendor_product` never writes `status` and
+/// `set_vendor_product_status` never writes the display fields — two operations, two
+/// RPCs, and a screen that merged them would suggest they are one decision.
+///
+/// There is **no Delete**: no delete control, action, RPC or `DELETE` statement
+/// exists anywhere in this product, and a disabled one would advertise a capability
+/// that will never arrive. There is **no assign or withdraw** control either — those
+/// are a separate milestone on a separate permission — so the assigned-Retailer
+/// section below stays exactly as read-only as it was.
+///
+/// Both affordances are presentation guards. Whether this caller may write is decided
+/// in SQL on every call, by a permission this client never names, and a refusal
+/// arrives as one generic wording covering an unauthorized caller, an unknown product
+/// and another Vendor's product alike.
+///
+/// ## After a write, the values come from the backend
+///
+/// The three write RPCs return `uuid`, `void` and `void` — never a product row. So an
+/// acknowledged write is always accompanied by a fresh `get_vendor_product_detail`,
+/// and the fields, the status pill and both counts on this screen are that read's
+/// answer. Nothing here echoes what was submitted, flips a status ahead of the
+/// backend, or recomputes a count.
+///
+/// If that follow-up read fails, the write still stands: the product already on
+/// screen is kept, the screen says it may be out of date, and it offers a Reload. It
+/// never says the save failed, because it did not.
 class VendorProductDetailPage extends StatefulWidget {
   const VendorProductDetailPage({super.key, required this.productId});
 
@@ -173,18 +207,82 @@ class _VendorProductDetailPageState extends State<VendorProductDetailPage> {
 
       case VendorProductDetailPhase.ready:
         final VendorProductDetail detail = state.detail!;
+        final VendorProductWriteNotice? notice = state.currentNotice;
+
         return <Widget>[
           SrPageHeader(
             eyebrow: VendorProductCopy.detailEyebrow,
             title: detail.productName,
+            actions: <Widget>[
+              Semantics(
+                button: true,
+                label: VendorProductCopy.editSemantics,
+                child: SrButton(
+                  label: VendorProductCopy.edit,
+                  variant: SrButtonVariant.outline,
+                  icon: Icons.edit_outlined,
+                  onPressed: () => context.go(
+                    VendorNavigation.productEditPath(detail.productId),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: SrSpacing.lg),
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: VendorProductStatusBadge(status: detail.status),
           ),
+          // The acknowledgement for a write that landed, above the values it was
+          // read back with. Rendered only while it names the product on screen, so
+          // it can never start describing whatever the reader opened next.
+          if (notice != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.xl),
+            VendorProductWriteNoticeAlert(notice: notice),
+          ],
+          // A write that landed whose follow-up read did not. The product below is
+          // the last thing the backend actually said; the change is saved either way.
+          if (state.refreshFailure != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.xl),
+            const SrAlert(
+              tone: SrAlertTone.warning,
+              title: VendorProductCopy.staleAfterWriteTitle,
+              message: VendorProductCopy.staleAfterWriteBody,
+            ),
+            const SizedBox(height: SrSpacing.md),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Semantics(
+                button: true,
+                label: VendorProductCopy.reloadSemantics,
+                child: SrButton(
+                  label: VendorProductCopy.reload,
+                  loadingLabel: VendorProductCopy.reloading,
+                  variant: SrButtonVariant.outline,
+                  size: SrButtonSize.sm,
+                  icon: Icons.refresh_rounded,
+                  loading: state.isRefreshing,
+                  // Null while a reload is running: the cubit refuses a second one
+                  // regardless, and a re-read is not a re-write, so repeating it
+                  // could not double anything — it would only waste a call.
+                  onPressed: state.isRefreshing
+                      ? null
+                      : () => cubit.refreshDetail(),
+                ),
+              ),
+            ),
+          ]
+          // Progress for a re-read that has not failed. Beside the product rather
+          // than in place of it: every field stays legible, because a saved change
+          // must not look like a page reset.
+          else if (state.isRefreshing) ...<Widget>[
+            const SizedBox(height: SrSpacing.xl),
+            const SrAlert(message: VendorProductCopy.refreshingProduct),
+          ],
           const SizedBox(height: SrSpacing.xxl),
           _Overview(detail: detail),
+          const SizedBox(height: SrSpacing.xxl),
+          VendorProductStatusAction(detail: detail),
           const SizedBox(height: SrSpacing.xxl),
           _AssignmentsSection(
             state: state,

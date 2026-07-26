@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Source-safety assertions for the Vendor Product read boundary.
+/// Source-safety assertions for the Vendor Product read **and write** boundary.
 ///
 /// The companion to `no_secrets_test.dart`, `receipt_boundary_test.dart`,
 /// `vendor_retailer_boundary_test.dart`, `vendor_user_boundary_test.dart` and
@@ -14,17 +14,30 @@ import 'package:flutter_test/flutter_test.dart';
 /// deadline pressure — the kind of regression a behavioural test cannot see,
 /// because the code that erodes it usually still works.
 ///
-/// Six properties are defended, stated once each:
+/// The properties defended, stated once each:
 ///
-/// * **The client never decides which Vendor it is.** All three deployed reads
-///   derive the Vendor from `auth.uid()`, and the product is matched on both its
-///   own id and that derived Vendor.
-/// * **The client never reads a protected table.** `vendor_products` and
+/// * **The client never decides which Vendor it is.** All six deployed functions
+///   derive the Vendor from `auth.uid()`, and every product id is matched on both
+///   its own value and that derived Vendor. No call carries an organization,
+///   tenant, auth-user, profile, membership, actor, role, permission or
+///   audit-metadata argument, because none of them has a parameter for one.
+/// * **The client never touches a protected table.** `vendor_products` and
 ///   `vendor_product_retailer_assignments` are default-deny with **zero** RLS
 ///   policies and no privilege for `authenticated`; RPC is the only way in, by
-///   design.
-/// * **The client never writes.** Every product and assignment write RPC exists
-///   on the backend and none is named here.
+///   design. `audit_logs` is written by the RPCs themselves, in the same
+///   transaction, and never from here.
+/// * **The write surface is exactly three operations.** Create, edit and status.
+///   No deletion — none exists in the schema — and no assignment write, which is a
+///   separate milestone on a separate permission, so the assigned-Retailer section
+///   stays read-only.
+/// * **The immutable stays immutable.** The product code is absent from the edit
+///   request type and from the edit payload; a status is absent from both the
+///   create and the edit payload.
+/// * **A barcode is text.** Never parsed, never a number — a leading zero and a
+///   14-digit GTIN both survive only as text.
+/// * **No backend text is rendered.** The two pinned duplicate literals are matched
+///   in exactly one file, to derive a form-field key, and no presentation source
+///   reaches for an error's message under any spelling.
 /// * **The client never invents a product image or a category**, because no such
 ///   column, bucket or storage call exists anywhere in the product.
 /// * **The client never infers one status from another** — assignment,
@@ -35,6 +48,7 @@ void main() {
   late List<File> sources;
   late List<File> productSources;
   late String rpcDataSource;
+  late String writeDataSource;
 
   /// The file's executable lines only.
   ///
@@ -63,7 +77,13 @@ void main() {
         .toList();
     rpcDataSource = code(
       sources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_rpc_data_source.dart'),
+        (File f) => f.path.endsWith('/vendor_product_rpc_data_source.dart'),
+      ),
+    );
+    writeDataSource = code(
+      sources.firstWhere(
+        (File f) =>
+            f.path.endsWith('/vendor_product_write_rpc_data_source.dart'),
       ),
     );
   });
@@ -120,7 +140,7 @@ void main() {
   });
 
   group('the RPC contract', () {
-    test('p_product_id is the only parameter name in the feature', () {
+    test('p_product_id is the only parameter name in the READ source', () {
       final RegExp params = RegExp(r"'(p_[a-z_]+)'");
       final Set<String> named = params
           .allMatches(rpcDataSource)
@@ -475,7 +495,7 @@ void main() {
   group('statuses are four separate facts', () {
     test('an unknown product status is never mapped to active', () {
       final File statusFile = productSources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_status.dart'),
+        (File f) => f.path.endsWith('/vendor_product_status.dart'),
       );
       final String src = code(statusFile);
 
@@ -487,7 +507,7 @@ void main() {
 
     test('an unknown assignment status is never mapped to active', () {
       final File statusFile = productSources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_assignment_status.dart'),
+        (File f) => f.path.endsWith('/vendor_product_assignment_status.dart'),
       );
       final String src = code(statusFile);
 
@@ -606,7 +626,7 @@ void main() {
 
     test('linkability is decided by the id, never by a status', () {
       final File entity = productSources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_assigned_retailer.dart'),
+        (File f) => f.path.endsWith('/vendor_product_assigned_retailer.dart'),
       );
       final String src = code(entity);
 
@@ -642,15 +662,156 @@ void main() {
     });
   });
 
-  group('this milestone writes nothing', () {
-    test('no source names a product or assignment write operation', () {
-      // These RPCs all exist on the backend. Naming one here is what a future
-      // edit would have to do, and it would have to change this test.
-      _expectAbsent(productSources, <String>[
+  group('the write boundary is exactly three product operations', () {
+    test('only the three deployed write functions are named', () {
+      final RegExp rpcNames = RegExp(r"const String \w+Rpc =\s*'([^']+)'");
+      final List<String> names = rpcNames
+          .allMatches(writeDataSource)
+          .map((RegExpMatch m) => m.group(1)!)
+          .toList();
+
+      expect(names, <String>[
         'create_vendor_product',
         'update_vendor_product',
-        'delete_vendor_product',
         'set_vendor_product_status',
+      ]);
+    });
+
+    test('exactly seven parameter names, and no eighth', () {
+      final RegExp params = RegExp(r"'(p_[a-z_]+)'");
+      final Set<String> named = params
+          .allMatches(writeDataSource)
+          .map((RegExpMatch m) => m.group(1)!)
+          .toSet();
+
+      expect(named, <String>{
+        'p_product_code',
+        'p_product_name',
+        'p_barcode',
+        'p_brand',
+        'p_description',
+        'p_product_id',
+        'p_status',
+      });
+    });
+
+    test('create sends five product fields and no organization', () {
+      // The whole payload, read off the invoker's own parameter list. There is no
+      // organization id to send: the function derives the Vendor from auth.uid()
+      // and has no parameter to nominate one.
+      final String create = _bodyOf(
+        writeDataSource,
+        'VendorProductCreateInvoker supabaseVendorProductCreateInvoker',
+      );
+
+      for (final String expected in <String>[
+        'productCodeParameter: productCode',
+        'productNameParameter: productName',
+        'barcodeParameter: barcode',
+        'brandParameter: brand',
+        'descriptionParameter: description',
+      ]) {
+        expect(create, contains(expected));
+      }
+      // No initial status, and no product id — a create addresses nothing.
+      expect(create.contains('statusParameter'), isFalse);
+      expect(create.contains('writeProductIdParameter'), isFalse);
+    });
+
+    test('edit sends the id and four fields — no code, no status', () {
+      final String update = _bodyOf(
+        writeDataSource,
+        'VendorProductUpdateInvoker supabaseVendorProductUpdateInvoker',
+      );
+
+      for (final String expected in <String>[
+        'writeProductIdParameter: productId',
+        'productNameParameter: productName',
+        'barcodeParameter: barcode',
+        'brandParameter: brand',
+        'descriptionParameter: description',
+      ]) {
+        expect(update, contains(expected));
+      }
+      // The two that make this contract what it is.
+      expect(
+        update.contains('productCodeParameter'),
+        isFalse,
+        reason: 'the product code is immutable and is not an edit parameter',
+      );
+      expect(
+        update.contains('statusParameter'),
+        isFalse,
+        reason: 'an edit never writes a status',
+      );
+    });
+
+    test('status sends the id and a status, and nothing else', () {
+      final String status = _bodyOf(
+        writeDataSource,
+        'VendorProductStatusInvoker supabaseVendorProductStatusInvoker',
+      );
+
+      expect(status, contains('writeProductIdParameter: productId'));
+      expect(status, contains('statusParameter: status'));
+      for (final String forbidden in <String>[
+        'productCodeParameter',
+        'productNameParameter',
+        'barcodeParameter',
+        'brandParameter',
+        'descriptionParameter',
+      ]) {
+        expect(status.contains(forbidden), isFalse);
+      }
+    });
+
+    test('no identity, tenant, actor or permission argument', () {
+      for (final String forbidden in <String>[
+        'user_id',
+        'p_user',
+        'auth_user_id',
+        'profile_id',
+        'p_profile',
+        'membership_id',
+        'p_membership',
+        'p_vendor',
+        'vendor_organization_id',
+        'organization_id',
+        'p_organization',
+        'p_owner',
+        'p_created_by',
+        'p_actor',
+        'p_metadata',
+        'p_audit',
+        'p_retailer',
+        'p_relationship',
+        'p_assignment',
+        'role_code',
+        'permission_code',
+        'p_permission',
+        'p_price',
+        'p_stock',
+        'p_image',
+        'p_reward',
+        'p_campaign',
+        'access_token',
+        'tenant',
+      ]) {
+        expect(
+          writeDataSource.contains(forbidden),
+          isFalse,
+          reason: 'the Vendor Product writes must pass no $forbidden argument',
+        );
+      }
+    });
+
+    test('no delete or assignment write is named anywhere', () {
+      // Both assignment functions and any deletion. They are either a separate
+      // milestone on a separate permission, or they do not exist in the schema at
+      // all; naming one here is what a future edit would have to do, and it would
+      // have to change this test.
+      _expectAbsent(productSources, <String>[
+        'delete_vendor_product',
         'assign_vendor_product_to_retailer',
         'unassign_vendor_product_from_retailer',
         'activate_product',
@@ -658,29 +819,201 @@ void main() {
       ], allowInComments: true);
     });
 
-    test('no source performs any mutation on the client', () {
+    test('no source performs a table mutation on the client', () {
+      // `audit_logs` included: every write RPC inserts its own audit row inside the
+      // same transaction, and a client that added one would be recording an event
+      // it cannot attest to.
       _expectAbsent(productSources, <String>[
         '.insert(',
         '.update(',
         '.upsert(',
         '.delete(',
+        "'audit_logs'",
+        'auditLogs.insert',
       ], allowInComments: true);
     });
 
-    test('the repository interface exposes reads only', () {
+    test('the repository interface exposes three reads and three writes', () {
       final File repository = productSources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_repository.dart'),
+        (File f) => f.path.endsWith('/vendor_product_repository.dart'),
       );
       final String src = code(repository);
 
-      // Three methods, all reads.
-      final RegExp methods = RegExp(r'Future<ReadResult<[^>]+>*>?\s+(\w+)\(');
-      final Set<String> names = methods
-          .allMatches(src)
-          .map((RegExpMatch m) => m.group(1)!)
-          .toSet();
+      final RegExp reads = RegExp(r'Future<ReadResult<[^>]+>*>?\s+(\w+)\(');
+      expect(
+        reads.allMatches(src).map((RegExpMatch m) => m.group(1)!).toSet(),
+        <String>{'products', 'productDetail', 'assignedRetailers'},
+      );
 
-      expect(names, <String>{'products', 'productDetail', 'assignedRetailers'});
+      final RegExp writes = RegExp(
+        r'Future<VendorProductWriteResult<[^>]+>>\s+(\w+)\(',
+      );
+      expect(
+        writes.allMatches(src).map((RegExpMatch m) => m.group(1)!).toSet(),
+        <String>{'createProduct', 'updateProduct', 'setProductStatus'},
+        reason:
+            'exactly three writes, so no delete or assignment method can appear '
+            'without changing this file',
+      );
+
+      // No fourth spelling of a mutation, whatever its return type.
+      for (final String forbidden in <String>[
+        'deleteProduct',
+        'removeProduct',
+        'archiveProduct',
+        'assignRetailer',
+        'unassignRetailer',
+        'withdrawFromRetailer',
+        'setAssignmentStatus',
+        'uploadProductImage',
+      ]) {
+        expect(
+          src.contains(forbidden),
+          isFalse,
+          reason: 'the repository declares $forbidden',
+        );
+      }
+    });
+
+    test('the edit request type has no code and no status field', () {
+      // The type is the enforcement: a request object with no product-code field
+      // cannot send one, whatever a caller intends.
+      final String src = code(
+        productSources.firstWhere(
+          (File f) => f.path.endsWith('/vendor_product_edit.dart'),
+        ),
+      );
+
+      for (final String field in <String>[
+        'productCode',
+        'status',
+        'organizationId',
+        'vendorId',
+        'createdBy',
+      ]) {
+        expect(
+          src.contains('this.$field'),
+          isFalse,
+          reason: 'VendorProductEdit carries a $field field',
+        );
+      }
+      for (final String field in <String>[
+        'productName',
+        'barcode',
+        'brand',
+        'description',
+      ]) {
+        expect(src, contains('this.$field'));
+      }
+    });
+
+    test('the create request type has no status and no tenant field', () {
+      final String src = code(
+        productSources.firstWhere(
+          (File f) => f.path.endsWith('/vendor_product_draft.dart'),
+        ),
+      );
+
+      for (final String field in <String>[
+        'status',
+        'organizationId',
+        'vendorId',
+        'createdBy',
+        'profileId',
+        'price',
+        'stock',
+        'imageUrl',
+        'rewardValue',
+      ]) {
+        expect(
+          src.contains('this.$field'),
+          isFalse,
+          reason: 'VendorProductDraft carries a $field field',
+        );
+      }
+    });
+
+    test('a barcode is text everywhere, and never a number', () {
+      // `int` would drop a leading zero and `double` cannot hold a 14-digit GTIN
+      // exactly, so either would silently change what a barcode means.
+      for (final File file in productSources) {
+        final String src = code(file);
+        for (final RegExp pattern in <RegExp>[
+          RegExp(r'int\??\s+barcode'),
+          RegExp(r'double\??\s+barcode'),
+          RegExp(r'num\??\s+barcode'),
+          RegExp(r'int\.parse\(\s*\w*[Bb]arcode'),
+          RegExp(r'int\.tryParse\(\s*\w*[Bb]arcode'),
+          RegExp(r'double\.parse\(\s*\w*[Bb]arcode'),
+        ]) {
+          expect(
+            pattern.hasMatch(src),
+            isFalse,
+            reason: '${file.path} treats a barcode as a number',
+          );
+        }
+      }
+    });
+
+    test('a status is never assembled outside the two enums', () {
+      // The request enum is the only place either token is written, and it holds
+      // exactly two members — so the response enum's forward-compatibility
+      // `unknown` can never reach the wire.
+      final String src = code(
+        productSources.firstWhere(
+          (File f) => f.path.endsWith('/vendor_product_status_change.dart'),
+        ),
+      );
+      expect(src, contains("activate('ACTIVE')"));
+      expect(src, contains("deactivate('INACTIVE')"));
+      expect(
+        src.contains("'DELETED'") || src.contains("'ARCHIVED'"),
+        isFalse,
+        reason: 'neither is a status in this schema',
+      );
+    });
+
+    test('the duplicate-literal dependency lives in exactly one file', () {
+      // The deployed contract discriminates a duplicate product code from a
+      // duplicate barcode by one of two fixed message literals and by nothing else.
+      // Matching them is unavoidable; matching them in more than one place is not.
+      final Iterable<File> matchers = productSources.where(
+        (File f) => code(f).contains('already exists'),
+      );
+
+      expect(matchers.map((File f) => f.path.split('/').last).toSet(), <String>{
+        // Where the two backend literals are matched, to derive a field key.
+        'vendor_product_write_parsers.dart',
+        // Where this application's OWN sentences for those field keys live. Neither
+        // is a backend string.
+        'vendor_product_input.dart',
+        // The screen wording for a duplicate the backend did not attribute.
+        'vendor_product_copy.dart',
+      });
+    });
+
+    test('no backend message text is rendered', () {
+      // A presentation file may not read an error's message under any spelling.
+      final Iterable<File> presentation = productSources.where(
+        (File f) => f.path.contains('/presentation/'),
+      );
+      expect(presentation, isNotEmpty);
+
+      for (final File file in presentation) {
+        final String src = code(file);
+        for (final String forbidden in <String>[
+          '.message',
+          'error.toString',
+          'PostgrestException',
+          'AuthException',
+        ]) {
+          expect(
+            src.contains(forbidden),
+            isFalse,
+            reason: '${file.path} reaches for backend error text',
+          );
+        }
+      }
     });
   });
 
@@ -838,7 +1171,7 @@ void main() {
 
     test('an inactive assignment is never called currently assigned', () {
       final File copy = productSources.firstWhere(
-        (File f) => f.path.endsWith('vendor_product_copy.dart'),
+        (File f) => f.path.endsWith('/vendor_product_copy.dart'),
       );
       // Executable source only: this file's doc comment states the very rule
       // it enforces, and a scan that could not tell the two apart would force
@@ -850,6 +1183,37 @@ void main() {
       expect(src.contains('Retailers currently assigned'), isFalse);
     });
   });
+}
+
+/// The source of the function or getter whose declaration starts with [signature],
+/// up to its closing brace.
+///
+/// Used so a payload assertion reads one invoker's own body rather than the whole
+/// file: with three invokers in one place, a `contains` over the file would pass
+/// because *some* invoker sends a parameter, which is exactly the mistake these
+/// tests exist to catch.
+String _bodyOf(String source, String signature) {
+  final int start = source.indexOf(signature);
+  expect(
+    start,
+    greaterThanOrEqualTo(0),
+    reason: 'no declaration for $signature',
+  );
+
+  int depth = 0;
+  bool opened = false;
+  for (int i = start; i < source.length; i++) {
+    if (source[i] == '{') {
+      depth++;
+      opened = true;
+    } else if (source[i] == '}') {
+      depth--;
+      if (opened && depth == 0) {
+        return source.substring(start, i + 1);
+      }
+    }
+  }
+  fail('unterminated declaration for $signature');
 }
 
 /// Fails if any [needle] appears in executable source.

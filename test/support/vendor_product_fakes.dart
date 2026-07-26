@@ -2,12 +2,17 @@ import 'dart:async';
 
 import 'package:sale_reward/core/errors/failure.dart';
 import 'package:sale_reward/core/result/read_result.dart';
+import 'package:sale_reward/features/products/data/datasources/vendor_product_write_rpc_data_source.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assigned_retailer.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assignment_status.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_draft.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_edit.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_status.dart';
+import 'package:sale_reward/features/products/domain/entities/vendor_product_status_change.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_summary.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
+import 'package:sale_reward/features/products/domain/repositories/vendor_product_write_result.dart';
 import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_status.dart';
 
 /// A hand-written [VendorProductRepository] fake.
@@ -18,6 +23,11 @@ import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_s
 /// nothing beside it — ever leaves the client, and [callLog] is how it proves
 /// the assignment read is never issued for a product the detail read could not
 /// return.
+///
+/// The write half records the same way. [submittedDrafts], [submittedEdits] and
+/// [submittedStatusChanges] are how a test proves the exact payload — and, just
+/// as importantly, that a product code never appears in an edit and a status
+/// never appears in either.
 class FakeVendorProductRepository implements VendorProductRepository {
   ReadResult<List<VendorProductSummary>> productsResult =
       ReadSuccess<List<VendorProductSummary>>(productCatalogueSummaries);
@@ -35,6 +45,11 @@ class FakeVendorProductRepository implements VendorProductRepository {
     decafProductUuid: decafDetail,
     retiredProductUuid: retiredDetail,
     unassignedProductUuid: unassignedDetail,
+    // The row a canonical read-after-create returns. Present from the start
+    // because the fake does not simulate storage: what matters to these tests is
+    // that the client asks the backend what it stored rather than assembling a
+    // product from the form.
+    createdProductUuid: createdDetail,
   };
 
   /// When set, every assignment read answers this.
@@ -156,6 +171,137 @@ class FakeVendorProductRepository implements VendorProductRepository {
     );
   }
 
+  // -- the write half --------------------------------------------------------
+
+  /// Every create payload, in order. A test asserts the five fields and the
+  /// absence of anything else.
+  final List<VendorProductDraft> submittedDrafts = <VendorProductDraft>[];
+
+  /// Every edit payload, paired with the id it addressed.
+  final List<({String productId, VendorProductEdit edit})> submittedEdits =
+      <({String productId, VendorProductEdit edit})>[];
+
+  /// Every status request, paired with the id it addressed.
+  final List<({String productId, VendorProductStatusChange change})>
+  submittedStatusChanges =
+      <({String productId, VendorProductStatusChange change})>[];
+
+  /// When set, every create answers this. Otherwise a create succeeds and
+  /// returns [createdProductUuid].
+  VendorProductWriteResult<String>? createResult;
+
+  /// When set, every edit answers this. Otherwise an edit succeeds.
+  VendorProductWriteResult<void>? updateResult;
+
+  /// When set, every status change answers this. Otherwise it succeeds.
+  VendorProductWriteResult<void>? statusResult;
+
+  /// Holds each create pending until [completeCreate], so a double submit and a
+  /// stale response are deterministic rather than a sleep-and-hope.
+  bool manualCreate = false;
+  final List<Completer<VendorProductWriteResult<String>>> _pendingCreates =
+      <Completer<VendorProductWriteResult<String>>>[];
+
+  int get pendingCreateCount => _pendingCreates.length;
+
+  void completeCreate([VendorProductWriteResult<String>? override]) {
+    _pendingCreates
+        .removeAt(0)
+        .complete(
+          override ??
+              createResult ??
+              const VendorProductWriteSuccess<String>(createdProductUuid),
+        );
+  }
+
+  /// The same control for the edit write.
+  bool manualUpdate = false;
+  final List<Completer<VendorProductWriteResult<void>>> _pendingUpdates =
+      <Completer<VendorProductWriteResult<void>>>[];
+
+  int get pendingUpdateCount => _pendingUpdates.length;
+
+  void completeUpdate([VendorProductWriteResult<void>? override]) {
+    _pendingUpdates
+        .removeAt(0)
+        .complete(
+          override ??
+              updateResult ??
+              const VendorProductWriteSuccess<void>(null),
+        );
+  }
+
+  /// And for the status write.
+  bool manualStatus = false;
+  final List<Completer<VendorProductWriteResult<void>>> _pendingStatus =
+      <Completer<VendorProductWriteResult<void>>>[];
+
+  int get pendingStatusCount => _pendingStatus.length;
+
+  void completeStatus([VendorProductWriteResult<void>? override]) {
+    _pendingStatus
+        .removeAt(0)
+        .complete(
+          override ??
+              statusResult ??
+              const VendorProductWriteSuccess<void>(null),
+        );
+  }
+
+  @override
+  Future<VendorProductWriteResult<String>> createProduct(
+    VendorProductDraft draft,
+  ) {
+    submittedDrafts.add(draft);
+    callLog.add('create');
+    if (manualCreate) {
+      final Completer<VendorProductWriteResult<String>> completer =
+          Completer<VendorProductWriteResult<String>>();
+      _pendingCreates.add(completer);
+      return completer.future;
+    }
+    return Future<VendorProductWriteResult<String>>.value(
+      createResult ??
+          const VendorProductWriteSuccess<String>(createdProductUuid),
+    );
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> updateProduct(
+    String productId,
+    VendorProductEdit edit,
+  ) {
+    submittedEdits.add((productId: productId, edit: edit));
+    callLog.add('update');
+    if (manualUpdate) {
+      final Completer<VendorProductWriteResult<void>> completer =
+          Completer<VendorProductWriteResult<void>>();
+      _pendingUpdates.add(completer);
+      return completer.future;
+    }
+    return Future<VendorProductWriteResult<void>>.value(
+      updateResult ?? const VendorProductWriteSuccess<void>(null),
+    );
+  }
+
+  @override
+  Future<VendorProductWriteResult<void>> setProductStatus(
+    String productId,
+    VendorProductStatusChange change,
+  ) {
+    submittedStatusChanges.add((productId: productId, change: change));
+    callLog.add('status');
+    if (manualStatus) {
+      final Completer<VendorProductWriteResult<void>> completer =
+          Completer<VendorProductWriteResult<void>>();
+      _pendingStatus.add(completer);
+      return completer.future;
+    }
+    return Future<VendorProductWriteResult<void>>.value(
+      statusResult ?? const VendorProductWriteSuccess<void>(null),
+    );
+  }
+
   ReadResult<VendorProductDetail?> _detailFor(String productId) =>
       detailResult ??
       ReadSuccess<VendorProductDetail?>(knownDetails[productId]);
@@ -184,6 +330,14 @@ class FakeVendorProductRepository implements VendorProductRepository {
 //   * an ACTIVE product that has never been assigned to anybody, so the empty
 //     assignment state is distinguishable from a foreign id.
 // ---------------------------------------------------------------------------
+
+/// The id `create_vendor_product` answers with in these tests, and the product
+/// the canonical detail read then returns for it.
+///
+/// Deliberately a *different* id from every seeded product: a create adds a row,
+/// and a fixture that reused an existing id would let a test pass while the client
+/// navigated to the wrong product.
+const String createdProductUuid = '4b8c9d0e-1f23-4456-8789-a0b1c2d3e4f5';
 
 const String espressoProductUuid = '7a1b2c3d-4e5f-4061-8273-94a5b6c7d8e9';
 const String decafProductUuid = '8b2c3d4e-5f60-4172-8384-a5b6c7d8e9f0';
@@ -332,6 +486,29 @@ final VendorProductDetail unassignedDetail = VendorProductDetail(
   activeAssignmentCount: 0,
   createdAt: unassignedCreatedAt,
   updatedAt: unassignedUpdatedAt,
+);
+
+final DateTime createdProductCreatedAt = DateTime.utc(2026, 7, 1, 9, 0);
+
+/// The canonical row a freshly created product reads back as.
+///
+/// Its values are deliberately the **normalized** form of what a test types into
+/// the create form — upper-cased code, collapsed name, separator-free barcode — so
+/// a screen that echoed the submitted text instead of re-reading would visibly
+/// differ. `ACTIVE` because the function inserts that unconditionally, and both
+/// assignment counts are `0` because a create writes no assignment row.
+final VendorProductDetail createdDetail = VendorProductDetail(
+  productId: createdProductUuid,
+  productCode: 'FLAT-WHITE-500',
+  barcode: '5012345678924',
+  productName: 'Flat White Blend 500g',
+  brand: 'Harvest Roasters',
+  description: 'A milk-forward blend.',
+  status: VendorProductStatus.active,
+  assignmentCount: 0,
+  activeAssignmentCount: 0,
+  createdAt: createdProductCreatedAt,
+  updatedAt: createdProductCreatedAt,
 );
 
 /// The catalogue in the backend's `created_at desc, product_id desc` order —
@@ -502,6 +679,38 @@ Map<String, Object?> assignedRetailerRow({
   'assigned_at': assignedAt,
   'assignment_updated_at': assignmentUpdatedAt,
 };
+
+/// A write data source whose invokers must never be reached.
+///
+/// For tests that stand the **real** repository up to exercise a *read* path: the
+/// constructor requires a write source, and one that throws is how those tests
+/// keep proving that a read issues no write. [reason] appears in the failure so a
+/// surprise names which operation fired.
+VendorProductWriteRpcDataSource unusedVendorProductWrites() {
+  Never boom(String reason) =>
+      throw StateError('a read path invoked the $reason write RPC');
+
+  return VendorProductWriteRpcDataSource(
+    create:
+        ({
+          required String productCode,
+          required String productName,
+          required String? barcode,
+          required String? brand,
+          required String? description,
+        }) async => boom('create'),
+    update:
+        ({
+          required String productId,
+          required String productName,
+          required String? barcode,
+          required String? brand,
+          required String? description,
+        }) async => boom('update'),
+    setStatus: ({required String productId, required String status}) async =>
+        boom('status'),
+  );
+}
 
 /// A read that failed the way an unreadable body does.
 ReadResult<T> unavailableProductRead<T>() =>

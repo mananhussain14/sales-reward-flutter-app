@@ -602,24 +602,28 @@ void main() {
       expect(find.text(VendorProductCopy.staleListTitle), findsOneWidget);
     });
 
-    testWidgets('no write affordance exists anywhere', (
+    testWidgets('the only write affordance is Add product', (
       WidgetTester tester,
     ) async {
-      // The write RPCs exist on the backend and this milestone does not call
-      // them. An affordance, even a disabled one, would promise a feature that
-      // has not been built.
+      // The catalogue can create. It cannot edit, change a status, delete, assign
+      // or withdraw — those either belong to one product's own screen or do not
+      // exist at all — and an affordance, even a disabled one, would promise a
+      // capability that is not there.
       await onCatalogue(tester);
+
+      expect(
+        find.widgetWithText(SrButton, VendorProductCopy.addProduct),
+        findsOneWidget,
+      );
 
       // Scoped to *controls*. The section prose legitimately uses words like
       // "withdrawn" to describe what an inactive assignment is, and a Retailer
       // status pill legitimately reads "Deactivated" — describing a state is not
       // offering an action. What must not exist is something a reader can press.
       for (final String forbidden in <String>[
-        'Add product',
-        'New product',
-        'Create product',
         'Edit',
         'Delete',
+        'Remove',
         'Activate',
         'Deactivate',
         'Assign',
@@ -633,7 +637,7 @@ void main() {
           reason: 'the catalogue offers a "$forbidden" control',
         );
       }
-      // And no press target beyond the cards, the refresh and the filters.
+      // And no press target beyond the cards, the refresh, the filters and Add.
       for (final SrButton button in tester.widgetList<SrButton>(
         find.byType(SrButton),
       )) {
@@ -643,6 +647,7 @@ void main() {
             VendorProductCopy.refreshing,
             VendorProductCopy.clearFilters,
             VendorProductCopy.filterAll,
+            VendorProductCopy.addProduct,
             'Active',
             'Inactive',
           ].contains(button.label),
@@ -943,23 +948,46 @@ void main() {
       expect(find.text('Showing 1 of 4'), findsOneWidget);
     });
 
-    testWidgets('no write affordance exists on the detail either', (
+    testWidgets('the detail offers Edit and one status action, and no more', (
       WidgetTester tester,
     ) async {
       await onEspresso(tester);
 
-      // Scoped to *controls*, for the same reason: "Retailer: Deactivated" is a
-      // status this screen must state, and the assignment section's description
-      // must be free to say that withdrawn assignments are included.
+      expect(
+        find.widgetWithText(SrButton, VendorProductCopy.edit),
+        findsOneWidget,
+      );
+      // An ACTIVE product offers Deactivate, and never both directions at once.
+      expect(
+        find.widgetWithText(SrButton, VendorProductCopy.deactivate),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(SrButton, VendorProductCopy.activate),
+        findsNothing,
+      );
+
+      // Scoped to *controls*, for the same reason as the catalogue: "Retailer:
+      // Deactivated" is a status this screen must state, and the assignment
+      // section's description must be free to say that withdrawn assignments are
+      // included.
+      //
+      // There is no deletion anywhere in this product — no control, no action, no
+      // RPC and no `DELETE` in the schema — and assignment writes are a separate
+      // milestone on a separate permission, so the assigned-Retailer section stays
+      // read-only.
       for (final String forbidden in <String>[
-        'Edit product',
         'Delete',
-        'Deactivate',
-        'Activate',
+        'Delete product',
+        'Remove',
+        'Archive',
+        'Assign',
         'Assign to Retailer',
         'Withdraw',
+        'Unassign',
         'Upload image',
         'Set price',
+        'Add product',
       ]) {
         expect(
           find.widgetWithText(SrButton, forbidden),
@@ -967,7 +995,7 @@ void main() {
           reason: 'the detail offers a "$forbidden" control',
         );
       }
-      // The only controls on a product detail are navigation.
+      // Navigation, Edit, and the one status action. Nothing else.
       for (final SrButton button in tester.widgetList<SrButton>(
         find.byType(SrButton),
       )) {
@@ -975,6 +1003,8 @@ void main() {
           <String>[
             VendorProductCopy.backToList,
             VendorProductCopy.viewRetailer,
+            VendorProductCopy.edit,
+            VendorProductCopy.deactivate,
           ].contains(button.label),
           isTrue,
           reason: 'an unexpected control "${button.label}" is on the detail',
@@ -1446,6 +1476,7 @@ void main() {
                 return <Map<String, Object?>>[assignedRetailerRow()];
               },
             ),
+            writes: unusedVendorProductWrites(),
           );
 
       await pumpAppInRole(
@@ -1488,6 +1519,7 @@ void main() {
                 return const <Object?>[];
               },
             ),
+            writes: unusedVendorProductWrites(),
           );
 
       await pumpAppInRole(
