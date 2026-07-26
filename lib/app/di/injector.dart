@@ -16,6 +16,9 @@ import '../../features/dashboard/domain/repositories/vendor_dashboard_repository
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
 import '../../features/products/domain/repositories/vendor_product_repository.dart';
+import '../../features/profile/data/datasources/vendor_profile_rpc_data_source.dart';
+import '../../features/profile/data/repositories/supabase_vendor_profile_repository.dart';
+import '../../features/profile/domain/repositories/vendor_profile_repository.dart';
 import '../../features/receipts/data/datasources/receipt_rpc_data_source.dart';
 import '../../features/receipts/data/datasources/submit_receipt_function_client.dart';
 import '../../features/receipts/data/repositories/supabase_receipt_repository.dart';
@@ -157,6 +160,24 @@ Future<void> configureDependencies() async {
       rpc: VendorDashboardRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor company/profile self-read. One RPC, zero arguments, and no table
+  // access at all — the self predicate (`user_id = auth.uid()`), the tenant
+  // predicate, the display-name composition, the ACTIVE-role filter and the role
+  // ordering all happen in SQL. `authenticated` does hold SELECT on `profiles`,
+  // `organization_members`, `member_roles` and `roles`, so a direct read would
+  // partly *work*; it is not done because reassembling "who am I" in Dart would
+  // put a second definition of the composed name into a client free to drift from
+  // the database and from the web — and because the caller's own row is not
+  // identifiable in the directory read without matching a locally composed name.
+  //
+  // The company half needs nothing here: the organization name comes from the
+  // PortalContext this graph already resolves.
+  getIt.registerLazySingleton<VendorProfileRepository>(
+    () => SupabaseVendorProfileRepository(
+      rpc: VendorProfileRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -209,6 +230,7 @@ void registerTestDependencies({
   VendorProductRepository? vendorProductRepository,
   VendorAuditLogRepository? vendorAuditLogRepository,
   VendorDashboardRepository? vendorDashboardRepository,
+  VendorProfileRepository? vendorProfileRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -248,6 +270,11 @@ void registerTestDependencies({
   if (vendorDashboardRepository != null) {
     getIt.registerLazySingleton<VendorDashboardRepository>(
       () => vendorDashboardRepository,
+    );
+  }
+  if (vendorProfileRepository != null) {
+    getIt.registerLazySingleton<VendorProfileRepository>(
+      () => vendorProfileRepository,
     );
   }
 }

@@ -13,6 +13,7 @@ import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owne
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_detail_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_products_page.dart';
+import '../../features/profile/presentation/vendor/pages/vendor_company_profile_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
@@ -191,7 +192,7 @@ GoRoute _placeholder({
 
 RouteBase _vendorRoutes(SessionBloc bloc) {
   // Every Vendor destination that has a route now has a real page. The remaining
-  // six are "Soon" entries in the navigation model and have no route at all, so
+  // five are "Soon" entries in the navigation model and have no route at all, so
   // there is no placeholder page left to name a role for here.
   return _roleShell(
     bloc: bloc,
@@ -369,6 +370,36 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
         path: VendorNavigation.auditLogs,
         builder: (BuildContext context, GoRouterState state) =>
             const VendorAuditLogsPage(),
+      ),
+      // The Vendor company and administrator profile, on the Settings
+      // destination — which was a "Soon" placeholder until this milestone and now
+      // has a route. Backed by get_my_vendor_profile(), which takes ZERO
+      // arguments — no auth user id, profile id, membership id, organization id,
+      // tenant id, role selector, permission selector, profile selector,
+      // organization selector, status or date range — and derives BOTH the person
+      // (from auth.uid()) and the Vendor (through get_vendor_super_admin_context()
+      // with the usual lowest-organization-id tie-break) in SQL. It requires
+      // Vendor Super Admin authority AND RBAC_READ, and refuses with one generic
+      // 42501 when either is missing.
+      //
+      // TWO SOURCES, COMPOSED HERE. The administrator's display name and active
+      // role names come from that RPC and from nowhere else; the Vendor
+      // organization NAME comes from the trusted session context this shell
+      // already carries — never from the RPC, which deliberately does not return
+      // it, and never from a direct read of `organizations`.
+      //
+      // READ-ONLY, and there is no detail route: neither half is addressable, so
+      // nothing on this screen holds an address for anything. There is no company
+      // edit, profile edit, avatar upload, password screen or organization
+      // switcher — none of them exists anywhere in this product, web or mobile.
+      //
+      // NOT nested, like the Dashboard and Audit Logs routes — there is nothing
+      // to nest. `indexForLocation` keeps the Settings destination selected on
+      // this exact path.
+      GoRoute(
+        path: VendorNavigation.settings,
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorCompanyProfilePage(),
       ),
     ],
   );
