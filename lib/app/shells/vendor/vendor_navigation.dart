@@ -20,7 +20,10 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** Five destinations are implemented. **Retailers** is backed
+/// **Phase note.** All six destinations are implemented. **Dashboard** is backed
+/// by `get_vendor_admin_dashboard_summary()`
+/// (`docs/flutter-vendor-dashboard-summary.md`), a zero-argument read returning
+/// exactly one row of four `bigint` counts; **Retailers** is backed
 /// by `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
 /// `list_vendor_retailer_shops(uuid)` (`docs/flutter-vendor-retailer-reads.md`);
 /// **Users** by `list_vendor_users()` and `get_vendor_user_detail(uuid)`
@@ -34,11 +37,12 @@ import '../../navigation/role_destination.dart';
 /// (`docs/flutter-vendor-audit-log-reads.md`), which is list-only — there is no
 /// audit detail read to open. All five are read-only.
 ///
-/// **Dashboard** remains a placeholder: `get_vendor_admin_dashboard_summary()`
-/// is the one outstanding Vendor contract. Every other Vendor destination is
-/// still phase 3 in the feature matrix and conditional on open question Q4 —
-/// whether Vendor administration belongs on mobile at all — and none of them has
-/// a mobile backend contract yet, so each renders a "Soon" entry.
+/// The remaining six Vendor destinations are still phase 3 in the feature matrix
+/// and conditional on open question Q4 — whether Vendor administration belongs on
+/// mobile at all — and none of them has a mobile backend contract yet, so each
+/// renders a "Soon" entry. That is also why the Dashboard's quick links reach
+/// only the six routes above: a shortcut to an unbuilt module would advertise a
+/// capability that does not exist.
 abstract final class VendorNavigation {
   /// Every Vendor route lives under this prefix and no other role's does.
   static const String prefix = '/vendor';

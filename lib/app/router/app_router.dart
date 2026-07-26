@@ -199,6 +199,22 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
     shellBuilder: (Widget child, String location, PortalContext context) =>
         VendorShell(location: location, portalContext: context, child: child),
     routes: <RouteBase>[
+      // V-01. Backed by get_vendor_admin_dashboard_summary(), which takes ZERO
+      // arguments — no identity, tenant, organization, role, permission, status
+      // or date range — and derives the Vendor from auth.uid() in SQL, applying
+      // the same lowest-organization-id tie-break every other Vendor RPC applies.
+      // It requires Vendor Super Admin authority AND all three of the read
+      // permissions its four counted relations already require, and refuses the
+      // whole summary with one generic 42501 when any is missing.
+      //
+      // READ-ONLY, and there is no detail route: the contract returns four
+      // scalars and nothing addressable, so no figure on this screen holds an
+      // address for anything. The organization NAME on the page comes from the
+      // trusted session context this shell already carries — never from the
+      // summary, and never from a direct read of `organizations`.
+      //
+      // NOT nested, like the Audit Logs route — there is nothing to nest.
+      // `indexForLocation` keeps the Dashboard destination selected on this path.
       GoRoute(
         path: VendorNavigation.dashboard,
         builder: (BuildContext context, GoRouterState state) =>
