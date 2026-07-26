@@ -77,6 +77,7 @@ void main() {
           return assignmentBody;
         },
       ),
+      writes: unusedVendorProductWrites(),
     );
   }
 

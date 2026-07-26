@@ -8,6 +8,7 @@ import '../../../../../core/widgets/widgets.dart';
 import '../../../../auth/domain/entities/portal_kind.dart';
 import '../../../domain/entities/vendor_product_summary.dart';
 import '../cubit/vendor_product_list_cubit.dart';
+import '../widgets/vendor_product_add_button.dart';
 import '../widgets/vendor_product_card.dart';
 import '../widgets/vendor_product_copy.dart';
 import '../widgets/vendor_product_filter_bar.dart';
@@ -21,12 +22,21 @@ import '../widgets/vendor_product_filter_bar.dart';
 /// time renders the rows already held rather than issuing a second read, and
 /// coming back from a product's detail screen does not reload the catalogue.
 ///
-/// ## Read-only, and it does not pretend otherwise
+/// ## One write affordance, and only one
 ///
-/// There is no create, edit, activate, deactivate, assign or import action here,
-/// and no disabled one either. The write RPCs exist on the backend, but this
-/// milestone does not call them, and an affordance that cannot act is a promise
-/// about a feature that has not been built.
+/// **Add product**, which opens the create form. There is no edit, activate or
+/// deactivate action *here* — those belong to one product and live on its own
+/// screen, where the product they act on is visible. There is no delete action
+/// anywhere, because no delete control, RPC or `DELETE` statement exists in this
+/// product. There is no assign, withdraw or bulk-assignment action, because
+/// assignment writes are a separate milestone on a separate permission. And there is
+/// no import, upload, price, stock or reward affordance, because none of those exists
+/// either. No disabled affordance is offered for any of them: a control that cannot
+/// act is a promise about a feature that has not been built.
+///
+/// **Add product is a presentation guard and nothing more.** Whether this caller may
+/// create one is decided in SQL, on the call, by a permission this client never names
+/// — so the button's presence is a statement about the route, not about authority.
 ///
 /// ## Refreshing
 ///
@@ -76,6 +86,10 @@ class VendorProductsPage extends StatelessWidget {
                       onPressed: state.isRefreshing ? null : cubit.refresh,
                     ),
                   ),
+                  // The header lays its actions out in a `Wrap`, so they space and
+                  // reflow themselves — a phone stacks them, a tablet keeps them on
+                  // one row, and neither overflows.
+                  const VendorProductAddButton(),
                 ],
               ),
               const SizedBox(height: SrSpacing.xxl),
@@ -181,14 +195,16 @@ class _Body extends StatelessWidget {
       return SrFailureView(failure: state.failure!, onRetry: cubit.load);
     }
 
-    // A Vendor with no products. A real, reachable state, and worded as a fact
-    // rather than as an invitation to add one — this screen cannot.
+    // A Vendor with no products. A real, reachable state — and now the one place
+    // where the invitation to add one is a fact rather than a promise, because this
+    // screen can.
     if (state.isEmpty) {
       return const SrEmptyState(
         icon: Icons.inventory_2_outlined,
         tone: SrTone.slate,
         title: VendorProductCopy.emptyTitle,
         description: VendorProductCopy.emptyBody,
+        action: VendorProductAddButton(),
       );
     }
 

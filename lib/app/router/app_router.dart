@@ -11,7 +11,9 @@ import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/unavailable_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
+import '../../features/products/presentation/vendor/pages/vendor_product_create_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_detail_page.dart';
+import '../../features/products/presentation/vendor/pages/vendor_product_edit_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_products_page.dart';
 import '../../features/profile/presentation/vendor/pages/vendor_company_profile_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
@@ -309,33 +311,65 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
           ),
         ],
       ),
-      // V-12, V-12a and V-16a. Backed by list_vendor_products(),
-      // get_vendor_product_detail(uuid) and
-      // list_vendor_product_assigned_retailers(uuid). The first takes no
-      // arguments at all; the other two take the opaque vendor_products.id and
-      // nothing beside it, and all three derive the Vendor from auth.uid() in
-      // SQL and match the product on BOTH its own id and that derived Vendor.
+      // V-12, V-12a, V-16a, V-13 and V-14. Backed by list_vendor_products(),
+      // get_vendor_product_detail(uuid),
+      // list_vendor_product_assigned_retailers(uuid),
+      // create_vendor_product(text, text, text, text, text),
+      // update_vendor_product(uuid, text, text, text, text) and
+      // set_vendor_product_status(uuid, text).
       //
-      // READ-ONLY. The write RPCs (V-13 create/update, V-14 activate/deactivate,
-      // V-16 assign/withdraw) exist and are deliberately not called: their
-      // duplicate code-vs-barcode error is discriminated by an English message
-      // substring, which Flutter must not re-implement (contract fix #3), and
-      // their `void` returns hide "changed" from "already so" (fix #4). No
-      // write affordance is rendered, not even a disabled one.
+      // Every one of the six derives the Vendor from auth.uid() through
+      // get_vendor_super_admin_context() and accepts NO organization, tenant,
+      // auth-user, profile, membership, actor, role, permission or audit-metadata
+      // argument — there is no parameter for one. The reads take nothing or one
+      // opaque vendor_products.id; the writes take product fields plus, for two of
+      // them, that same id. Every id is matched on BOTH its own value and the
+      // derived Vendor, so a foreign id selects nothing and is refused identically
+      // to "you are not authorized".
+      //
+      // The three writes are gated on a DIFFERENT permission from the reads, which
+      // is enforced entirely in SQL: this client neither knows, sends nor displays
+      // either code, and both refusals arrive as one generic denial. The route
+      // guard below is a presentation guard only.
+      //
+      // create_vendor_product takes no initial status (a new product is ACTIVE,
+      // decided by the function) and update_vendor_product takes neither the
+      // product code (immutable, and enforced by a trigger as well) nor the status.
+      // A status change is set_vendor_product_status alone.
+      //
+      // NO ASSIGNMENT WRITE. V-16 (assign/withdraw) exists on a separate permission
+      // and is a separate milestone; neither RPC is named anywhere in this
+      // application, and the assigned-Retailer section stays read-only. Product
+      // create, edit and status touch no assignment row — not even its updated_at.
+      //
+      // NO DELETE, anywhere: no control, no action, no RPC, and no DELETE statement
+      // exists in the schema.
       //
       // An assignment row cross-links to the Retailer detail route above using
       // `relationship_id` — the same vendor_retailers.id those screens already
       // accept, which is why the assignment contract returns it. A null
       // relationship_id is a real state and is simply not navigable.
       //
-      // Nested for the same reason the other three details are: a `go` into it
-      // stacks the catalogue beneath, so browser back returns to a list that is
-      // still loaded.
+      // Nested for the same reason the other three details are: a `go` into any of
+      // them stacks the catalogue beneath, so browser back returns to a list that
+      // is still loaded.
       GoRoute(
         path: VendorNavigation.products,
         builder: (BuildContext context, GoRouterState state) =>
             const VendorProductsPage(),
         routes: <RouteBase>[
+          // DECLARED BEFORE the `:productId` route, and the order is load-bearing.
+          // go_router matches in declaration order, so with these two reversed
+          // `/vendor/products/new` would bind `productId = 'new'` and open the
+          // detail screen for a product id that is not a uuid — reaching the
+          // non-leaking "not available" state instead of the create form. `new` is
+          // safe as a literal segment precisely because it can never be a uuid, so
+          // no real product id can be shadowed by it.
+          GoRoute(
+            path: 'new',
+            builder: (BuildContext context, GoRouterState state) =>
+                const VendorProductCreatePage(),
+          ),
           GoRoute(
             path: VendorNavigation.productDetailSegment,
             builder: (BuildContext context, GoRouterState state) =>
@@ -347,6 +381,20 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
                   // Vendor's id all reach one non-leaking state.
                   productId: state.pathParameters['productId'] ?? '',
                 ),
+            routes: <RouteBase>[
+              GoRoute(
+                path: VendorNavigation.productEditSegment,
+                builder: (BuildContext context, GoRouterState state) =>
+                    VendorProductEditPage(
+                      // An ADDRESS and never form data. The screen fills its form
+                      // from get_vendor_product_detail, so nothing in this URL can
+                      // become a value that is saved back; and a malformed id
+                      // reaches the same "not available" state, with no form and
+                      // therefore no reachable write.
+                      productId: state.pathParameters['productId'] ?? '',
+                    ),
+              ),
+            ],
           ),
         ],
       ),

@@ -7,6 +7,7 @@ import '../../../domain/entities/vendor_product_assigned_retailer.dart';
 import '../../../domain/entities/vendor_product_assignment_status.dart';
 import '../../../domain/entities/vendor_product_detail.dart';
 import '../../../domain/repositories/vendor_product_repository.dart';
+import 'vendor_product_write_notice.dart';
 
 part 'vendor_product_detail_state.dart';
 
@@ -62,6 +63,32 @@ part 'vendor_product_detail_state.dart';
 /// cubit created below the route would be unreachable from that listener. And
 /// [open] is idempotent, so a router refresh or a widget rebuild that re-enters
 /// the same product issues no second pair of RPCs.
+///
+/// ## It is also the read-after-write authority
+///
+/// The three write RPCs return `uuid`, `void` and `void`. None of them returns a
+/// product row, deliberately — so after every successful write the canonical
+/// values come from `get_vendor_product_detail` and from nowhere else. This cubit
+/// owns that re-read, through [openCreated] for a create and [refreshDetail] for
+/// an edit or a status change, which keeps three write cubits from each growing
+/// their own copy of it.
+///
+/// Two properties of [refreshDetail] are load-bearing:
+///
+/// * **The loaded product stays on screen throughout.** A refresh is not a
+///   reload: blanking a product to re-read one field would make a saved change
+///   look like a page reset.
+/// * **A refresh that fails does not undo the write.** The change is committed;
+///   only this client's picture of it is stale. That lands in
+///   [VendorProductDetailState.refreshFailure] as a stale-data warning with a
+///   Reload — never as "the save failed", and never as a reason to write again.
+///
+/// **The assignment rows are not re-read.** A product create, edit or status
+/// change touches no assignment row — not even its `updated_at`, which the
+/// backend's own suite asserts — so a second assignment read would spend a call
+/// to learn nothing, and would replace a good answer for reasons unconnected to
+/// it. `assignment_count` and `active_assignment_count` still come from the
+/// freshly-read product row, so nothing here fabricates a count after a write.
 final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
   VendorProductDetailCubit(this._repository)
     : super(const VendorProductDetailState());
@@ -89,6 +116,87 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
       return Future<void>.value();
     }
     return _load(productId);
+  }
+
+  /// Loads a product that has **just been created**, and remembers that it was.
+  ///
+  /// Called by the create cubit the moment `create_vendor_product` returns an id,
+  /// before the router moves to the product's route — so the canonical read is
+  /// already in flight when the detail screen mounts, and that screen's own
+  /// [open] recognises the load as its own and issues nothing.
+  ///
+  /// Deliberately **not** idempotent: a create always names a product this cubit
+  /// has never held, and starting fresh is the only correct thing to do with one.
+  ///
+  /// The notice it sets is what turns "here is a product" into "here is the
+  /// product you just created" — an acknowledgement on the canonical screen, made
+  /// of values the backend returned rather than values that were typed. It
+  /// survives a failed read, which is precisely the case it exists for.
+  Future<void> openCreated(String productId) =>
+      _load(productId, notice: VendorProductWriteNotice.created);
+
+  /// Re-reads the canonical product row in place, after a successful write.
+  ///
+  /// [notice] records which write it followed, so the screen can acknowledge it
+  /// truthfully; passing null keeps whatever notice is already showing, which is
+  /// what the Reload affordance does.
+  ///
+  /// A no-op when nothing is open, when the open product is not on screen, or
+  /// while a refresh is already running — the last of which is the duplicate-tap
+  /// guard for Reload.
+  Future<void> refreshDetail({VendorProductWriteNotice? notice}) async {
+    final String? productId = state.productId;
+    if (productId == null ||
+        state.phase != VendorProductDetailPhase.ready ||
+        state.isRefreshing) {
+      return;
+    }
+
+    final int token = _nextToken();
+
+    emit(
+      state.copyWith(
+        isRefreshing: true,
+        clearRefreshFailure: true,
+        notice: notice,
+        noticeProductId: notice == null ? null : productId,
+      ),
+    );
+
+    final ReadResult<VendorProductDetail?> result = await _repository
+        .productDetail(productId);
+
+    if (isClosed || token != _token) {
+      return;
+    }
+
+    switch (result) {
+      case ReadSuccess<VendorProductDetail?>(:final VendorProductDetail? value):
+        if (value == null) {
+          // The product stopped being addressable between the write and the
+          // re-read. No product write can cause that, so this is somebody else's
+          // change or a session that is no longer what it was — and the one safe
+          // answer is the same non-leaking state a foreign id produces. The stale
+          // row is dropped rather than shown as current, and the notice goes with
+          // it: acknowledging a change to a product that is no longer there would
+          // be the least useful sentence available.
+          emit(
+            state.copyWith(
+              phase: VendorProductDetailPhase.notFound,
+              isRefreshing: false,
+              clearDetail: true,
+              clearNotice: true,
+            ),
+          );
+          return;
+        }
+        emit(state.copyWith(detail: value, isRefreshing: false));
+
+      case ReadFailure<VendorProductDetail?>(:final Failure failure):
+        // The write stands. Only the picture of it is stale, so the product
+        // already on screen is kept and the screen says it may be out of date.
+        emit(state.copyWith(isRefreshing: false, refreshFailure: failure));
+    }
   }
 
   /// Re-runs the whole sequence for the currently open product.
@@ -134,13 +242,21 @@ final class VendorProductDetailCubit extends Cubit<VendorProductDetailState> {
 
   int _nextToken() => ++_token;
 
-  Future<void> _load(String productId) async {
+  Future<void> _load(
+    String productId, {
+    VendorProductWriteNotice? notice,
+  }) async {
     final int token = _nextToken();
 
+    // A whole fresh state, so nothing from the previously open product survives
+    // into this one — including a write notice, which belongs to exactly one
+    // product and is re-supplied here only when this load *is* that product's.
     emit(
       VendorProductDetailState(
         productId: productId,
         phase: VendorProductDetailPhase.loading,
+        notice: notice,
+        noticeProductId: notice == null ? null : productId,
       ),
     );
 

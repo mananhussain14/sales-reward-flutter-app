@@ -33,8 +33,11 @@ class SrTextField extends StatelessWidget {
     this.readOnly = false,
     this.keyboardType,
     this.textInputAction,
+    this.textCapitalization = TextCapitalization.none,
     this.autofillHints,
     this.maxLength,
+    this.minLines,
+    this.maxLines = 1,
     this.onChanged,
     this.onSubmitted,
     this.focusNode,
@@ -64,8 +67,29 @@ class SrTextField extends StatelessWidget {
   final bool readOnly;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
+
+  /// How the soft keyboard capitalizes what is typed.
+  ///
+  /// A *keyboard* behaviour and never a transform: nothing is upper-cased on the
+  /// caller's behalf by this widget, so a field whose stored value is case-folded
+  /// still owns that rule itself.
+  final TextCapitalization textCapitalization;
+
   final List<String>? autofillHints;
   final int? maxLength;
+
+  /// The height the control starts at, in lines.
+  final int? minLines;
+
+  /// The height the control grows to, in lines. `1` — the default — keeps the
+  /// field single-line, which is what every existing caller wants.
+  ///
+  /// A multi-line field passes both: text wraps and the control grows with it
+  /// rather than scrolling a long value out of sight sideways. Newlines survive,
+  /// which matters wherever the value's own formatting is content rather than
+  /// noise — a product description being the case this was added for.
+  final int? maxLines;
+
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final FocusNode? focusNode;
@@ -99,8 +123,11 @@ class SrTextField extends StatelessWidget {
           readOnly: readOnly,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
+          textCapitalization: textCapitalization,
           autofillHints: autofillHints,
           maxLength: maxLength,
+          minLines: minLines,
+          maxLines: maxLines,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
           style: SrTypography.body.copyWith(color: sr.foreground),

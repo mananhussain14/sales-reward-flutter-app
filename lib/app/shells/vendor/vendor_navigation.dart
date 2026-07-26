@@ -35,13 +35,24 @@ import '../../navigation/role_destination.dart';
 /// (`docs/flutter-vendor-role-reads.md`); **Products** by
 /// `list_vendor_products()`, `get_vendor_product_detail(uuid)` and
 /// `list_vendor_product_assigned_retailers(uuid)`
-/// (`docs/flutter-vendor-product-reads.md`); and **Audit Logs** by
+/// (`docs/flutter-vendor-product-reads.md`) — plus, and **only** here, the three
+/// deployed product **writes**: `create_vendor_product(text, text, text, text,
+/// text)`, `update_vendor_product(uuid, text, text, text, text)` and
+/// `set_vendor_product_status(uuid, text)`
+/// (`docs/flutter-vendor-product-writes.md`); and **Audit Logs** by
 /// `list_vendor_audit_logs(p_limit, p_before_occurred_at, p_before_audit_log_id)`
 /// (`docs/flutter-vendor-audit-log-reads.md`), which is list-only — there is no
 /// audit detail read to open; and **Settings** by `get_my_vendor_profile()`
 /// composed with the session's own trusted organization name
 /// (`docs/flutter-vendor-company-profile.md`), a zero-argument self-read
-/// returning exactly one row of two personal fields. All seven are read-only.
+/// returning exactly one row of two personal fields.
+///
+/// Six of the seven are read-only. **Products** is the one destination that also
+/// writes: a product can be created, its four mutable display fields edited, and its
+/// status changed between `ACTIVE` and `INACTIVE`. Product-to-Retailer **assignment**
+/// writes are not part of it — they are gated on a separate permission and remain a
+/// separate milestone — so the assigned-Retailer section stays read-only, and there
+/// is no product deletion anywhere, because none exists in the schema.
 ///
 /// The remaining five Vendor destinations are still phase 3 in the feature matrix
 /// and conditional on open question Q4 — whether Vendor administration belongs on
@@ -158,6 +169,50 @@ abstract final class VendorNavigation {
   /// > its own id and that derived Vendor — so another Vendor's id reaches a
   /// > screen that says the product is not available and nothing else.
   static String productDetailPath(String productId) => '$products/$productId';
+
+  /// The create-a-product form.
+  ///
+  /// **There is no web counterpart.** The web has no `/products/new` route — create
+  /// is an inline form on its catalogue page — so this path is named after what it
+  /// does rather than after a web route it mirrors. A route rather than an inline
+  /// form because a phone cannot show a five-field form and a catalogue at once
+  /// without one crowding the other, and because a route is addressable, cancellable
+  /// and reachable by browser back.
+  ///
+  /// The literal segment is `new`, which is **not** a uuid and could never be one.
+  /// The router declares this route *before* [productDetailSegment] for that reason:
+  /// go_router matches in declaration order, so with the order reversed this path
+  /// would open the detail screen for a product id of `new` and reach the
+  /// non-leaking "not available" state instead of a form.
+  ///
+  /// > Reaching this path grants nothing. `create_vendor_product` derives the Vendor
+  /// > from `auth.uid()` in SQL, requires the product-management permission there,
+  /// > and accepts no organization, tenant, user, role, permission or status
+  /// > argument — so another role that typed this URL past a broken guard would
+  /// > reach a form whose submission is refused with one generic denial.
+  static const String productCreate = '$products/new';
+
+  /// The relative segment of the edit-a-product route, beneath one product.
+  ///
+  /// Nested under [productDetailSegment] so the Products destination stays
+  /// highlighted (`indexForLocation` takes the longest matching prefix), the back
+  /// gesture pops to the product rather than to the catalogue, and the edit screen
+  /// can be reached by a deep link that loads the product for itself.
+  static const String productEditSegment = 'edit';
+
+  /// The full path for editing one product.
+  ///
+  /// The same opaque `vendor_products.id` the detail route carries, and never the
+  /// product code — which is unique only *per Vendor*, so a code in a URL would not
+  /// name one row without a tenant beside it.
+  ///
+  /// > The id in this path is an **address and never form data**. The screen behind
+  /// > it fills its form from `get_vendor_product_detail`, so a link cannot pre-fill
+  /// > a name, a barcode, a brand or a description; and a malformed id reaches the
+  /// > same "not available" state the detail route reaches, with no form and
+  /// > therefore no reachable write.
+  static String productEditPath(String productId) =>
+      '${productDetailPath(productId)}/$productEditSegment';
 
   /// Web route `/audit-logs`.
   static const String auditLogs = '$prefix/audit-logs';

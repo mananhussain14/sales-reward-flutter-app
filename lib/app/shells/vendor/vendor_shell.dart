@@ -9,8 +9,12 @@ import '../../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../../../features/dashboard/presentation/vendor/cubit/vendor_dashboard_cubit.dart';
 import '../../../features/products/domain/repositories/vendor_product_repository.dart';
+import '../../../features/products/presentation/vendor/cubit/vendor_product_create_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
+import '../../../features/products/presentation/vendor/cubit/vendor_product_edit_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
+import '../../../features/products/presentation/vendor/cubit/vendor_product_status_cubit.dart';
+import '../../../features/products/presentation/vendor/cubit/vendor_product_write_notice.dart';
 import '../../../features/profile/domain/repositories/vendor_profile_repository.dart';
 import '../../../features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
 import '../../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
@@ -71,7 +75,7 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all eleven cubits are cleared:
+/// moment the session stops being *this* person's, all fourteen cubits are cleared:
 /// the Retailer summaries, the open Retailer, its shops, the user summaries with
 /// their names and roles, the open user, the role catalogue with **this
 /// Vendor's own assigned member counts**, the open role and its permissions, the
@@ -80,9 +84,11 @@ import 'bloc/vendor_shell_bloc.dart';
 /// loaded pages of the audit feed with the colleague, Retailer, shop and product
 /// names riding on them, the dashboard summary with **this Vendor's own active
 /// membership count and all-time recorded-event total**, the signed-in
-/// administrator's **own name and own active role names**, and every search term
+/// administrator's **own name and own active role names**, every search term
 /// and status filter — which are private too, being fragments of Retailer,
-/// colleague and product names.
+/// colleague and product names — and the three product **write** cubits: a
+/// half-typed product code and description, a seeded edit form, a pending
+/// activate-or-deactivate decision, and any write progress, refusal or success.
 ///
 /// Clearing the audit cubit also drops its **cursor position**, which is why the
 /// next Vendor cannot continue paging from where the previous one stopped.
@@ -95,6 +101,13 @@ import 'bloc/vendor_shell_bloc.dart';
 /// deployment-wide catalogue counts — and it is cleared **whole**, because the
 /// four figures are one snapshot from one statement and a summary carrying only
 /// its global half is a shape no backend answer ever produces.
+///
+/// The write cubits are cleared for a reason the read cubits do not have. Stale rows
+/// are a disclosure problem; an in-flight *write* is worse. A create, edit or status
+/// answer that landed after a `Vendor A → Vendor B` switch could otherwise report a
+/// duplicate against A's catalogue into B's session, acknowledge a save B never made,
+/// or navigate B to A's product. Each `clear()` advances a request token, so those
+/// answers are dropped on arrival rather than emitted into the new session.
 ///
 /// The administrator profile is the most personal of them all — it is a name and
 /// an entitlement about one individual — and it is cleared for a direct
@@ -167,6 +180,81 @@ class VendorShell extends StatelessWidget {
           create: (BuildContext providerContext) => VendorProductDetailCubit(
             providerContext.read<VendorProductRepository>(),
           ),
+        ),
+        // The three product WRITE cubits, owned here for the same three reasons the
+        // read cubits are — and for a fourth that is specific to a write.
+        //
+        // A cubit created inside the create or edit route would be a level *below*
+        // the session listener, which is precisely the subtree that must be emptied
+        // when the signed-in person changes. A half-typed product code, a seeded
+        // edit form and a pending status decision are all private Vendor data, and
+        // an in-flight write is worse than stale data: an answer that landed after a
+        // Vendor A → Vendor B switch could otherwise report a duplicate against A's
+        // catalogue into B's session, or navigate B to A's product. Clearing each of
+        // them advances a request token, so those answers are dropped on arrival.
+        //
+        // Declared AFTER the list and detail cubits so their callbacks can read
+        // them: `MultiBlocProvider` nests, so a later provider's `create` sees every
+        // earlier one. Those callbacks are the whole read-after-write path — the
+        // three RPCs return `uuid`, `void` and `void`, never a product row, so the
+        // canonical values always come from `get_vendor_product_detail` and the
+        // catalogue is always re-read rather than patched in place.
+        BlocProvider<VendorProductCreateCubit>(
+          create: (BuildContext providerContext) {
+            final VendorProductListCubit list = providerContext
+                .read<VendorProductListCubit>();
+            final VendorProductDetailCubit detail = providerContext
+                .read<VendorProductDetailCubit>();
+            return VendorProductCreateCubit(
+              providerContext.read<VendorProductRepository>(),
+              onProductCreated: (String productId) {
+                // The canonical read for the new product starts here, before the
+                // router moves — so the product screen's own idempotent `open`
+                // recognises it and issues no second call.
+                detail.openCreated(productId);
+                list.refresh();
+              },
+              // The create succeeded and its id could not be read. The catalogue is
+              // the only authority on what exists, so it is re-read; nothing
+              // re-attempts the create.
+              onCatalogueStale: list.refresh,
+            );
+          },
+        ),
+        BlocProvider<VendorProductEditCubit>(
+          create: (BuildContext providerContext) {
+            final VendorProductListCubit list = providerContext
+                .read<VendorProductListCubit>();
+            final VendorProductDetailCubit detail = providerContext
+                .read<VendorProductDetailCubit>();
+            return VendorProductEditCubit(
+              providerContext.read<VendorProductRepository>(),
+              onProductWritten: (VendorProductWriteNotice notice) {
+                detail.refreshDetail(notice: notice);
+                list.refresh();
+              },
+            );
+          },
+        ),
+        BlocProvider<VendorProductStatusCubit>(
+          create: (BuildContext providerContext) {
+            final VendorProductListCubit list = providerContext
+                .read<VendorProductListCubit>();
+            final VendorProductDetailCubit detail = providerContext
+                .read<VendorProductDetailCubit>();
+            return VendorProductStatusCubit(
+              providerContext.read<VendorProductRepository>(),
+              onProductWritten: (VendorProductWriteNotice notice) {
+                // Re-reads the product row alone. Assignment rows are deliberately
+                // NOT re-read: a status change touches none of them, not even their
+                // `updated_at`, so a second call would learn nothing — and both
+                // counts still come from the freshly-read product row rather than
+                // from anything computed here.
+                detail.refreshDetail(notice: notice);
+                list.refresh();
+              },
+            );
+          },
         ),
         // The audit feed is private Vendor data in its entirety — it names
         // colleagues, Retailers, shops and products, and the moment each was
@@ -311,6 +399,12 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorProductListCubit>();
         final VendorProductDetailCubit productDetail = context
             .read<VendorProductDetailCubit>();
+        final VendorProductCreateCubit productCreate = context
+            .read<VendorProductCreateCubit>();
+        final VendorProductEditCubit productEdit = context
+            .read<VendorProductEditCubit>();
+        final VendorProductStatusCubit productStatus = context
+            .read<VendorProductStatusCubit>();
         final VendorAuditLogCubit auditLogs = context
             .read<VendorAuditLogCubit>();
         final VendorDashboardCubit dashboard = context
@@ -331,6 +425,16 @@ class _SessionIsolation extends StatelessWidget {
         roleDetail.clear();
         products.clear();
         productDetail.clear();
+        // The three write cubits go with them, and this is the half a boolean test
+        // could not have covered: a form, its validation, its progress, its errors,
+        // its success and any pending status decision all belong to one person in one
+        // Vendor. Each `clear()` also advances a request token, so a create, an edit
+        // or a status change already in flight for the previous identity is dropped on
+        // arrival — it cannot repopulate a form, report a duplicate against the
+        // previous Vendor's catalogue, or navigate this session to their product.
+        productCreate.clear();
+        productEdit.clear();
+        productStatus.clear();
         auditLogs.clear();
         dashboard.clear();
         profile.clear();
