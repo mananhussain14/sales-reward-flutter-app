@@ -20,7 +20,7 @@ import '../../navigation/role_destination.dart';
 /// Twelve entries cannot fit a bottom bar, which is why this role — and only
 /// this role — uses [RoleShellChrome.drawer].
 ///
-/// **Phase note.** Four destinations are implemented. **Retailers** is backed
+/// **Phase note.** Five destinations are implemented. **Retailers** is backed
 /// by `list_vendor_retailers()`, `get_vendor_retailer_detail(uuid)` and
 /// `list_vendor_retailer_shops(uuid)` (`docs/flutter-vendor-retailer-reads.md`);
 /// **Users** by `list_vendor_users()` and `get_vendor_user_detail(uuid)`
@@ -29,12 +29,16 @@ import '../../navigation/role_destination.dart';
 /// (`docs/flutter-vendor-role-reads.md`); **Products** by
 /// `list_vendor_products()`, `get_vendor_product_detail(uuid)` and
 /// `list_vendor_product_assigned_retailers(uuid)`
-/// (`docs/flutter-vendor-product-reads.md`). All four are read-only.
+/// (`docs/flutter-vendor-product-reads.md`); and **Audit Logs** by
+/// `list_vendor_audit_logs(p_limit, p_before_occurred_at, p_before_audit_log_id)`
+/// (`docs/flutter-vendor-audit-log-reads.md`), which is list-only — there is no
+/// audit detail read to open. All five are read-only.
 ///
-/// Every other Vendor destination is still phase 3 in the feature matrix and
-/// conditional on open question Q4 — whether Vendor administration belongs on
-/// mobile at all — and none of them has a mobile backend contract yet, so each
-/// renders a placeholder.
+/// **Dashboard** remains a placeholder: `get_vendor_admin_dashboard_summary()`
+/// is the one outstanding Vendor contract. Every other Vendor destination is
+/// still phase 3 in the feature matrix and conditional on open question Q4 —
+/// whether Vendor administration belongs on mobile at all — and none of them has
+/// a mobile backend contract yet, so each renders a "Soon" entry.
 abstract final class VendorNavigation {
   /// Every Vendor route lives under this prefix and no other role's does.
   static const String prefix = '/vendor';

@@ -6,6 +6,9 @@ import '../../features/auth/data/datasources/portal_context_data_source.dart';
 import '../../features/auth/data/repositories/supabase_auth_repository.dart';
 import '../../features/auth/data/repositories/supabase_portal_context_repository.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
+import '../../features/audit/data/datasources/vendor_audit_log_rpc_data_source.dart';
+import '../../features/audit/data/repositories/supabase_vendor_audit_log_repository.dart';
+import '../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../../features/auth/domain/repositories/portal_context_repository.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
@@ -126,6 +129,18 @@ Future<void> configureDependencies() async {
       rpc: VendorProductRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor Audit Log read. One RPC and no table access at all — the tenant
+  // predicate, the keyset page boundary, the membership-scoped actor join and
+  // the closed metadata name whitelist all happen in SQL. `authenticated` does
+  // hold SELECT on `audit_logs`, so a direct read would *work*; it is not done
+  // because it would put `metadata`, `entity_id`, `ip_address`, `user_agent` and
+  // the auth user id on a phone and move a privacy decision into Dart.
+  getIt.registerLazySingleton<VendorAuditLogRepository>(
+    () => SupabaseVendorAuditLogRepository(
+      rpc: VendorAuditLogRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -176,6 +191,7 @@ void registerTestDependencies({
   VendorUserRepository? vendorUserRepository,
   VendorRoleRepository? vendorRoleRepository,
   VendorProductRepository? vendorProductRepository,
+  VendorAuditLogRepository? vendorAuditLogRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -205,6 +221,11 @@ void registerTestDependencies({
   if (vendorProductRepository != null) {
     getIt.registerLazySingleton<VendorProductRepository>(
       () => vendorProductRepository,
+    );
+  }
+  if (vendorAuditLogRepository != null) {
+    getIt.registerLazySingleton<VendorAuditLogRepository>(
+      () => vendorAuditLogRepository,
     );
   }
 }

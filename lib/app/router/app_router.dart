@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/audit/presentation/vendor/pages/vendor_audit_logs_page.dart';
 import '../../features/auth/domain/entities/portal_context.dart';
 import '../../features/auth/domain/entities/portal_kind.dart';
 import '../../features/auth/presentation/bloc/session_bloc.dart';
@@ -189,8 +190,9 @@ GoRoute _placeholder({
 }
 
 RouteBase _vendorRoutes(SessionBloc bloc) {
-  const String role = 'Vendor Super Admin';
-
+  // Every Vendor destination that has a route now has a real page. The remaining
+  // six are "Soon" entries in the navigation model and have no route at all, so
+  // there is no placeholder page left to name a role for here.
   return _roleShell(
     bloc: bloc,
     role: PortalKind.vendorSuperAdmin,
@@ -331,13 +333,26 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
           ),
         ],
       ),
-      _placeholder(
+      // V-04. Backed by list_vendor_audit_logs(p_limit, p_before_occurred_at,
+      // p_before_audit_log_id), which derives the Vendor from auth.uid() and
+      // accepts no identity, tenant, role, permission, actor, entity, offset or
+      // page argument — only a page size and a two-part keyset cursor taken from
+      // a row the backend itself returned.
+      //
+      // READ-ONLY, and there is no detail route: no audit detail read exists on
+      // the backend, because the web exposes no detail surface to share, and the
+      // only thing one could add over the list is precisely what the contract
+      // withholds — `metadata`, `entity_id`, `ip_address`, `user_agent`. There
+      // is no entity or actor navigation either: neither id is returned, so no
+      // row on this screen holds an address for anything.
+      //
+      // NOT nested, unlike the other four Vendor sections — there is nothing to
+      // nest. `indexForLocation` still keeps the Audit Logs destination selected
+      // on this exact path.
+      GoRoute(
         path: VendorNavigation.auditLogs,
-        roleName: role,
-        title: 'Audit Logs',
-        backendNote:
-            'V-04. Needs list_vendor_audit_logs(p_limit, p_before); the current '
-            'read is a fixed 100 rows with no pagination. Phase 3.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const VendorAuditLogsPage(),
       ),
     ],
   );
