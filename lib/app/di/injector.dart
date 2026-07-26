@@ -13,6 +13,7 @@ import '../../features/auth/domain/repositories/portal_context_repository.dart';
 import '../../features/dashboard/data/datasources/vendor_dashboard_rpc_data_source.dart';
 import '../../features/dashboard/data/repositories/supabase_vendor_dashboard_repository.dart';
 import '../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
+import '../../features/products/data/datasources/vendor_product_assignment_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_write_rpc_data_source.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
@@ -133,16 +134,20 @@ Future<void> configureDependencies() async {
   // write all happen in SQL, and there is no storage client here because no
   // product image exists anywhere in the product.
   //
-  // Two data sources behind one repository: the reads take no argument or one
-  // product id, the writes take product fields, and keeping the two payload
+  // Three data sources behind one repository: the reads take no argument or one
+  // product id, the product writes take product fields, and the assignment
+  // writes take two addresses under a *different* permission
+  // (`PRODUCT_RETAILER_ASSIGN`, which the backend proved is distinct from
+  // `PRODUCTS_MANAGE` in both directions). Keeping the three payload
   // vocabularies in separate files is what makes each one's boundary test able to
-  // assert its parameter set exactly. Both travel on the caller's own token —
-  // there is no service-role client here, and a service-role connection has no
+  // assert its parameter set exactly. All three travel on the caller's own token
+  // — there is no service-role client here, and a service-role connection has no
   // `auth.uid()` for the functions to derive an identity from.
   getIt.registerLazySingleton<VendorProductRepository>(
     () => SupabaseVendorProductRepository(
       rpc: VendorProductRpcDataSource.forClient(client),
       writes: VendorProductWriteRpcDataSource.forClient(client),
+      assignments: VendorProductAssignmentRpcDataSource.forClient(client),
     ),
   );
 

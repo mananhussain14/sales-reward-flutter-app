@@ -9,6 +9,7 @@ import '../../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../../../features/dashboard/presentation/vendor/cubit/vendor_dashboard_cubit.dart';
 import '../../../features/products/domain/repositories/vendor_product_repository.dart';
+import '../../../features/products/presentation/vendor/cubit/vendor_product_assignment_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_create_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_edit_cubit.dart';
@@ -256,6 +257,41 @@ class VendorShell extends StatelessWidget {
             );
           },
         ),
+        // The Product ASSIGNMENT cubit — the fourth product write cubit, and the
+        // one on a different entitlement. `assign_vendor_product_to_retailer` and
+        // `unassign_vendor_product_from_retailer` are gated on
+        // `PRODUCT_RETAILER_ASSIGN`, which the backend proved is distinct from
+        // `PRODUCTS_MANAGE` in both directions, so it is neither folded into the
+        // status cubit nor allowed to infer anything from it.
+        //
+        // It reads two repositories: the Product one for the writes, and the
+        // Retailer one for `list_vendor_retailers()`, which is the only honest
+        // source of "which Retailers may this product be assigned to" — the same
+        // `vendor_retailers` set the write reaches a Retailer through, carrying
+        // the two statuses the assign gate consults. No third contract is added,
+        // and no table is read.
+        BlocProvider<VendorProductAssignmentCubit>(
+          create: (BuildContext providerContext) {
+            final VendorProductListCubit list = providerContext
+                .read<VendorProductListCubit>();
+            final VendorProductDetailCubit detail = providerContext
+                .read<VendorProductDetailCubit>();
+            return VendorProductAssignmentCubit(
+              providerContext.read<VendorProductRepository>(),
+              providerContext.read<VendorRetailerRepository>(),
+              onAssignmentWritten: (VendorProductWriteNotice notice) {
+                // Both canonical reads, because an assignment transition moves
+                // values in both: the history gains or changes a row, and
+                // `assignment_count` / `active_assignment_count` are recomputed
+                // by the detail statement. Nothing is inserted, removed or
+                // re-statused locally on the way — both RPCs return `void`.
+                detail.refreshAfterAssignment(notice: notice);
+                // And the catalogue, whose `active_assignment_count` moved too.
+                list.refresh();
+              },
+            );
+          },
+        ),
         // The audit feed is private Vendor data in its entirety — it names
         // colleagues, Retailers, shops and products, and the moment each was
         // touched — so it is owned and cleared here exactly like the other four.
@@ -405,6 +441,8 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorProductEditCubit>();
         final VendorProductStatusCubit productStatus = context
             .read<VendorProductStatusCubit>();
+        final VendorProductAssignmentCubit productAssignment = context
+            .read<VendorProductAssignmentCubit>();
         final VendorAuditLogCubit auditLogs = context
             .read<VendorAuditLogCubit>();
         final VendorDashboardCubit dashboard = context
@@ -435,6 +473,15 @@ class _SessionIsolation extends StatelessWidget {
         productCreate.clear();
         productEdit.clear();
         productStatus.clear();
+        // The assignment surface goes with them, and it carries more than a
+        // pending decision: the names and trading statuses of every Retailer the
+        // previous Vendor works with, a search term that is a fragment of one of
+        // those names, and any in-flight assign or withdrawal. `clear()` advances
+        // its request token too, so an answer that lands after the switch is
+        // dropped rather than leaving an "Assignment withdrawn" notice over
+        // somebody else's product — or, worse, a stale candidate list inviting a
+        // write against a Retailer this session does not manage.
+        productAssignment.clear();
         auditLogs.clear();
         dashboard.clear();
         profile.clear();

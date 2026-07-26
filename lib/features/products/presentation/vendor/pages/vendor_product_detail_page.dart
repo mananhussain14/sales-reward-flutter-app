@@ -7,8 +7,12 @@ import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
 import '../../../domain/entities/vendor_product_assigned_retailer.dart';
 import '../../../domain/entities/vendor_product_detail.dart';
+import '../../../domain/entities/vendor_product_status.dart';
+import '../cubit/vendor_product_assignment_cubit.dart';
 import '../cubit/vendor_product_detail_cubit.dart';
 import '../cubit/vendor_product_write_notice.dart';
+import '../widgets/vendor_product_assign_retailer_dialog.dart';
+import '../widgets/vendor_product_assignment_action.dart';
 import '../widgets/vendor_product_assignment_tile.dart';
 import '../widgets/vendor_product_badges.dart';
 import '../widgets/vendor_product_copy.dart';
@@ -52,16 +56,22 @@ import '../widgets/vendor_product_write_notices.dart';
 /// `set_vendor_product_status` never writes the display fields — two operations, two
 /// RPCs, and a screen that merged them would suggest they are one decision.
 ///
+/// **Assign / Reactivate / Withdraw** is a third group, in the assigned-Retailer
+/// section, on a **different permission** (`PRODUCT_RETAILER_ASSIGN`, not
+/// `PRODUCTS_MANAGE`). It is kept there rather than promoted to the header because
+/// every one of its actions is about one Retailer, and because nothing on this screen
+/// may infer "may edit this product, therefore may assign it" — the backend proved
+/// those two entitlements are independent in both directions.
+///
 /// There is **no Delete**: no delete control, action, RPC or `DELETE` statement
 /// exists anywhere in this product, and a disabled one would advertise a capability
-/// that will never arrive. There is **no assign or withdraw** control either — those
-/// are a separate milestone on a separate permission — so the assigned-Retailer
-/// section below stays exactly as read-only as it was.
+/// that will never arrive. There is **no bulk assignment** either — no multi-select,
+/// no assign-all — because no bulk function exists and N calls would not be one.
 ///
-/// Both affordances are presentation guards. Whether this caller may write is decided
-/// in SQL on every call, by a permission this client never names, and a refusal
-/// arrives as one generic wording covering an unauthorized caller, an unknown product
-/// and another Vendor's product alike.
+/// Every affordance here is a presentation guard. Whether this caller may write is
+/// decided in SQL on every call, by permissions this client never names, and a
+/// refusal arrives as one generic wording covering an unauthorized caller, an unknown
+/// product and another Vendor's product alike.
 ///
 /// ## After a write, the values come from the backend
 ///
@@ -242,12 +252,18 @@ class _VendorProductDetailPageState extends State<VendorProductDetailPage> {
           ],
           // A write that landed whose follow-up read did not. The product below is
           // the last thing the backend actually said; the change is saved either way.
+          // The wording names which read went stale, because after an assignment
+          // it is the list and the counts rather than the product's own fields.
           if (state.refreshFailure != null) ...<Widget>[
             const SizedBox(height: SrSpacing.xl),
-            const SrAlert(
+            SrAlert(
               tone: SrAlertTone.warning,
-              title: VendorProductCopy.staleAfterWriteTitle,
-              message: VendorProductCopy.staleAfterWriteBody,
+              title: state.refreshIncludesAssignments
+                  ? VendorProductCopy.staleAfterAssignmentTitle
+                  : VendorProductCopy.staleAfterWriteTitle,
+              message: state.refreshIncludesAssignments
+                  ? VendorProductCopy.staleAfterAssignmentBody
+                  : VendorProductCopy.staleAfterWriteBody,
             ),
             const SizedBox(height: SrSpacing.md),
             Align(
@@ -264,10 +280,12 @@ class _VendorProductDetailPageState extends State<VendorProductDetailPage> {
                   loading: state.isRefreshing,
                   // Null while a reload is running: the cubit refuses a second one
                   // regardless, and a re-read is not a re-write, so repeating it
-                  // could not double anything — it would only waste a call.
+                  // could not double anything — it would only waste a call. It
+                  // repeats the scope that failed rather than always re-reading
+                  // everything.
                   onPressed: state.isRefreshing
                       ? null
-                      : () => cubit.refreshDetail(),
+                      : () => cubit.reloadCanonical(),
                 ),
               ),
             ),
@@ -277,7 +295,11 @@ class _VendorProductDetailPageState extends State<VendorProductDetailPage> {
           // must not look like a page reset.
           else if (state.isRefreshing) ...<Widget>[
             const SizedBox(height: SrSpacing.xl),
-            const SrAlert(message: VendorProductCopy.refreshingProduct),
+            SrAlert(
+              message: state.refreshIncludesAssignments
+                  ? VendorProductCopy.refreshingAssignments
+                  : VendorProductCopy.refreshingProduct,
+            ),
           ],
           const SizedBox(height: SrSpacing.xxl),
           _Overview(detail: detail),
@@ -374,15 +396,21 @@ class _Overview extends StatelessWidget {
 /// first — zero rows from the assignment read alone would be ambiguous between
 /// "never assigned" and "not addressable by you".
 ///
-/// ## An inactive product changes nothing here
+/// ## An inactive product keeps every assignment, and can still end one
 ///
 /// `set_vendor_product_status` does not cascade, so an `INACTIVE` product keeps
-/// every assignment row and both counts. This section therefore renders
-/// identically whatever the product's status, and nothing implies assignments
-/// are disabled — the backend does not say so, and inferring it would be this
-/// client deciding a rule it cannot see.
+/// every assignment row and both counts, and every row is still rendered. What
+/// an inactive product *cannot* do is receive a new assignment or have a
+/// withdrawn one reactivated — the deployed function refuses both with `55000` —
+/// so the Assign control is replaced by a sentence saying so, once, above the
+/// list rather than on every row it affects. **Withdrawal stays available**,
+/// because the withdrawal function deliberately requires no status to be active.
 ///
-/// There is no assign, withdraw or edit action, and no disabled one either.
+/// Nothing here is an authorization. The controls are gated on
+/// `PRODUCT_RETAILER_ASSIGN` in SQL, on every call, by a permission this client
+/// never names — and it is a *different* permission from the one governing the
+/// Edit and Activate controls above, so nothing on this screen infers one from
+/// the other.
 class _AssignmentsSection extends StatelessWidget {
   const _AssignmentsSection({
     required this.state,
@@ -401,84 +429,228 @@ class _AssignmentsSection extends StatelessWidget {
     return SrSectionCard(
       title: VendorProductCopy.assignmentsTitle,
       description: VendorProductCopy.assignmentsDescription,
-      child: switch (state.assignmentsPhase) {
-        VendorProductAssignmentsPhase.initial ||
-        VendorProductAssignmentsPhase.loading => const SrSkeletonScreen(
-          label: VendorProductCopy.loadingAssignments,
-          child: SrSkeletonList(rows: 3),
-        ),
-
-        VendorProductAssignmentsPhase.failed => SrEmptyState(
-          icon: Icons.cloud_off_rounded,
-          title: VendorProductCopy.assignmentsUnavailableTitle,
-          description: VendorProductCopy.assignmentsUnavailableBody,
-          action: SrButton(
-            label: VendorProductCopy.retryAssignments,
-            variant: SrButtonVariant.outline,
-            icon: Icons.refresh_rounded,
-            onPressed: cubit.retryAssignments,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _AssignmentWriteBanner(productId: detail.productId),
+          _AssignAction(detail: detail, assignments: state.assignments),
+          const SizedBox(height: SrSpacing.lg),
+          _AssignmentList(
+            state: state,
+            cubit: cubit,
+            onOpenRetailer: onOpenRetailer,
           ),
-        ),
+        ],
+      ),
+    );
+  }
+}
 
-        // A real, successful "this product has never been assigned to anybody" —
-        // distinguishable from "this is not your product" only because the
-        // detail read came back first.
-        VendorProductAssignmentsPhase.ready when state.assignments.isEmpty =>
-          const SrEmptyState(
-            icon: Icons.storefront_outlined,
-            tone: SrTone.slate,
-            title: VendorProductCopy.assignmentsEmptyTitle,
-            description: VendorProductCopy.assignmentsEmptyBody,
-          ),
+/// The **refusal** for the assignment write this screen just attempted.
+///
+/// Only the refusal. A successful transition is acknowledged once, at the top of
+/// the product, beside the canonical values it was read back with — the same
+/// place an edit and a status change are acknowledged, and the only place that
+/// can honestly claim what the product now looks like. Rendering it here as well
+/// would say the same sentence twice.
+///
+/// A refusal belongs here instead, next to the assignments it did **not**
+/// change, which are still correct exactly as they are.
+///
+/// Bound to the product on screen, so a refusal that landed for another product
+/// can never appear under this one.
+class _AssignmentWriteBanner extends StatelessWidget {
+  const _AssignmentWriteBanner({required this.productId});
 
-        VendorProductAssignmentsPhase.ready => Column(
+  final String productId;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<
+      VendorProductAssignmentCubit,
+      VendorProductAssignmentState
+    >(
+      builder: (BuildContext context, VendorProductAssignmentState state) {
+        if (!state.hasFailureFor(productId)) {
+          return const SizedBox.shrink();
+        }
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            // Every returned row is still rendered and both counts are still the
-            // backend's; the note only says the two reads disagreed.
-            if (state.assignmentCountDisagrees) ...<Widget>[
-              const SrAlert(
-                tone: SrAlertTone.warning,
-                title: VendorProductCopy.countMismatchTitle,
-                message: VendorProductCopy.countMismatchBody,
-              ),
-              const SizedBox(height: SrSpacing.lg),
-            ],
-            // Explained once, above the rows it explains, rather than repeated
-            // on each row that has lost its relationship.
-            if (state.hasUnlinkedAssignments) ...<Widget>[
-              const SrAlert(
-                message: VendorProductCopy.relationshipUnavailableNote,
-              ),
-              const SizedBox(height: SrSpacing.lg),
-            ],
-            // The order the backend sent, preserved: `retailer_name` then
-            // `retailer_organization_id`. Nothing is grouped, sorted or filtered
-            // — an inactive row keeps its place in the sequence, and the number
-            // of rows here is `assignment_count` by construction.
-            //
-            // Keyed by the Retailer organization id, which is the only value
-            // guaranteed present and unique per row: there is at most one
-            // assignment per (product, Retailer), and `relationship_id` is
-            // nullable.
-            for (final VendorProductAssignedRetailer assignment
-                in state.assignments)
-              VendorProductAssignmentTile(
-                key: ValueKey<String>(assignment.retailerOrganizationId),
-                assignment: assignment,
-                onOpenRetailer: onOpenRetailer,
-              ),
-            Text(
-              formatAssignmentSummary(
-                detail.assignmentCount,
-                detail.activeAssignmentCount,
-              ),
-              style: SrTypography.caption.copyWith(color: context.sr.textMuted),
+            const SrAlert(
+              tone: SrAlertTone.error,
+              title: VendorProductCopy.assignmentFailedTitle,
+              message: VendorProductCopy.assignmentFailedBody,
             ),
+            const SizedBox(height: SrSpacing.md),
+            // The reason beneath the headline, so a reader learns both the
+            // effect and the cause without either being guessed at.
+            VendorProductAssignmentWriteAlert(failure: state.failure!),
+            const SizedBox(height: SrSpacing.lg),
           ],
-        ),
+        );
       },
     );
+  }
+}
+
+/// The control that opens the Retailer picker — or the sentence that replaces
+/// it.
+///
+/// A presentation mirror of the deployed gate, and knowingly only that: the
+/// database refuses the call regardless, so a client that ignored the rule would
+/// get `55000` rather than an unauthorized write.
+class _AssignAction extends StatelessWidget {
+  const _AssignAction({required this.detail, required this.assignments});
+
+  final VendorProductDetail detail;
+  final List<VendorProductAssignedRetailer> assignments;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!detail.status.isActive) {
+      return SrAlert(
+        message: detail.status == VendorProductStatus.inactive
+            ? VendorProductCopy.assignUnavailableInactive
+            // A status token this build does not recognise. No control, because
+            // the rule for an unfamiliar status is not knowable.
+            : VendorProductCopy.assignUnavailableUnknownStatus,
+      );
+    }
+
+    return BlocBuilder<
+      VendorProductAssignmentCubit,
+      VendorProductAssignmentState
+    >(
+      builder: (BuildContext context, VendorProductAssignmentState state) {
+        return Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Semantics(
+            button: true,
+            label: VendorProductCopy.assignRetailerSemantics,
+            child: SrButton(
+              label: VendorProductCopy.assignRetailer,
+              variant: SrButtonVariant.outline,
+              icon: Icons.add_link_rounded,
+              // Disabled while a write is settling: opening a picker composed
+              // from a history that is about to be re-read would offer a verdict
+              // already out of date.
+              onPressed: state.isBusy
+                  ? null
+                  : () => showVendorProductAssignRetailerDialog(
+                      context,
+                      productId: detail.productId,
+                      assignments: assignments,
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The assignment history itself.
+class _AssignmentList extends StatelessWidget {
+  const _AssignmentList({
+    required this.state,
+    required this.cubit,
+    required this.onOpenRetailer,
+  });
+
+  final VendorProductDetailState state;
+  final VendorProductDetailCubit cubit;
+  final ValueChanged<String> onOpenRetailer;
+
+  @override
+  Widget build(BuildContext context) {
+    final VendorProductDetail detail = state.detail!;
+
+    return switch (state.assignmentsPhase) {
+      VendorProductAssignmentsPhase.initial ||
+      VendorProductAssignmentsPhase.loading => const SrSkeletonScreen(
+        label: VendorProductCopy.loadingAssignments,
+        child: SrSkeletonList(rows: 3),
+      ),
+
+      VendorProductAssignmentsPhase.failed => SrEmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: VendorProductCopy.assignmentsUnavailableTitle,
+        description: VendorProductCopy.assignmentsUnavailableBody,
+        action: SrButton(
+          label: VendorProductCopy.retryAssignments,
+          variant: SrButtonVariant.outline,
+          icon: Icons.refresh_rounded,
+          onPressed: cubit.retryAssignments,
+        ),
+      ),
+
+      // A real, successful "this product has never been assigned to anybody" —
+      // distinguishable from "this is not your product" only because the
+      // detail read came back first.
+      VendorProductAssignmentsPhase.ready when state.assignments.isEmpty =>
+        const SrEmptyState(
+          icon: Icons.storefront_outlined,
+          tone: SrTone.slate,
+          title: VendorProductCopy.assignmentsEmptyTitle,
+          description: VendorProductCopy.assignmentsEmptyBody,
+        ),
+
+      VendorProductAssignmentsPhase.ready => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // Every returned row is still rendered and both counts are still the
+          // backend's; the note only says the two reads disagreed.
+          if (state.assignmentCountDisagrees) ...<Widget>[
+            const SrAlert(
+              tone: SrAlertTone.warning,
+              title: VendorProductCopy.countMismatchTitle,
+              message: VendorProductCopy.countMismatchBody,
+            ),
+            const SizedBox(height: SrSpacing.lg),
+          ],
+          // Explained once, above the rows it explains, rather than repeated
+          // on each row that has lost its relationship.
+          if (state.hasUnlinkedAssignments) ...<Widget>[
+            const SrAlert(
+              message: VendorProductCopy.relationshipUnavailableNote,
+            ),
+            const SizedBox(height: SrSpacing.lg),
+          ],
+          // The order the backend sent, preserved: `retailer_name` then
+          // `retailer_organization_id`. Nothing is grouped, sorted or filtered
+          // — an inactive row keeps its place in the sequence, and the number
+          // of rows here is `assignment_count` by construction.
+          //
+          // Keyed by the Retailer organization id, which is the only value
+          // guaranteed present and unique per row: there is at most one
+          // assignment per (product, Retailer), and `relationship_id` is
+          // nullable.
+          for (final VendorProductAssignedRetailer assignment
+              in state.assignments)
+            VendorProductAssignmentTile(
+              key: ValueKey<String>(assignment.retailerOrganizationId),
+              assignment: assignment,
+              onOpenRetailer: onOpenRetailer,
+              // Withdraw, Reactivate, a neutral explanation, or nothing —
+              // decided from this row and the product's own status, and never
+              // from a permission this client cannot see.
+              action: VendorProductAssignmentRowAction(
+                productId: detail.productId,
+                productStatus: detail.status,
+                assignment: assignment,
+              ),
+            ),
+          Text(
+            formatAssignmentSummary(
+              detail.assignmentCount,
+              detail.activeAssignmentCount,
+            ),
+            style: SrTypography.caption.copyWith(color: context.sr.textMuted),
+          ),
+        ],
+      ),
+    };
   }
 }
 

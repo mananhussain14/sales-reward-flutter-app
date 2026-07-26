@@ -102,6 +102,11 @@ void main() {
           return voidBody;
         },
       ),
+      // A product-record write must issue no assignment write either. These
+      // throw so a stray one is a failure rather than a silent extra call —
+      // which is what proves that creating, editing or deactivating a product
+      // touches no assignment row.
+      assignments: unusedVendorProductAssignments(),
     );
   }
 

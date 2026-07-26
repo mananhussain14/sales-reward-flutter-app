@@ -54,11 +54,78 @@ class VendorProductWriteAlert extends StatelessWidget {
         VendorProductCopy.invalidWriteBody,
       ),
       // `55000` cannot arise from these three writes — it belongs to the assignment
-      // functions, which this milestone does not call — and a missing capability
+      // functions, which have their own alert below — and a missing capability
       // cannot either, since all three RPCs are deployed. Both fall to the generic
       // operational wording rather than to a sentence invented for a case the
       // contract does not produce.
       NotReadyFailure() || NotImplementedFailure() || UnavailableFailure() => (
+        VendorProductCopy.writeUnavailableTitle,
+        VendorProductCopy.writeUnavailableBody,
+      ),
+    };
+
+    return SrAlert(tone: SrAlertTone.error, title: title, message: message);
+  }
+}
+
+/// An assignment refusal, worded from the discriminant alone.
+///
+/// A separate widget from [VendorProductWriteAlert] because the two operations
+/// produce genuinely different outcome sets, and one alert covering both would
+/// have to word each case for whichever was more likely.
+///
+/// * [NotReadyFailure] is `55000`, and it is the **only** outcome the backend
+///   attributes to the Product rather than to the Retailer: an inactive Product
+///   may not receive a new assignment or have a withdrawn one reactivated. It is
+///   safe to name specifically — the branch is reachable only after ownership
+///   has been proven, and the status is already on this screen — and it is the
+///   one message here that tells somebody what to do next.
+/// * [DeniedFailure] is `42501`, and it is **one** wording for an unauthorized
+///   caller, an unknown or foreign Product, and an unknown, foreign, suspended,
+///   deactivated or unrelated Retailer. The backend refuses all of them
+///   byte-identically, precisely so a caller cannot learn that a Retailer exists
+///   but is suspended, and a client that told them apart would hand that oracle
+///   back. It names no permission.
+/// * [DuplicateFailure] is the theoretical `23505` of a uniqueness race, which
+///   means the pairing already exists. Worded as a state that has moved rather
+///   than as an error, and pointed at a refresh.
+/// * [UnavailableFailure] is offered as retryable and is **never** worded as a
+///   permission problem. Nothing was written, so another attempt is legitimate.
+///
+/// No backend text reaches this widget: it is handed a [Failure], which carries
+/// a discriminant and at most a form-field key, and no Postgres message, table
+/// name, constraint name, function name, role code, permission code or SQLSTATE
+/// can travel inside one.
+class VendorProductAssignmentWriteAlert extends StatelessWidget {
+  const VendorProductAssignmentWriteAlert({super.key, required this.failure});
+
+  final Failure failure;
+
+  @override
+  Widget build(BuildContext context) {
+    final (String title, String message) = switch (failure) {
+      NotReadyFailure() => (
+        VendorProductCopy.assignNotReadyTitle,
+        VendorProductCopy.assignNotReadyBody,
+      ),
+      DeniedFailure() => (
+        VendorProductCopy.assignmentDeniedTitle,
+        VendorProductCopy.assignmentDeniedBody,
+      ),
+      UnauthenticatedFailure() => (
+        VendorProductCopy.writeSignedOutTitle,
+        VendorProductCopy.writeSignedOutBody,
+      ),
+      DuplicateFailure() => (
+        VendorProductCopy.assignmentConflictTitle,
+        VendorProductCopy.assignmentConflictBody,
+      ),
+      // `23514` cannot arise from either assignment function — they accept no
+      // text input at all, so they have no validation path — and a missing
+      // capability cannot either, since both RPCs are deployed. Both fall to the
+      // generic operational wording rather than to a sentence invented for a
+      // case the contract does not produce.
+      InvalidFailure() || NotImplementedFailure() || UnavailableFailure() => (
         VendorProductCopy.writeUnavailableTitle,
         VendorProductCopy.writeUnavailableBody,
       ),
@@ -110,6 +177,28 @@ class VendorProductWriteNoticeAlert extends StatelessWidget {
         SrAlertTone.info,
         VendorProductCopy.unconfirmedWriteTitle,
         VendorProductCopy.unconfirmedWriteBody,
+      ),
+      VendorProductWriteNotice.assigned => (
+        SrAlertTone.success,
+        VendorProductCopy.assignedTitle,
+        VendorProductCopy.assignedBody,
+      ),
+      VendorProductWriteNotice.reactivated => (
+        SrAlertTone.success,
+        VendorProductCopy.reactivatedTitle,
+        VendorProductCopy.reactivatedBody,
+      ),
+      // Never "deleted" and never "removed": the row survives as inactive,
+      // keeps its assigned date, and stays in the history and in the total.
+      VendorProductWriteNotice.withdrawn => (
+        SrAlertTone.success,
+        VendorProductCopy.withdrawnTitle,
+        VendorProductCopy.withdrawnBody,
+      ),
+      VendorProductWriteNotice.assignmentUnconfirmed => (
+        SrAlertTone.info,
+        VendorProductCopy.assignmentUnconfirmedTitle,
+        VendorProductCopy.assignmentUnconfirmedBody,
       ),
     };
 

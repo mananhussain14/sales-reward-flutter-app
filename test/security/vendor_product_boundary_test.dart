@@ -26,10 +26,18 @@ import 'package:flutter_test/flutter_test.dart';
 ///   policies and no privilege for `authenticated`; RPC is the only way in, by
 ///   design. `audit_logs` is written by the RPCs themselves, in the same
 ///   transaction, and never from here.
-/// * **The write surface is exactly three operations.** Create, edit and status.
-///   No deletion — none exists in the schema — and no assignment write, which is a
-///   separate milestone on a separate permission, so the assigned-Retailer section
-///   stays read-only.
+/// * **The write surface is exactly five operations.** Create, edit and status on
+///   `PRODUCTS_MANAGE`; assign and withdraw on `PRODUCT_RETAILER_ASSIGN`, which
+///   the backend proved is a distinct entitlement in both directions. No deletion
+///   — none exists in the schema — and no bulk assignment, because no bulk
+///   function exists and N calls would not be one.
+/// * **Withdrawal is not deletion, in code or in wording.** Neither deployed
+///   function contains a `DELETE`; no client source removes an assignment row,
+///   inserts one, or recomputes either count; and no user-facing string says
+///   delete, remove, erase or permanently.
+/// * **No relationship id is ever written.** It is the address the Retailer
+///   screens navigate by, the assignment table has no column for it, and neither
+///   the request type nor the candidate type has a field to hold one.
 /// * **The immutable stays immutable.** The product code is absent from the edit
 ///   request type and from the edit payload; a status is absent from both the
 ///   create and the edit payload.
@@ -49,6 +57,7 @@ void main() {
   late List<File> productSources;
   late String rpcDataSource;
   late String writeDataSource;
+  late String assignmentDataSource;
 
   /// The file's executable lines only.
   ///
@@ -84,6 +93,12 @@ void main() {
       sources.firstWhere(
         (File f) =>
             f.path.endsWith('/vendor_product_write_rpc_data_source.dart'),
+      ),
+    );
+    assignmentDataSource = code(
+      sources.firstWhere(
+        (File f) =>
+            f.path.endsWith('/vendor_product_assignment_rpc_data_source.dart'),
       ),
     );
   });
@@ -805,18 +820,31 @@ void main() {
       }
     });
 
-    test('no delete or assignment write is named anywhere', () {
-      // Both assignment functions and any deletion. They are either a separate
-      // milestone on a separate permission, or they do not exist in the schema at
-      // all; naming one here is what a future edit would have to do, and it would
-      // have to change this test.
+    test('no delete write is named anywhere', () {
+      // Deletion in any spelling. None of these exists in the schema at all;
+      // naming one here is what a future edit would have to do, and it would have
+      // to change this test.
       _expectAbsent(productSources, <String>[
         'delete_vendor_product',
-        'assign_vendor_product_to_retailer',
-        'unassign_vendor_product_from_retailer',
+        'delete_vendor_product_assignment',
+        'remove_vendor_product_assignment',
         'activate_product',
         'deactivate_product',
       ], allowInComments: true);
+    });
+
+    test('the two assignment functions are named in one file only', () {
+      // They ARE called now — but from exactly one boundary, so a second call
+      // site cannot appear without changing this test.
+      final Iterable<File> namers = productSources.where(
+        (File f) =>
+            code(f).contains('assign_vendor_product_to_retailer') ||
+            code(f).contains('unassign_vendor_product_from_retailer'),
+      );
+
+      expect(namers.map((File f) => f.path.split('/').last).toSet(), <String>{
+        'vendor_product_assignment_rpc_data_source.dart',
+      });
     });
 
     test('no source performs a table mutation on the client', () {
@@ -833,7 +861,7 @@ void main() {
       ], allowInComments: true);
     });
 
-    test('the repository interface exposes three reads and three writes', () {
+    test('the repository interface exposes three reads and five writes', () {
       final File repository = productSources.firstWhere(
         (File f) => f.path.endsWith('/vendor_product_repository.dart'),
       );
@@ -850,21 +878,32 @@ void main() {
       );
       expect(
         writes.allMatches(src).map((RegExpMatch m) => m.group(1)!).toSet(),
-        <String>{'createProduct', 'updateProduct', 'setProductStatus'},
+        <String>{
+          'createProduct',
+          'updateProduct',
+          'setProductStatus',
+          'assignRetailer',
+          'withdrawRetailer',
+        },
         reason:
-            'exactly three writes, so no delete or assignment method can appear '
-            'without changing this file',
+            'exactly five writes, so no delete, bulk or assignment-delete method '
+            'can appear without changing this file',
       );
 
-      // No fourth spelling of a mutation, whatever its return type.
+      // No sixth spelling of a mutation, whatever its return type. "Withdraw"
+      // is the vocabulary; "unassign" and "remove" are not, and a bulk method
+      // has no backend function to call.
       for (final String forbidden in <String>[
         'deleteProduct',
         'removeProduct',
         'archiveProduct',
-        'assignRetailer',
+        'deleteAssignment',
+        'removeAssignment',
         'unassignRetailer',
-        'withdrawFromRetailer',
         'setAssignmentStatus',
+        'assignRetailers(',
+        'assignAllRetailers',
+        'bulkAssign',
         'uploadProductImage',
       ]) {
         expect(
@@ -1017,6 +1056,226 @@ void main() {
     });
   });
 
+  group('the assignment write boundary is exactly two operations', () {
+    test('only the two deployed assignment functions are named', () {
+      final RegExp rpcNames = RegExp(r"const String \w+Rpc =\s*'([^']+)'");
+      final List<String> names = rpcNames
+          .allMatches(assignmentDataSource)
+          .map((RegExpMatch m) => m.group(1)!)
+          .toList();
+
+      expect(names, <String>[
+        'assign_vendor_product_to_retailer',
+        'unassign_vendor_product_from_retailer',
+      ]);
+    });
+
+    test('exactly two parameter names, and no third', () {
+      final RegExp params = RegExp(r"'(p_[a-z_]+)'");
+      final Set<String> named = params
+          .allMatches(assignmentDataSource)
+          .map((RegExpMatch m) => m.group(1)!)
+          .toSet();
+
+      expect(named, <String>{'p_product_id', 'p_retailer_organization_id'});
+    });
+
+    test('assign sends the product id and the Retailer organization id', () {
+      final String assign = _bodyOf(
+        assignmentDataSource,
+        'VendorProductAssignmentInvoker supabaseVendorProductAssignInvoker',
+      );
+
+      expect(assign, contains('assignVendorProductToRetailerRpc'));
+      expect(assign, contains('assignmentProductIdParameter: productId'));
+      expect(
+        assign,
+        contains('assignmentRetailerParameter: retailerOrganizationId'),
+      );
+      // Three colons in the whole invoker body — `params:` and the two map
+      // entries — so a third argument cannot be added without changing this
+      // number.
+      expect(':'.allMatches(assign).length, 3);
+    });
+
+    test('withdraw sends the same two, and reaches the other function', () {
+      final String withdraw = _bodyOf(
+        assignmentDataSource,
+        'VendorProductAssignmentInvoker supabaseVendorProductWithdrawInvoker',
+      );
+
+      expect(withdraw, contains('unassignVendorProductFromRetailerRpc'));
+      expect(withdraw, contains('assignmentProductIdParameter: productId'));
+      expect(
+        withdraw,
+        contains('assignmentRetailerParameter: retailerOrganizationId'),
+      );
+      expect(':'.allMatches(withdraw).length, 3);
+    });
+
+    test('no identity, tenant, relationship, actor or status argument', () {
+      // The relationship id is the notable one: it is what the Retailer screens
+      // navigate by, the assignment table has no column for it, and the write has
+      // no parameter for it. A client that sent one would be addressing the write
+      // from the wrong address space.
+      for (final String forbidden in <String>[
+        'user_id',
+        'p_user',
+        'auth_user_id',
+        'profile_id',
+        'p_profile',
+        'membership_id',
+        'p_membership',
+        'p_vendor',
+        'vendor_organization_id',
+        'p_organization',
+        'p_owner',
+        'p_actor',
+        'p_metadata',
+        'p_audit',
+        'p_relationship',
+        'relationship_id',
+        'relationshipId',
+        'p_assignment_id',
+        'p_status',
+        'p_assignment_status',
+        'p_note',
+        'p_effective',
+        'p_price',
+        'p_quantity',
+        'p_idempotency',
+        'role_code',
+        'permission_code',
+        'p_permission',
+        'access_token',
+        'tenant',
+      ]) {
+        expect(
+          assignmentDataSource.contains(forbidden),
+          isFalse,
+          reason: 'the assignment writes must pass no $forbidden argument',
+        );
+      }
+    });
+
+    test('the request type carries exactly the two addresses', () {
+      // The type is the enforcement: a request object with no relationship-id
+      // field cannot send one, whatever a caller intends.
+      final String src = code(
+        productSources.firstWhere(
+          (File f) =>
+              f.path.endsWith('/vendor_product_assignment_request.dart'),
+        ),
+      );
+
+      final RegExp fields = RegExp(
+        r'^\s*final \w+\??\s+(\w+);',
+        multiLine: true,
+      );
+      expect(
+        fields.allMatches(src).map((RegExpMatch m) => m.group(1)!).toSet(),
+        <String>{'productId', 'retailerOrganizationId'},
+      );
+      for (final String forbidden in <String>[
+        'this.relationshipId',
+        'this.organizationId',
+        'this.vendorId',
+        'this.status',
+        'this.action',
+        'this.actor',
+        'this.note',
+        'this.assignedAt',
+      ]) {
+        expect(
+          src.contains(forbidden),
+          isFalse,
+          reason: 'VendorProductAssignmentRequest carries a $forbidden field',
+        );
+      }
+    });
+
+    test('the candidate type carries no relationship id', () {
+      // A selection made from a candidate therefore cannot send one, and the
+      // candidate list cannot become a second address space for the Retailer
+      // screens.
+      final String src = code(
+        productSources.firstWhere(
+          (File f) =>
+              f.path.endsWith('/vendor_product_assignment_candidate.dart'),
+        ),
+      );
+
+      expect(src.contains('this.relationshipId'), isFalse);
+      expect(src.contains('final String? relationshipId'), isFalse);
+    });
+
+    test('no assignment row is mutated, deleted or counted on the client', () {
+      // Withdrawal sets a status in SQL. There is no DELETE in either deployed
+      // function, no delete RPC, and no DELETE privilege for the browser roles —
+      // so a client-side removal would be inventing a capability, and a
+      // client-side insertion would be inventing a row.
+      for (final File file in productSources) {
+        final String src = code(file);
+        // Deriving one already-returned count from another is fine and the
+        // detail entity does exactly that. Adjusting a count by a guess, or
+        // adding and removing rows, is the defect.
+        for (final String forbidden in <String>[
+          'assignments.remove',
+          'assignments.add',
+          'assignments.insert',
+          'assignments.removeWhere',
+          'assignmentCount + 1',
+          'assignmentCount - 1',
+          'activeAssignmentCount + 1',
+          'activeAssignmentCount - 1',
+          'assignments.length,',
+        ]) {
+          expect(
+            src.contains(forbidden),
+            isFalse,
+            reason: '${file.path} mutates or recomputes assignment state',
+          );
+        }
+      }
+    });
+
+    test('withdrawal is never worded as deletion', () {
+      final File copy = productSources.firstWhere(
+        (File f) => f.path.endsWith('/vendor_product_copy.dart'),
+      );
+      final String src = code(copy);
+
+      for (final String forbidden in <String>[
+        'Delete assignment',
+        'Remove assignment',
+        'Erase',
+        'permanently',
+        'cannot be undone',
+        'Unassign',
+      ]) {
+        expect(
+          src.contains(forbidden),
+          isFalse,
+          reason: 'the assignment copy says "$forbidden"',
+        );
+      }
+      // And the withdrawal confirmation says what does survive.
+      expect(src, contains('Nothing is deleted.'));
+      expect(src, contains('stays in this product’s history'));
+    });
+
+    test('no bulk assignment exists in any spelling', () {
+      _expectAbsent(productSources, <String>[
+        'assignAll',
+        'bulkAssign',
+        'assignMany',
+        'selectedRetailers',
+        'checkedRetailers',
+        'multiSelect',
+      ], allowInComments: true);
+    });
+  });
+
   group('layering', () {
     test('presentation never touches Supabase or HTTP directly', () {
       final Iterable<File> presentation = productSources.where(
@@ -1099,7 +1358,9 @@ void main() {
         final String src = code(f);
         return src.contains('list_vendor_products') ||
             src.contains('get_vendor_product_detail') ||
-            src.contains('list_vendor_product_assigned_retailers');
+            src.contains('list_vendor_product_assigned_retailers') ||
+            src.contains('assign_vendor_product_to_retailer') ||
+            src.contains('unassign_vendor_product_from_retailer');
       });
 
       expect(

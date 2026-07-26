@@ -41,6 +41,7 @@ final class VendorProductDetailState extends Equatable {
     this.assignments = const <VendorProductAssignedRetailer>[],
     this.assignmentsFailure,
     this.isRefreshing = false,
+    this.refreshIncludesAssignments = false,
     this.refreshFailure,
     this.notice,
     this.noticeProductId,
@@ -80,6 +81,15 @@ final class VendorProductDetailState extends Equatable {
   /// fields stays legible, because a saved change must not look like a page reset.
   /// It is also the duplicate-tap guard for Reload.
   final bool isRefreshing;
+
+  /// Whether the canonical refresh in progress — or the last one that ran —
+  /// covers the assignment history as well as the product row.
+  ///
+  /// Held so a Reload offered after a partial success repeats the **same
+  /// scope**. A stale product after an edit needs the product row; a stale
+  /// product after an assignment needs both, and reloading only half of it would
+  /// leave the count and the rows it describes disagreeing for a second time.
+  final bool refreshIncludesAssignments;
 
   /// Why the canonical re-read after a successful write did not answer.
   ///
@@ -182,6 +192,7 @@ final class VendorProductDetailState extends Equatable {
     Failure? assignmentsFailure,
     bool clearAssignmentsFailure = false,
     bool? isRefreshing,
+    bool? refreshIncludesAssignments,
     Failure? refreshFailure,
     bool clearRefreshFailure = false,
     VendorProductWriteNotice? notice,
@@ -199,6 +210,8 @@ final class VendorProductDetailState extends Equatable {
           ? null
           : (assignmentsFailure ?? this.assignmentsFailure),
       isRefreshing: isRefreshing ?? this.isRefreshing,
+      refreshIncludesAssignments:
+          refreshIncludesAssignments ?? this.refreshIncludesAssignments,
       refreshFailure: clearRefreshFailure
           ? null
           : (refreshFailure ?? this.refreshFailure),
@@ -219,6 +232,7 @@ final class VendorProductDetailState extends Equatable {
     assignments,
     assignmentsFailure,
     isRefreshing,
+    refreshIncludesAssignments,
     refreshFailure,
     notice,
     noticeProductId,

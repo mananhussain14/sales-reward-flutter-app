@@ -20,13 +20,24 @@
 ///   because withdrawn rows are included in it. [assignmentsTitle] and the count
 ///   sentences say *assignments*, and the active subset is stated separately.
 /// * **Nothing here names a write this client cannot perform.** There is create,
-///   edit, activate and deactivate copy, because those three RPCs are called. There
-///   is **no** delete string — no delete control, action, RPC or `DELETE`
-///   statement exists anywhere in the product — and **no** assign, withdraw or
-///   bulk-assignment string, because assignment writes are a separate milestone on
-///   a separate permission and the assigned-Retailer section stays read-only. An
-///   affordance, even a disabled one, would advertise a capability that does not
-///   exist.
+///   edit, activate, deactivate, assign, reactivate and withdraw copy, because
+///   those five RPCs are called. There is **no** delete string — no delete
+///   control, action, RPC or `DELETE` statement exists anywhere in the product —
+///   and **no** bulk-assignment string, because no bulk function exists and N
+///   calls would not be one. An affordance, even a disabled one, would advertise
+///   a capability that does not exist.
+/// * **Withdrawal is never worded as deletion, removal or erasure.** The row
+///   survives as `INACTIVE`, keeps its `assigned_at`, stays in the history and
+///   stays counted. The vocabulary is *Assign*, *Reactivate assignment*,
+///   *Withdraw assignment*, *Inactive assignment* and *Assignment history*, and
+///   the confirmation says plainly what is and is not affected.
+/// * **Reactivation states its one consequence.** `assigned_at` is overwritten
+///   with the moment of reactivation, so the confirmation says the assignment
+///   date becomes the new activation time rather than leaving a reader to
+///   discover that a date moved.
+/// * **Nothing claims a Retailer has sold, stocked or received anything.** An
+///   assignment says a Product is available to a Retailer, and the schema
+///   records nothing else about it.
 /// * **Deactivation is never worded as deletion or as removal.** The row, its
 ///   history and every one of its assignment rows survive, so the vocabulary is
 ///   *Deactivate* / *Activate* and *availability*, and the confirmation says
@@ -202,6 +213,225 @@ abstract final class VendorProductCopy {
   /// schema, so this is never labelled or spoken as one — not even on an
   /// inactive row, where it happens to be the moment of withdrawal.
   static const String assignmentUpdatedLabel = 'Assignment last updated';
+
+  // -- managing assignments --------------------------------------------------
+
+  /// The control that opens the Retailer picker.
+  ///
+  /// "Assign Retailer", not "Add Retailer": nothing is added anywhere — a
+  /// Retailer this Vendor already manages is given access to a Product it
+  /// already has.
+  static const String assignRetailer = 'Assign Retailer';
+  static const String assignRetailerSemantics =
+      'Assign Retailer. Opens a list of your Retailers to make this product '
+      'available at one of them.';
+
+  /// Shown in place of the Assign control while the product is inactive.
+  ///
+  /// The rule is the backend's and is stated as a fact about the product rather
+  /// than as a refusal: an inactive product cannot receive a new assignment or
+  /// have a withdrawn one reactivated, and activating it is the action that
+  /// changes that.
+  static const String assignUnavailableInactive =
+      'This product is inactive, so it cannot be assigned to a Retailer or have '
+      'a withdrawn assignment reactivated. Activate it first. Existing '
+      'assignments are unaffected and can still be withdrawn.';
+
+  /// Shown while the product's status is a token this build does not recognise.
+  static const String assignUnavailableUnknownStatus =
+      'This product’s status is not one this version of the app recognises, so '
+      'assignments cannot be changed from here.';
+
+  static const String withdrawAssignment = 'Withdraw assignment';
+  static const String withdrawing = 'Withdrawing…';
+  static const String withdrawSemantics =
+      'Withdraw assignment. Asks for confirmation first.';
+
+  static const String reactivateAssignment = 'Reactivate assignment';
+  static const String reactivating = 'Reactivating…';
+  static const String reactivateSemantics =
+      'Reactivate assignment. Asks for confirmation first.';
+
+  static const String assigning = 'Assigning…';
+
+  /// The neutral explanation on an inactive assignment that cannot be
+  /// reactivated. It names what is true — the Retailer or the relationship is
+  /// not active — without saying which, because the backend refuses both
+  /// identically.
+  static const String reactivateUnavailable =
+      'This assignment cannot be reactivated while the Retailer or your '
+      'relationship with them is not active. The record stays here either way.';
+
+  /// The same state on a row whose relationship is gone entirely. Distinct
+  /// wording, because nothing is suspended — there is simply no relationship
+  /// record to evaluate.
+  static const String reactivateUnavailableNoRelationship =
+      'There is no Vendor–Retailer relationship on record for this Retailer, so '
+      'this assignment cannot be reactivated. The record stays here.';
+
+  // -- confirming an assignment change ---------------------------------------
+
+  static const String withdrawConfirmTitle = 'Withdraw this assignment?';
+
+  /// Four claims, and every one is provable from the deployed contract: the
+  /// assignment becomes inactive; the record survives; the product is untouched;
+  /// and the Retailer relationship is untouched. Nothing here says "delete",
+  /// "remove" or "erase", because none of those happens.
+  static const String withdrawConfirmBody =
+      'The assignment becomes inactive and stops making this product available '
+      'at this Retailer.\n\n'
+      'Nothing is deleted. The assignment stays in this product’s history, keeps '
+      'the date it was assigned, and still counts towards this product’s total '
+      'assignments. The product stays in your catalogue and your relationship '
+      'with the Retailer is not affected.\n\n'
+      'You can reactivate the assignment later while the product and the '
+      'Retailer are both active.';
+
+  static const String reactivateConfirmTitle = 'Reactivate this assignment?';
+
+  /// States the one consequence a reader would otherwise get wrong: the
+  /// assignment date is overwritten with the moment of reactivation, so it is
+  /// when *this* assignment began rather than when the pairing was first made.
+  static const String reactivateConfirmBody =
+      'The assignment becomes active again and this product becomes available '
+      'at this Retailer.\n\n'
+      'The existing record is reused rather than duplicated, and its assigned '
+      'date is reset to the moment you reactivate it — so it will show when this '
+      'assignment started, not when the product was first assigned here.';
+
+  static const String assignConfirmTitle = 'Assign this product?';
+  static const String assignConfirmBody =
+      'This product becomes available at this Retailer, and the assignment is '
+      'recorded against the product.\n\n'
+      'Nothing about the product or your relationship with the Retailer '
+      'changes. You can withdraw the assignment later, and withdrawing it keeps '
+      'the record.';
+
+  static const String assignConfirmAction = 'Assign';
+
+  // -- choosing a Retailer ---------------------------------------------------
+
+  static const String assignSheetTitle = 'Assign a Retailer';
+  static const String assignSheetDescription =
+      'Choose one of your Retailers to make this product available to. Your '
+      'Retailers’ current status decides which can be assigned.';
+
+  static const String candidateSearchLabel = 'Search Retailers';
+  static const String candidateSearchPlaceholder = 'Search by Retailer name';
+  static const String candidateSearchHint =
+      'Filters the Retailers already loaded. Nothing is sent to the server.';
+
+  static const String loadingCandidates = 'Loading your Retailers';
+
+  static const String candidatesUnavailableTitle = 'Retailers unavailable';
+  static const String candidatesUnavailableBody =
+      'We could not load your Retailers just now, so there is nothing to choose '
+      'from. Nothing has been assigned.';
+  static const String retryCandidates = 'Try again';
+
+  static const String candidatesEmptyTitle = 'No Retailers yet';
+  static const String candidatesEmptyBody =
+      'This Vendor organization has no Retailers on record, so there is nobody '
+      'to assign this product to.';
+
+  static const String candidatesNoMatchesTitle = 'No Retailers match';
+  static const String candidatesNoMatchesBody =
+      'No loaded Retailer matches that search.';
+
+  /// The one-line state under each Retailer in the picker. Each says what is
+  /// true of that Retailer now, and none names a permission, a table or a
+  /// status code.
+  static const String candidateAssignable = 'Can be assigned';
+  static const String candidateReactivatable =
+      'Previously assigned and withdrawn. Can be reactivated.';
+  static const String candidateAlreadyAssigned = 'Already assigned';
+  static const String candidateIneligible =
+      'Not available while this Retailer or your relationship with them is not '
+      'active';
+  static const String candidateRelationshipUnavailable =
+      'No Vendor–Retailer relationship on record';
+
+  /// The action label on a picker row, chosen by what the row can do.
+  static const String candidateAssignAction = 'Assign';
+  static const String candidateReactivateAction = 'Reactivate';
+
+  static const String close = 'Close';
+
+  // -- assignment write outcomes ---------------------------------------------
+
+  static const String assignedTitle = 'Product assigned';
+  static const String assignedBody =
+      'The assignment below was read back from your records. This product is '
+      'now available at that Retailer.';
+
+  static const String reactivatedTitle = 'Assignment reactivated';
+  static const String reactivatedBody =
+      'The assignment below was read back from your records. Its assigned date '
+      'is the moment it was reactivated.';
+
+  static const String withdrawnTitle = 'Assignment withdrawn';
+
+  /// Says the two things a reader needs and neither of the things that did not
+  /// happen: the assignment is inactive, and the record is still here.
+  static const String withdrawnBody =
+      'The assignment below was read back from your records. It is now inactive '
+      'and stays in this product’s history — nothing was deleted.';
+
+  static const String assignmentFailedTitle = 'Assignment not changed';
+
+  /// The important half: the assignment is unchanged, so what is on screen is
+  /// still correct.
+  static const String assignmentFailedBody =
+      'We could not change this assignment just now, so it is unchanged. Try '
+      'again.';
+
+  /// The `55000` case, and the only outcome the backend attributes to the
+  /// product rather than to the Retailer. Safe to name specifically: it is
+  /// reachable only after ownership has been proven, and the status is already
+  /// on this screen.
+  static const String assignNotReadyTitle =
+      'This product cannot be assigned right now';
+  static const String assignNotReadyBody =
+      'Activate this product before assigning it to a Retailer.';
+
+  /// One generic wording for every refusal the backend answers `42501` to on an
+  /// assignment write — an unauthorized caller, an unknown or foreign product,
+  /// and an unknown, foreign, suspended, deactivated or unrelated Retailer
+  /// alike. It names no permission and reveals nothing about whether any of them
+  /// exists.
+  static const String assignmentDeniedTitle = 'That is not available';
+  static const String assignmentDeniedBody =
+      'You do not have access to manage this product’s assignments, or this '
+      'Retailer is not currently eligible. Refresh and try again.';
+
+  /// The theoretical uniqueness race. Worded as a state rather than as an error,
+  /// because it means the pairing already exists.
+  static const String assignmentConflictTitle =
+      'The assignment is no longer available';
+  static const String assignmentConflictBody =
+      'This product’s assignments have changed since this list was loaded. '
+      'Refresh to see them.';
+
+  /// The partial-success wording for an assignment write: the transition is
+  /// saved, and only the picture of it is stale.
+  static const String staleAfterAssignmentTitle =
+      'Saved, but this may be out of date';
+  static const String staleAfterAssignmentBody =
+      'Your change to this assignment was saved. We could not read this '
+      'product’s assignments back just now, so the list and the counts below may '
+      'not reflect it yet.';
+
+  /// A `void` assignment write that answered with something this build could not
+  /// read. The wording neither claims nor denies the change and points at the
+  /// re-read values, which are the authority either way.
+  static const String assignmentUnconfirmedTitle = 'This may have been applied';
+  static const String assignmentUnconfirmedBody =
+      'We could not confirm the change from the response. The assignments below '
+      'were read back from your records and are what is on file. Do not repeat '
+      'the change without checking them.';
+
+  static const String refreshingAssignments =
+      'Reading this product’s assignments again…';
 
   // -- creating a product ----------------------------------------------------
 

@@ -78,6 +78,7 @@ void main() {
         },
       ),
       writes: unusedVendorProductWrites(),
+      assignments: unusedVendorProductAssignments(),
     );
   }
 
