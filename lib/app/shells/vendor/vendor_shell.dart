@@ -6,6 +6,8 @@ import '../../../features/audit/presentation/vendor/cubit/vendor_audit_log_cubit
 import '../../../features/auth/domain/entities/portal_context.dart';
 import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../../features/auth/presentation/bloc/session_bloc.dart';
+import '../../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
+import '../../../features/dashboard/presentation/vendor/cubit/vendor_dashboard_cubit.dart';
 import '../../../features/products/domain/repositories/vendor_product_repository.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_detail_cubit.dart';
 import '../../../features/products/presentation/vendor/cubit/vendor_product_list_cubit.dart';
@@ -48,10 +50,10 @@ import 'bloc/vendor_shell_bloc.dart';
 ///   is already showing, so a router refresh or a widget rebuild issues no
 ///   second RPC.
 ///
-/// All five list cubits load on creation, and `BlocProvider` builds each on
+/// All six loading cubits load on creation, and `BlocProvider` builds each on
 /// first read — so entering the Vendor shell does not fetch the user directory
 /// until something asks for it, and opening Retailers never fetches Users,
-/// Roles, Products or the audit feed.
+/// Roles, Products, the audit feed or the dashboard summary.
 ///
 /// ## Session isolation is enforced, not inferred from the widget lifetime
 ///
@@ -67,15 +69,17 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all nine cubits are cleared:
+/// moment the session stops being *this* person's, all ten cubits are cleared:
 /// the Retailer summaries, the open Retailer, its shops, the user summaries with
 /// their names and roles, the open user, the role catalogue with **this
 /// Vendor's own assigned member counts**, the open role and its permissions, the
 /// product catalogue with its codes, barcodes, brands and assignment counts, the
 /// open product with the names and statuses of the Retailers holding it, the
 /// loaded pages of the audit feed with the colleague, Retailer, shop and product
-/// names riding on them, and every search term and status filter — which are
-/// private too, being fragments of Retailer, colleague and product names.
+/// names riding on them, the dashboard summary with **this Vendor's own active
+/// membership count and all-time recorded-event total**, and every search term
+/// and status filter — which are private too, being fragments of Retailer,
+/// colleague and product names.
 ///
 /// Clearing the audit cubit also drops its **cursor position**, which is why the
 /// next Vendor cannot continue paging from where the previous one stopped.
@@ -84,7 +88,10 @@ import 'bloc/vendor_shell_bloc.dart';
 /// The counts riding on the same rows are not, which is why the Role pair is
 /// cleared rather than kept as a harmless cache. Nothing about the Product pair
 /// or the audit feed is global: a catalogue and a history each belong to exactly
-/// one Vendor.
+/// one Vendor. The dashboard summary is a mixture — two Vendor counts and two
+/// deployment-wide catalogue counts — and it is cleared **whole**, because the
+/// four figures are one snapshot from one statement and a summary carrying only
+/// its global half is a shape no backend answer ever produces.
 class VendorShell extends StatelessWidget {
   const VendorShell({
     super.key,
@@ -157,6 +164,17 @@ class VendorShell extends StatelessWidget {
         BlocProvider<VendorAuditLogCubit>(
           create: (BuildContext providerContext) => VendorAuditLogCubit(
             providerContext.read<VendorAuditLogRepository>(),
+          )..load(),
+        ),
+        // The dashboard summary. Two of its four counts are private Vendor data
+        // — how many people work in the organization, and how much has ever
+        // happened in it — so it is owned and cleared here exactly like the other
+        // five. The two catalogue counts are global, but the snapshot is cleared
+        // whole: a half-cleared summary would be a shape no backend answer ever
+        // produces.
+        BlocProvider<VendorDashboardCubit>(
+          create: (BuildContext providerContext) => VendorDashboardCubit(
+            providerContext.read<VendorDashboardRepository>(),
           )..load(),
         ),
       ],
@@ -274,6 +292,8 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorProductDetailCubit>();
         final VendorAuditLogCubit auditLogs = context
             .read<VendorAuditLogCubit>();
+        final VendorDashboardCubit dashboard = context
+            .read<VendorDashboardCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Vendor session must not see the
@@ -290,6 +310,7 @@ class _SessionIsolation extends StatelessWidget {
         products.clear();
         productDetail.clear();
         auditLogs.clear();
+        dashboard.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —
@@ -301,6 +322,7 @@ class _SessionIsolation extends StatelessWidget {
           roles.load();
           products.load();
           auditLogs.load();
+          dashboard.load();
         }
       },
       child: child,

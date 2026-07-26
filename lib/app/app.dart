@@ -6,6 +6,7 @@ import '../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
+import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../features/products/domain/repositories/vendor_product_repository.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
@@ -46,6 +47,7 @@ class SaleRewardApp extends StatefulWidget {
     this.vendorRoleRepository,
     this.vendorProductRepository,
     this.vendorAuditLogRepository,
+    this.vendorDashboardRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -58,6 +60,7 @@ class SaleRewardApp extends StatefulWidget {
   final VendorRoleRepository? vendorRoleRepository;
   final VendorProductRepository? vendorProductRepository;
   final VendorAuditLogRepository? vendorAuditLogRepository;
+  final VendorDashboardRepository? vendorDashboardRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -73,6 +76,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final VendorRoleRepository _vendorRoleRepository;
   late final VendorProductRepository _vendorProductRepository;
   late final VendorAuditLogRepository _vendorAuditLogRepository;
+  late final VendorDashboardRepository _vendorDashboardRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -95,6 +99,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.vendorProductRepository ?? getIt<VendorProductRepository>();
     _vendorAuditLogRepository =
         widget.vendorAuditLogRepository ?? getIt<VendorAuditLogRepository>();
+    _vendorDashboardRepository =
+        widget.vendorDashboardRepository ?? getIt<VendorDashboardRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -147,6 +153,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<VendorAuditLogRepository>.value(
           value: _vendorAuditLogRepository,
+        ),
+        RepositoryProvider<VendorDashboardRepository>.value(
+          value: _vendorDashboardRepository,
         ),
       ],
       child: MultiBlocProvider(

@@ -16,6 +16,9 @@ import 'package:sale_reward/features/auth/domain/entities/portal_context.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/entities/retailer_capabilities.dart';
 import 'package:sale_reward/features/auth/presentation/bloc/session_bloc.dart';
+import 'package:sale_reward/features/dashboard/domain/entities/vendor_dashboard_summary.dart';
+import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
+import 'package:sale_reward/features/dashboard/presentation/vendor/cubit/vendor_dashboard_cubit.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_assigned_retailer.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_detail.dart';
 import 'package:sale_reward/features/products/domain/entities/vendor_product_status.dart';
@@ -42,6 +45,7 @@ import 'package:sale_reward/features/users/presentation/vendor/pages/vendor_user
 
 import '../../support/pump_app.dart';
 import '../../support/vendor_audit_log_fakes.dart';
+import '../../support/vendor_dashboard_fakes.dart';
 import '../../support/vendor_product_fakes.dart';
 import '../../support/vendor_retailer_fakes.dart';
 import '../../support/vendor_role_fakes.dart';
@@ -107,6 +111,7 @@ void main() {
   late FakeVendorRoleRepository roles;
   late FakeVendorProductRepository products;
   late FakeVendorAuditLogRepository auditLogs;
+  late FakeVendorDashboardRepository dashboard;
 
   /// The identity the shell starts under: Vendor A in organization one.
   final SessionState vendorA = SessionActive(
@@ -129,6 +134,7 @@ void main() {
     roles = FakeVendorRoleRepository();
     products = FakeVendorProductRepository();
     auditLogs = FakeVendorAuditLogRepository();
+    dashboard = FakeVendorDashboardRepository();
     whenListen(session, states.stream, initialState: vendorA);
   });
 
@@ -168,6 +174,7 @@ void main() {
           RepositoryProvider<VendorRoleRepository>.value(value: roles),
           RepositoryProvider<VendorProductRepository>.value(value: products),
           RepositoryProvider<VendorAuditLogRepository>.value(value: auditLogs),
+          RepositoryProvider<VendorDashboardRepository>.value(value: dashboard),
         ],
         child: BlocProvider<SessionBloc>.value(
           value: session,
@@ -180,7 +187,7 @@ void main() {
     );
     await settle(tester);
 
-    // Force all nine cubits into existence before any assertion counts calls.
+    // Force all ten cubits into existence before any assertion counts calls.
     // `BlocProvider` builds each on first read, so without this the Retailer,
     // Role and Product pairs would be created *by the session listener itself*
     // and the call counts would measure creation rather than reloading.
@@ -193,6 +200,7 @@ void main() {
     cubit<VendorProductListCubit>(tester);
     cubit<VendorProductDetailCubit>(tester);
     cubit<VendorAuditLogCubit>(tester);
+    cubit<VendorDashboardCubit>(tester);
     await settle(tester);
   }
 
@@ -1223,6 +1231,261 @@ void main() {
         expect(roles.rolesCallCount, 2);
         expect(products.productsCallCount, 2);
         expect(auditLogs.callCount, 2);
+      },
+    );
+  });
+
+  /// The Vendor Dashboard summary, added by the Dashboard milestone.
+  ///
+  /// Unlike every other cubit in this shell, this one holds a **mixture**: two
+  /// counts belong to the caller's Vendor — how many people work there, and how
+  /// much has ever happened there — and two are deployment-wide catalogue figures
+  /// identical for whoever signs in next. It would therefore be tempting to keep
+  /// the global half as a harmless cache.
+  ///
+  /// It is not kept, and the reason is not privacy alone: the four figures are
+  /// **one snapshot from one statement**, so a summary carrying only its global
+  /// half is a shape no backend answer ever produces. Rendering one would show a
+  /// screen the contract cannot explain. The whole snapshot goes.
+  group('the Vendor Dashboard summary', () {
+    testWidgets('A\'s figures are gone before B answers', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      expect(
+        cubit<VendorDashboardCubit>(tester).state.summary,
+        exampleDashboardSummary,
+      );
+
+      // B's summary will not answer until this test says so.
+      dashboard.manual = true;
+      await emit(tester, vendorB);
+
+      // The window that matters: B is signed in, B's figures have not arrived,
+      // and A's member count and recorded-event total must already be out of the
+      // cubit.
+      expect(dashboard.pendingCount, 1);
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+      expect(
+        cubit<VendorDashboardCubit>(tester).state.phase,
+        VendorDashboardPhase.loading,
+      );
+
+      dashboard.complete(
+        const ReadSuccess<VendorDashboardSummary>(otherVendorDashboardSummary),
+      );
+      await settle(tester);
+
+      expect(
+        cubit<VendorDashboardCubit>(tester).state.summary,
+        otherVendorDashboardSummary,
+      );
+    });
+
+    testWidgets('the global half is cleared alongside the tenant half', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      dashboard.manual = true;
+
+      await emit(tester, vendorB);
+
+      // Not a partially populated snapshot — nothing at all.
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+    });
+
+    testWidgets('B\'s summary loads exactly once', (WidgetTester tester) async {
+      await pumpShell(tester);
+      expect(dashboard.callCount, 1);
+
+      await emit(tester, vendorB);
+
+      expect(dashboard.callCount, 2);
+    });
+
+    testWidgets('a stale A first response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      dashboard.manual = true;
+      await pumpShell(tester);
+      expect(dashboard.pendingCount, 1);
+
+      await emit(tester, vendorB);
+      expect(dashboard.pendingCount, 2);
+
+      // A's answer lands *after* the switch. It must be discarded — A's member
+      // count under B's session would be a cross-tenant disclosure dressed as a
+      // dashboard.
+      dashboard.completeAt(
+        0,
+        const ReadSuccess<VendorDashboardSummary>(exampleDashboardSummary),
+      );
+      await settle(tester);
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+
+      // B's own answer still lands normally.
+      dashboard.complete(
+        const ReadSuccess<VendorDashboardSummary>(otherVendorDashboardSummary),
+      );
+      await settle(tester);
+      expect(
+        cubit<VendorDashboardCubit>(tester).state.summary,
+        otherVendorDashboardSummary,
+      );
+    });
+
+    testWidgets('a stale A refresh response cannot repopulate B', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      dashboard.manual = true;
+      unawaited(cubit<VendorDashboardCubit>(tester).refresh());
+      await settle(tester);
+      expect(dashboard.pendingCount, 1);
+
+      await emit(tester, vendorB);
+
+      dashboard.completeAt(
+        0,
+        const ReadSuccess<VendorDashboardSummary>(exampleDashboardSummary),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+    });
+
+    testWidgets('a stale A failure cannot set an error on B\'s screen', (
+      WidgetTester tester,
+    ) async {
+      dashboard.manual = true;
+      await pumpShell(tester);
+
+      await emit(tester, vendorB);
+
+      dashboard.completeAt(
+        0,
+        unavailableDashboardRead<VendorDashboardSummary>(),
+      );
+      await settle(tester);
+
+      expect(cubit<VendorDashboardCubit>(tester).state.failure, isNull);
+    });
+
+    testWidgets('the refresh and failure state are cleared too', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+      dashboard.result = unavailableDashboardRead<VendorDashboardSummary>();
+      await cubit<VendorDashboardCubit>(tester).refresh();
+      await settle(tester);
+      expect(cubit<VendorDashboardCubit>(tester).state.isStale, isTrue);
+
+      dashboard.result = null;
+      dashboard.manual = true;
+      await emit(tester, vendorB);
+
+      final VendorDashboardCubit summary = cubit<VendorDashboardCubit>(tester);
+      expect(summary.state.summary, isNull);
+      expect(summary.state.failure, isNull);
+      expect(summary.state.isStale, isFalse);
+      expect(summary.state.hasFailedFirstRead, isFalse);
+    });
+
+    testWidgets('an identical re-emitted session is a no-op for the summary', (
+      WidgetTester tester,
+    ) async {
+      // The shape a same-user token refresh takes. Nothing about the effective
+      // identity changed, so there is nothing to protect and nothing to re-read.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgOne), authUserId: 'user-A'),
+      );
+
+      expect(dashboard.callCount, 1);
+      expect(
+        cubit<VendorDashboardCubit>(tester).state.summary,
+        exampleDashboardSummary,
+      );
+    });
+
+    testWidgets('a changed trusted organization reloads the summary', (
+      WidgetTester tester,
+    ) async {
+      // Same person, a different Vendor organization: the two tenant counts are
+      // another organization's, so the snapshot is re-read rather than kept.
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(vendorContext(orgTwo), authUserId: 'user-A'),
+      );
+
+      expect(dashboard.callCount, 2);
+    });
+
+    testWidgets('signing out clears the summary and reloads nothing', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnauthenticated());
+
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+      expect(dashboard.callCount, 1);
+    });
+
+    testWidgets('becoming another role clears the summary', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(
+        tester,
+        SessionActive(retailerContext(), authUserId: 'user-A'),
+      );
+
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+      expect(dashboard.callCount, 1);
+    });
+
+    testWidgets('a session invalidation clears the summary', (
+      WidgetTester tester,
+    ) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionUnavailable(UnavailableFailure()));
+
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+      expect(dashboard.callCount, 1);
+    });
+
+    testWidgets('a denial clears the summary', (WidgetTester tester) async {
+      await pumpShell(tester);
+
+      await emit(tester, const SessionDenied());
+
+      expect(cubit<VendorDashboardCubit>(tester).state.summary, isNull);
+      expect(dashboard.callCount, 1);
+    });
+
+    testWidgets(
+      'the Retailer, User, Role, Product and Audit state is still cleared '
+      'alongside',
+      (WidgetTester tester) async {
+        // The Dashboard milestone must not have displaced any earlier part of
+        // the listener.
+        await pumpShell(tester);
+
+        await emit(tester, vendorB);
+
+        expect(users.usersCallCount, 2);
+        expect(retailers.retailersCallCount, 2);
+        expect(roles.rolesCallCount, 2);
+        expect(products.productsCallCount, 2);
+        expect(auditLogs.callCount, 2);
+        expect(dashboard.callCount, 2);
       },
     );
   });

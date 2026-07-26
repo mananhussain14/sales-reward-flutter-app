@@ -10,6 +10,9 @@ import '../../features/audit/data/datasources/vendor_audit_log_rpc_data_source.d
 import '../../features/audit/data/repositories/supabase_vendor_audit_log_repository.dart';
 import '../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../../features/auth/domain/repositories/portal_context_repository.dart';
+import '../../features/dashboard/data/datasources/vendor_dashboard_rpc_data_source.dart';
+import '../../features/dashboard/data/repositories/supabase_vendor_dashboard_repository.dart';
+import '../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
 import '../../features/products/domain/repositories/vendor_product_repository.dart';
@@ -141,6 +144,19 @@ Future<void> configureDependencies() async {
       rpc: VendorAuditLogRpcDataSource.forClient(client),
     ),
   );
+
+  // The Vendor Dashboard summary read. One RPC, zero arguments, and no table
+  // access at all — the Vendor resolution, the three permission checks and all
+  // four count definitions happen in SQL. The web assembles the same page from
+  // four direct table reads plus an authorization round trip; reproducing that
+  // here would put the metric definitions into a second client free to drift
+  // from the first, including the fact that two of the four counts are
+  // deployment-wide catalogue figures rather than this Vendor's.
+  getIt.registerLazySingleton<VendorDashboardRepository>(
+    () => SupabaseVendorDashboardRepository(
+      rpc: VendorDashboardRpcDataSource.forClient(client),
+    ),
+  );
 }
 
 /// Supplies the current access token for the receipt upload.
@@ -192,6 +208,7 @@ void registerTestDependencies({
   VendorRoleRepository? vendorRoleRepository,
   VendorProductRepository? vendorProductRepository,
   VendorAuditLogRepository? vendorAuditLogRepository,
+  VendorDashboardRepository? vendorDashboardRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -226,6 +243,11 @@ void registerTestDependencies({
   if (vendorAuditLogRepository != null) {
     getIt.registerLazySingleton<VendorAuditLogRepository>(
       () => vendorAuditLogRepository,
+    );
+  }
+  if (vendorDashboardRepository != null) {
+    getIt.registerLazySingleton<VendorDashboardRepository>(
+      () => vendorDashboardRepository,
     );
   }
 }
