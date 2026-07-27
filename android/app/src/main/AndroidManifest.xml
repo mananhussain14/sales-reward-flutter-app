@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for Supabase. Declared here in `src/main` rather than in
+         `src/debug`/`src/profile`, because Gradle merges a source set's manifest
+         only into its own build type: a permission that lives only in those two
+         gives a working `flutter run` and a release APK that cannot open a
+         socket. Must also be a direct child of <manifest> — inside
+         <application> it is not a permission declaration at all. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="sale_reward"
         android:name="${applicationName}"

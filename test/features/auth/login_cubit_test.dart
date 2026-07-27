@@ -1,6 +1,5 @@
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sale_reward/core/errors/failure.dart';
 import 'package:sale_reward/features/auth/domain/repositories/auth_repository.dart';
 import 'package:sale_reward/features/auth/presentation/cubit/login_cubit.dart';
 
@@ -75,7 +74,7 @@ void main() {
     blocTest<LoginCubit, LoginState>(
       'an operational failure is distinct from a credential rejection',
       build: () {
-        auth.nextSignInResult = const SignInFailed(UnavailableFailure());
+        auth.nextSignInResult = const SignInFailed(SignInFailureReason.network);
         return build();
       },
       act: (LoginCubit c) => c
@@ -83,8 +82,73 @@ void main() {
         ..passwordChanged('secret')
         ..submit(),
       verify: (LoginCubit c) {
-        expect(c.state.formError, LoginFormError.unavailable);
+        expect(c.state.formError, LoginFormError.network);
         expect(c.state.formError, isNot(LoginFormError.invalidCredentials));
+      },
+    );
+
+    // The regression this milestone exists for: every operational reason used
+    // to collapse into one "check your connection" message, so a build that
+    // could not authenticate for a packaging reason was reported to the user as
+    // a network problem. Each reason must now survive the trip to the form.
+    for (final (SignInFailureReason reason, LoginFormError expected)
+        in <(SignInFailureReason, LoginFormError)>[
+          (SignInFailureReason.network, LoginFormError.network),
+          (SignInFailureReason.timeout, LoginFormError.timeout),
+          (
+            SignInFailureReason.serviceUnavailable,
+            LoginFormError.serviceUnavailable,
+          ),
+          (SignInFailureReason.configuration, LoginFormError.configuration),
+          (SignInFailureReason.unexpected, LoginFormError.unexpected),
+        ]) {
+      blocTest<LoginCubit, LoginState>(
+        '${reason.name} maps to ${expected.name} and never to a rejection',
+        build: () {
+          auth.nextSignInResult = SignInFailed(reason);
+          return build();
+        },
+        act: (LoginCubit c) => c
+          ..emailChanged('sam@example.com')
+          ..passwordChanged('secret')
+          ..submit(),
+        verify: (LoginCubit c) {
+          expect(c.state.formError, expected);
+          expect(c.state.formError, isNot(LoginFormError.invalidCredentials));
+          expect(c.state.isSubmitting, isFalse);
+        },
+      );
+    }
+
+    blocTest<LoginCubit, LoginState>(
+      'an unconfirmed address is not shown as a wrong password',
+      build: () {
+        auth.nextSignInResult = const SignInUnconfirmed();
+        return build();
+      },
+      act: (LoginCubit c) => c
+        ..emailChanged('sam@example.com')
+        ..passwordChanged('secret')
+        ..submit(),
+      verify: (LoginCubit c) {
+        expect(c.state.formError, LoginFormError.emailNotConfirmed);
+        expect(c.state.isSubmitting, isFalse);
+      },
+    );
+
+    blocTest<LoginCubit, LoginState>(
+      'a throttled attempt is not shown as a wrong password',
+      build: () {
+        auth.nextSignInResult = const SignInThrottled();
+        return build();
+      },
+      act: (LoginCubit c) => c
+        ..emailChanged('sam@example.com')
+        ..passwordChanged('secret')
+        ..submit(),
+      verify: (LoginCubit c) {
+        expect(c.state.formError, LoginFormError.tooManyAttempts);
+        expect(c.state.isSubmitting, isFalse);
       },
     );
 
