@@ -6,6 +6,12 @@ import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../../features/auth/presentation/bloc/session_bloc.dart';
 import '../../../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../../../features/dashboard/presentation/retailer_owner/cubit/retailer_owner_overview_cubit.dart';
+import '../../../features/products/domain/repositories/retailer_product_repository.dart';
+import '../../../features/products/presentation/retailer/cubit/retailer_products_cubit.dart';
+import '../../../features/shops/domain/repositories/retailer_shop_repository.dart';
+import '../../../features/shops/presentation/retailer_owner/cubit/retailer_shops_cubit.dart';
+import '../../../features/staff/domain/repositories/retailer_staff_repository.dart';
+import '../../../features/staff/presentation/retailer/cubit/retailer_staff_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/retailer_owner_shell_bloc.dart';
 
@@ -73,6 +79,35 @@ class RetailerOwnerShell extends StatelessWidget {
           create: (BuildContext providerContext) => RetailerOwnerOverviewCubit(
             providerContext.read<RetailerOwnerOverviewRepository>(),
           )..load(),
+        ),
+        // The three tab cubits. Deliberately NOT loaded on creation, unlike the
+        // Overview: `BlocProvider` builds each on first read, and each tab's page
+        // calls `loadOnce()` when it first mounts. So entering the shell issues
+        // exactly one RPC — the Overview's — and opening Shops does not fetch
+        // Staff or Products.
+        //
+        // Returning to an already-loaded tab reads nothing, because `loadOnce`
+        // is a no-op once the phase has left `initial`. An explicit Refresh on
+        // each screen is the way to re-read.
+        BlocProvider<RetailerShopsCubit>(
+          create: (BuildContext providerContext) => RetailerShopsCubit(
+            providerContext.read<RetailerShopRepository>(),
+          ),
+        ),
+        BlocProvider<RetailerStaffCubit>(
+          create: (BuildContext providerContext) => RetailerStaffCubit(
+            providerContext.read<RetailerStaffRepository>(),
+            // The Owner is the role the invitation contract serves. Presentation
+            // scope, not a permission check: the backend decides, and
+            // `list_retailer_staff_invitations()` would refuse anyone whose role
+            // lacks RETAILER_STAFF_MANAGE regardless of this flag.
+            includeInvitations: true,
+          ),
+        ),
+        BlocProvider<RetailerProductsCubit>(
+          create: (BuildContext providerContext) => RetailerProductsCubit(
+            providerContext.read<RetailerProductRepository>(),
+          ),
         ),
       ],
       child: _SessionIsolation(
@@ -177,6 +212,10 @@ class _SessionIsolation extends StatelessWidget {
       listener: (BuildContext context, SessionState state) {
         final RetailerOwnerOverviewCubit overview = context
             .read<RetailerOwnerOverviewCubit>();
+        final RetailerShopsCubit shops = context.read<RetailerShopsCubit>();
+        final RetailerStaffCubit staff = context.read<RetailerStaffCubit>();
+        final RetailerProductsCubit products = context
+            .read<RetailerProductsCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Retailer Owner session must not
@@ -189,6 +228,18 @@ class _SessionIsolation extends StatelessWidget {
         // is rebuilt from the router's location, which the guard has already
         // moved for any transition that leaves this role.
         overview.clear();
+        // The three tabs go with it. Every one holds data private to a single
+        // Retailer: the names, codes and cities of its trading locations; its
+        // colleagues' names, roles, membership standing and shop assignments;
+        // the email addresses invitations were sent to; and which products a
+        // Vendor commercially assigns it. Each `clear()` also drops that tab's
+        // local search term — itself a fragment of one of those names — and
+        // advances a request token, so an answer already in flight for the
+        // previous identity is dropped on arrival rather than repopulating a
+        // list that has just been emptied.
+        shops.clear();
+        staff.clear();
+        products.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —
@@ -196,6 +247,11 @@ class _SessionIsolation extends StatelessWidget {
           // passed from here. The RPC takes no arguments, so the reload cannot
           // carry the previous organization forward even by accident.
           overview.load();
+          // The three tabs are deliberately NOT reloaded here. They return to
+          // `initial`, and whichever tab the new session actually opens reads
+          // itself through `loadOnce`. Eagerly refetching all three would issue
+          // three RPCs for screens nobody is looking at — and on a role switch
+          // the router has already moved away from most of them.
         }
       },
       child: child,

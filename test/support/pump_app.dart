@@ -7,15 +7,19 @@ import 'package:sale_reward/features/auth/domain/entities/auth_user.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
 import 'package:sale_reward/features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
+import 'package:sale_reward/features/products/domain/repositories/retailer_product_repository.dart';
 import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
 import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
+import 'package:sale_reward/features/shops/domain/repositories/retailer_shop_repository.dart';
+import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_repository.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
 import 'retailer_owner_overview_fakes.dart';
+import 'retailer_read_fakes.dart';
 import 'vendor_audit_log_fakes.dart';
 import 'vendor_dashboard_fakes.dart';
 import 'vendor_product_fakes.dart';
@@ -59,6 +63,9 @@ typedef PumpedApp = ({
   FakeVendorDashboardRepository vendorDashboard,
   FakeVendorProfileRepository vendorProfile,
   FakeRetailerOwnerOverviewRepository retailerOverview,
+  FakeRetailerShopRepository retailerShops,
+  FakeRetailerStaffRepository retailerStaff,
+  FakeRetailerProductRepository retailerProducts,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -96,6 +103,12 @@ Future<PumpedApp> pumpApp(
   VendorProfileRepository? vendorProfileRepository,
   FakeRetailerOwnerOverviewRepository? retailerOverview,
   RetailerOwnerOverviewRepository? retailerOverviewRepository,
+  FakeRetailerShopRepository? retailerShops,
+  RetailerShopRepository? retailerShopRepository,
+  FakeRetailerStaffRepository? retailerStaff,
+  RetailerStaffRepository? retailerStaffRepository,
+  FakeRetailerProductRepository? retailerProducts,
+  RetailerProductRepository? retailerProductRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -137,6 +150,18 @@ Future<PumpedApp> pumpApp(
       retailerOverview ?? FakeRetailerOwnerOverviewRepository();
   final RetailerOwnerOverviewRepository providedOverview =
       retailerOverviewRepository ?? overviewRepository;
+  final FakeRetailerShopRepository shopRepository =
+      retailerShops ?? FakeRetailerShopRepository();
+  final RetailerShopRepository providedShops =
+      retailerShopRepository ?? shopRepository;
+  final FakeRetailerStaffRepository staffRepository =
+      retailerStaff ?? FakeRetailerStaffRepository();
+  final RetailerStaffRepository providedStaff =
+      retailerStaffRepository ?? staffRepository;
+  final FakeRetailerProductRepository productsRepository =
+      retailerProducts ?? FakeRetailerProductRepository();
+  final RetailerProductRepository providedRetailerProducts =
+      retailerProductRepository ?? productsRepository;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -154,6 +179,9 @@ Future<PumpedApp> pumpApp(
       vendorDashboardRepository: providedDashboard,
       vendorProfileRepository: providedProfile,
       retailerOwnerOverviewRepository: providedOverview,
+      retailerShopRepository: providedShops,
+      retailerStaffRepository: providedStaff,
+      retailerProductRepository: providedRetailerProducts,
       initialThemeMode: themeMode,
     ),
   );
@@ -173,6 +201,9 @@ Future<PumpedApp> pumpApp(
     vendorDashboard: dashboardRepository,
     vendorProfile: profileRepository,
     retailerOverview: overviewRepository,
+    retailerShops: shopRepository,
+    retailerStaff: staffRepository,
+    retailerProducts: productsRepository,
   );
 }
 
@@ -198,6 +229,12 @@ Future<PumpedApp> pumpAppInRole(
   VendorProfileRepository? vendorProfileRepository,
   FakeRetailerOwnerOverviewRepository? retailerOverview,
   RetailerOwnerOverviewRepository? retailerOverviewRepository,
+  FakeRetailerShopRepository? retailerShops,
+  RetailerShopRepository? retailerShopRepository,
+  FakeRetailerStaffRepository? retailerStaff,
+  RetailerStaffRepository? retailerStaffRepository,
+  FakeRetailerProductRepository? retailerProducts,
+  RetailerProductRepository? retailerProductRepository,
 }) {
   return pumpApp(
     tester,
@@ -221,6 +258,12 @@ Future<PumpedApp> pumpAppInRole(
     vendorProfileRepository: vendorProfileRepository,
     retailerOverview: retailerOverview,
     retailerOverviewRepository: retailerOverviewRepository,
+    retailerShops: retailerShops,
+    retailerShopRepository: retailerShopRepository,
+    retailerStaff: retailerStaff,
+    retailerStaffRepository: retailerStaffRepository,
+    retailerProducts: retailerProducts,
+    retailerProductRepository: retailerProductRepository,
   );
 }
 

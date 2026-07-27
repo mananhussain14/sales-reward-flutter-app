@@ -16,6 +16,7 @@ import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.da
 
 import '../support/fakes.dart';
 import '../support/retailer_owner_overview_fakes.dart';
+import '../support/retailer_read_fakes.dart';
 import '../support/pump_app.dart';
 import '../support/vendor_audit_log_fakes.dart';
 import '../support/vendor_dashboard_fakes.dart';
@@ -100,6 +101,9 @@ void main() {
           vendorProfileRepository: FakeVendorProfileRepository(),
           retailerOwnerOverviewRepository:
               FakeRetailerOwnerOverviewRepository(),
+          retailerShopRepository: FakeRetailerShopRepository(),
+          retailerStaffRepository: FakeRetailerStaffRepository(),
+          retailerProductRepository: FakeRetailerProductRepository(),
         ),
       );
 
@@ -258,6 +262,9 @@ void main() {
             vendorProfileRepository: FakeVendorProfileRepository(),
             retailerOwnerOverviewRepository:
                 FakeRetailerOwnerOverviewRepository(),
+            retailerShopRepository: FakeRetailerShopRepository(),
+            retailerStaffRepository: FakeRetailerStaffRepository(),
+            retailerProductRepository: FakeRetailerProductRepository(),
           ),
         );
         await tester.pump();
@@ -304,6 +311,9 @@ void main() {
             vendorProfileRepository: FakeVendorProfileRepository(),
             retailerOwnerOverviewRepository:
                 FakeRetailerOwnerOverviewRepository(),
+            retailerShopRepository: FakeRetailerShopRepository(),
+            retailerStaffRepository: FakeRetailerStaffRepository(),
+            retailerProductRepository: FakeRetailerProductRepository(),
           ),
         );
         await tester.pump();

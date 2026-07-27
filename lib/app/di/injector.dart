@@ -16,10 +16,13 @@ import '../../features/dashboard/data/repositories/supabase_retailer_owner_overv
 import '../../features/dashboard/data/repositories/supabase_vendor_dashboard_repository.dart';
 import '../../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
+import '../../features/products/data/datasources/retailer_product_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_assignment_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_write_rpc_data_source.dart';
+import '../../features/products/data/repositories/supabase_retailer_product_repository.dart';
 import '../../features/products/data/repositories/supabase_vendor_product_repository.dart';
+import '../../features/products/domain/repositories/retailer_product_repository.dart';
 import '../../features/products/domain/repositories/vendor_product_repository.dart';
 import '../../features/profile/data/datasources/vendor_profile_rpc_data_source.dart';
 import '../../features/profile/data/repositories/supabase_vendor_profile_repository.dart';
@@ -36,6 +39,12 @@ import '../../features/retailers/domain/repositories/vendor_retailer_repository.
 import '../../features/roles/data/datasources/vendor_role_rpc_data_source.dart';
 import '../../features/roles/data/repositories/supabase_vendor_role_repository.dart';
 import '../../features/roles/domain/repositories/vendor_role_repository.dart';
+import '../../features/shops/data/datasources/retailer_shop_rpc_data_source.dart';
+import '../../features/shops/data/repositories/supabase_retailer_shop_repository.dart';
+import '../../features/shops/domain/repositories/retailer_shop_repository.dart';
+import '../../features/staff/data/datasources/retailer_staff_rpc_data_source.dart';
+import '../../features/staff/data/repositories/supabase_retailer_staff_repository.dart';
+import '../../features/staff/domain/repositories/retailer_staff_repository.dart';
 import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
 import '../../features/users/data/repositories/supabase_vendor_user_repository.dart';
 import '../../features/users/domain/repositories/vendor_user_repository.dart';
@@ -179,6 +188,41 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The three Retailer read-portal contracts. Four RPCs, all zero-argument, and
+  // no table access at all — every tenant scope, permission gate, role-dependent
+  // status filter, shop-assignment join and invitation state derivation happens
+  // in SQL.
+  //
+  // A direct table read is not merely avoided here, it would not work.
+  // `retailer_shops` carries one vendor-scoped SELECT policy that returns zero
+  // rows to a Retailer Owner, and both product tables are default-deny with no
+  // privilege for `authenticated` — so a client that reproduced these queries
+  // would render an empty estate and an empty catalogue for every Retailer and
+  // look entirely plausible doing it.
+  //
+  // No write RPC is registered for any of them, because none exists in the
+  // Retailer portal: shop create/edit/status, invitation send/resend/revoke,
+  // membership role and status changes, and product assignment are all either
+  // Vendor operations on other permissions or Edge Functions this application
+  // never calls.
+  getIt.registerLazySingleton<RetailerShopRepository>(
+    () => SupabaseRetailerShopRepository(
+      rpc: RetailerShopRpcDataSource.forClient(client),
+    ),
+  );
+
+  getIt.registerLazySingleton<RetailerStaffRepository>(
+    () => SupabaseRetailerStaffRepository(
+      rpc: RetailerStaffRpcDataSource.forClient(client),
+    ),
+  );
+
+  getIt.registerLazySingleton<RetailerProductRepository>(
+    () => SupabaseRetailerProductRepository(
+      rpc: RetailerProductRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer Owner Overview read. One RPC, zero arguments, and no table
   // access at all — the organization resolution, the role and permission gates,
   // the single-qualifying-organization rule and both shop counts happen in SQL.
@@ -266,6 +310,9 @@ void registerTestDependencies({
   VendorDashboardRepository? vendorDashboardRepository,
   VendorProfileRepository? vendorProfileRepository,
   RetailerOwnerOverviewRepository? retailerOwnerOverviewRepository,
+  RetailerShopRepository? retailerShopRepository,
+  RetailerStaffRepository? retailerStaffRepository,
+  RetailerProductRepository? retailerProductRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -315,6 +362,21 @@ void registerTestDependencies({
   if (retailerOwnerOverviewRepository != null) {
     getIt.registerLazySingleton<RetailerOwnerOverviewRepository>(
       () => retailerOwnerOverviewRepository,
+    );
+  }
+  if (retailerShopRepository != null) {
+    getIt.registerLazySingleton<RetailerShopRepository>(
+      () => retailerShopRepository,
+    );
+  }
+  if (retailerStaffRepository != null) {
+    getIt.registerLazySingleton<RetailerStaffRepository>(
+      () => retailerStaffRepository,
+    );
+  }
+  if (retailerProductRepository != null) {
+    getIt.registerLazySingleton<RetailerProductRepository>(
+      () => retailerProductRepository,
     );
   }
 }
