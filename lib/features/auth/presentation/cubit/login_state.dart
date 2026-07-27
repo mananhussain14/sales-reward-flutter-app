@@ -1,6 +1,10 @@
 part of 'login_cubit.dart';
 
 /// A form-level failure.
+///
+/// One value per *message the user should read*. Everything below the rejection
+/// cases is an operational failure — none of them is a rejection, and none is
+/// ever shown as one.
 enum LoginFormError {
   /// The credentials were rejected.
   ///
@@ -10,9 +14,27 @@ enum LoginFormError {
   /// screen into an account-enumeration oracle.
   invalidCredentials,
 
-  /// Sign-in could not be attempted or completed. Not a rejection, and never
-  /// shown as one.
-  unavailable,
+  /// The credentials were correct but the address is unconfirmed.
+  emailNotConfirmed,
+
+  /// Too many attempts. The credentials were never evaluated.
+  tooManyAttempts,
+
+  /// The auth service could not be reached.
+  network,
+
+  /// The request was sent and nothing came back in time.
+  timeout,
+
+  /// The auth service answered with its own failure.
+  serviceUnavailable,
+
+  /// This build cannot authenticate — a packaging fault, not a user fault, and
+  /// not something a user can fix by retrying or reconnecting.
+  configuration,
+
+  /// Something unforeseen went wrong.
+  unexpected,
 }
 
 /// The login form's state.

@@ -157,6 +157,52 @@ void main() {
     );
   });
 
+  test('no source disables TLS validation', () {
+    // The debugging reflex when a mobile HTTPS call fails is to trust every
+    // certificate and move on. It would have "fixed" nothing here — the release
+    // build could not open a socket at all — and it would have shipped a client
+    // that accepts any interceptor's certificate.
+    _expectAbsent(sources, <String>[
+      'badCertificateCallback',
+      'allowBadCertificates',
+      'HttpOverrides',
+      'onBadCertificate',
+    ], allowInComments: true);
+  });
+
+  test('no source forces cleartext HTTP', () {
+    _expectAbsent(sources, <String>[
+      'usesCleartextTraffic',
+      "http://'",
+      'http://10.0.2.2',
+      'http://localhost',
+      'http://127.0.0.1',
+    ], allowInComments: true);
+  });
+
+  test('the configured Supabase URL is not a local endpoint', () {
+    // A local Supabase reaches nothing from a physical device, and 10.0.2.2 is
+    // an emulator-only alias. Neither belongs in a build that gets installed.
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    if (url.isEmpty) {
+      // `flutter test` runs without --dart-define-from-file, which is fine.
+      return;
+    }
+    for (final String local in <String>[
+      'localhost',
+      '127.0.0.1',
+      '10.0.2.2',
+      '0.0.0.0',
+    ]) {
+      expect(
+        url.contains(local),
+        isFalse,
+        reason: 'SUPABASE_URL must address the hosted project',
+      );
+    }
+    expect(url.startsWith('https://'), isTrue);
+  });
+
   test('dart_defines.json is not tracked by git', () {
     final ProcessResult result = Process.runSync('git', <String>[
       'ls-files',

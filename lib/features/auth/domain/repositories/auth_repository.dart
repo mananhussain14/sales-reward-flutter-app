@@ -21,13 +21,56 @@ final class SignInRejected extends SignInResult {
   const SignInRejected();
 }
 
-/// Sign-in could not be attempted or completed — offline, timeout, the auth
-/// service is unreachable. **Not** a credential rejection, and never presented
-/// as one.
-final class SignInFailed extends SignInResult {
-  const SignInFailed(this.failure);
+/// The credentials were correct, but the address has not been confirmed.
+///
+/// Distinct from [SignInRejected] because the two need different actions from
+/// the user: one is "check what you typed", the other is "check your inbox".
+/// This is not the account-enumeration oracle [SignInRejected] guards against —
+/// reaching this outcome already requires knowing the correct password.
+final class SignInUnconfirmed extends SignInResult {
+  const SignInUnconfirmed();
+}
 
-  final Failure failure;
+/// Too many attempts in too short a window. Not a rejection: the credentials
+/// were never evaluated.
+final class SignInThrottled extends SignInResult {
+  const SignInThrottled();
+}
+
+/// Sign-in could not be attempted or completed. **Not** a credential rejection,
+/// and never presented as one.
+final class SignInFailed extends SignInResult {
+  const SignInFailed(this.reason);
+
+  final SignInFailureReason reason;
+}
+
+/// Why a sign-in could not be completed.
+///
+/// The point of the distinction is that "we could not reach the service" and
+/// "the service refused this build" and "something in our own code broke" are
+/// three different problems with three different remedies, and telling a user
+/// to check their connection when the connection is fine sends them to fix
+/// something that was never broken.
+enum SignInFailureReason {
+  /// The request never reached the auth service: no route, no DNS answer, a
+  /// refused TLS handshake, a blocked socket, a browser CORS refusal.
+  network,
+
+  /// The request was sent but nothing came back in time.
+  timeout,
+
+  /// The auth service answered, and the answer was its own failure (5xx).
+  serviceUnavailable,
+
+  /// The request was refused before any account was consulted — the shape of an
+  /// absent, malformed or revoked publishable key, or a URL addressing a
+  /// different project. A packaging fault, never the user's.
+  configuration,
+
+  /// Anything else: a malformed response, an unexpected SDK state, a
+  /// programming error.
+  unexpected,
 }
 
 /// The outcome of a sign-out attempt.

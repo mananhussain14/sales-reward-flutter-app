@@ -146,15 +146,38 @@ class _LoginViewState extends State<_LoginView> {
                 const SizedBox(height: SrSpacing.xl),
                 SrAlert(
                   tone: SrAlertTone.error,
+                  // No message here repeats anything the backend said. Each is
+                  // fixed copy chosen from a classification, so an HTTP body, a
+                  // GoTrue message, a key or a stack trace cannot reach the
+                  // screen through this switch.
                   message: switch (state.formError!) {
                     // Deliberately identical for a wrong password and an
                     // unknown address.
                     LoginFormError.invalidCredentials =>
                       'That email address and password do not match an '
                           'account.',
-                    LoginFormError.unavailable =>
-                      'Could not sign in right now. Check your connection and '
+                    LoginFormError.emailNotConfirmed =>
+                      'Confirm your email address before signing in. Check '
+                          'your inbox for the confirmation link.',
+                    LoginFormError.tooManyAttempts =>
+                      'Too many sign-in attempts. Wait a minute and try again.',
+                    // Only the two genuinely connection-shaped failures mention
+                    // the connection. Telling someone to check a connection
+                    // that is working sends them to fix the wrong thing.
+                    LoginFormError.network =>
+                      'Could not reach SalesReward. Check your connection and '
                           'try again.',
+                    LoginFormError.timeout =>
+                      'Signing in took too long. Check your connection and try '
+                          'again.',
+                    LoginFormError.serviceUnavailable =>
+                      'SalesReward is temporarily unavailable. Try again in a '
+                          'few minutes.',
+                    LoginFormError.configuration =>
+                      'This copy of the app cannot sign in. Reinstall it from '
+                          'your usual source, or contact your administrator.',
+                    LoginFormError.unexpected =>
+                      'Something went wrong while signing in. Try again.',
                   },
                 ),
               ],

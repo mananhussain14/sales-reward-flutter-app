@@ -74,12 +74,34 @@ class LoginCubit extends Cubit<LoginState> {
         isSubmitting: false,
         formError: LoginFormError.invalidCredentials,
       ),
-      SignInFailed() => state.copyWith(
+      SignInUnconfirmed() => state.copyWith(
         isSubmitting: false,
-        formError: LoginFormError.unavailable,
+        formError: LoginFormError.emailNotConfirmed,
+      ),
+      SignInThrottled() => state.copyWith(
+        isSubmitting: false,
+        formError: LoginFormError.tooManyAttempts,
+      ),
+      SignInFailed(:final SignInFailureReason reason) => state.copyWith(
+        isSubmitting: false,
+        formError: _errorFor(reason),
       ),
     });
   }
+
+  /// Carries the repository's classification through unchanged.
+  ///
+  /// A straight one-to-one map, so that widening the domain later cannot
+  /// quietly collapse a new reason into an existing message.
+  static LoginFormError _errorFor(SignInFailureReason reason) =>
+      switch (reason) {
+        SignInFailureReason.network => LoginFormError.network,
+        SignInFailureReason.timeout => LoginFormError.timeout,
+        SignInFailureReason.serviceUnavailable =>
+          LoginFormError.serviceUnavailable,
+        SignInFailureReason.configuration => LoginFormError.configuration,
+        SignInFailureReason.unexpected => LoginFormError.unexpected,
+      };
 
   /// Shape only. Whether the address exists is the backend's business, and it
   /// deliberately never tells us.
