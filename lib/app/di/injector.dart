@@ -10,8 +10,11 @@ import '../../features/audit/data/datasources/vendor_audit_log_rpc_data_source.d
 import '../../features/audit/data/repositories/supabase_vendor_audit_log_repository.dart';
 import '../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../../features/auth/domain/repositories/portal_context_repository.dart';
+import '../../features/dashboard/data/datasources/retailer_owner_overview_rpc_data_source.dart';
 import '../../features/dashboard/data/datasources/vendor_dashboard_rpc_data_source.dart';
+import '../../features/dashboard/data/repositories/supabase_retailer_owner_overview_repository.dart';
 import '../../features/dashboard/data/repositories/supabase_vendor_dashboard_repository.dart';
+import '../../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../../features/products/data/datasources/vendor_product_assignment_rpc_data_source.dart';
 import '../../features/products/data/datasources/vendor_product_rpc_data_source.dart';
@@ -176,6 +179,22 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The Retailer Owner Overview read. One RPC, zero arguments, and no table
+  // access at all — the organization resolution, the role and permission gates,
+  // the single-qualifying-organization rule and both shop counts happen in SQL.
+  //
+  // A direct table read is not merely avoided here, it would not work:
+  // `retailer_shops` carries exactly one vendor-scoped SELECT policy, which
+  // returns zero rows to a Retailer Owner by design. A client counting shops
+  // itself would render `0` for every Owner and look entirely plausible doing
+  // it, which is precisely why the counts are computed by the function against
+  // the resolved organization id rather than a caller-supplied one.
+  getIt.registerLazySingleton<RetailerOwnerOverviewRepository>(
+    () => SupabaseRetailerOwnerOverviewRepository(
+      rpc: RetailerOwnerOverviewRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Vendor company/profile self-read. One RPC, zero arguments, and no table
   // access at all — the self predicate (`user_id = auth.uid()`), the tenant
   // predicate, the display-name composition, the ACTIVE-role filter and the role
@@ -246,6 +265,7 @@ void registerTestDependencies({
   VendorAuditLogRepository? vendorAuditLogRepository,
   VendorDashboardRepository? vendorDashboardRepository,
   VendorProfileRepository? vendorProfileRepository,
+  RetailerOwnerOverviewRepository? retailerOwnerOverviewRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -290,6 +310,11 @@ void registerTestDependencies({
   if (vendorProfileRepository != null) {
     getIt.registerLazySingleton<VendorProfileRepository>(
       () => vendorProfileRepository,
+    );
+  }
+  if (retailerOwnerOverviewRepository != null) {
+    getIt.registerLazySingleton<RetailerOwnerOverviewRepository>(
+      () => retailerOwnerOverviewRepository,
     );
   }
 }

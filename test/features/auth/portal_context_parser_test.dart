@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sale_reward/features/auth/data/models/portal_context_parser.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_context.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
+import 'package:sale_reward/features/auth/domain/entities/retailer_capabilities.dart';
 
 /// The parser is the app's fail-safe boundary: a malformed or unfamiliar
 /// response must never become a privileged role. These cases pin every branch
@@ -143,6 +144,54 @@ void main() {
       // Everything not mentioned is conservatively off.
       expect(caps.viewStaff, isFalse);
       expect(caps.manageStaff, isFalse);
+    });
+
+    test('a non-boolean capability value is false, never truthy', () {
+      // The one place a default is correct — a hint cannot widen anything, and
+      // refusing to sign a user in over a cosmetic flag would be
+      // disproportionate. But `'true'`, `1` and `[]` are all truthy in enough
+      // languages that reading one as "allowed" is a real hazard.
+      final Map<String, Object?> body = retailerBody('RETAILER_OWNER');
+      (body['retailer']!
+          as Map<String, Object?>)['capabilities'] = <String, Object?>{
+        'view_retailer_overview': 'true',
+        'view_shops': 1,
+        'view_staff': <String>[],
+        'manage_staff': <String, Object?>{},
+        'assign_staff_shops': null,
+        'view_assigned_products': 'yes',
+        'submit_receipts': -1,
+      };
+
+      final RetailerCapabilities caps = PortalContextParser.parse(
+        body,
+      ).capabilities;
+
+      expect(caps.isEmpty, isTrue, reason: 'no non-boolean may read as true');
+    });
+
+    test('a non-map capability block yields nothing, and does not throw', () {
+      // A capability block this build cannot read at all is a capability set it
+      // does not offer — the only safe direction, and still not a refusal to
+      // sign in.
+      final Map<String, Object?> body = retailerBody('RETAILER_OWNER');
+      (body['retailer']! as Map<String, Object?>)['capabilities'] =
+          'unexpected';
+
+      final PortalContext context = PortalContextParser.parse(body);
+
+      expect(context.portalKind, PortalKind.retailerOwner);
+      expect(context.capabilities, RetailerCapabilities.none);
+    });
+
+    test('a missing capability block is not a parse failure', () {
+      final Map<String, Object?> body = retailerBody('RETAILER_OWNER');
+      (body['retailer']! as Map<String, Object?>).remove('capabilities');
+
+      expect(
+        PortalContextParser.parse(body).portalKind,
+        PortalKind.retailerOwner,
+      );
     });
   });
 

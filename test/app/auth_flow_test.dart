@@ -15,6 +15,7 @@ import 'package:sale_reward/features/auth/presentation/pages/splash_page.dart';
 import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.dart';
 
 import '../support/fakes.dart';
+import '../support/retailer_owner_overview_fakes.dart';
 import '../support/pump_app.dart';
 import '../support/vendor_audit_log_fakes.dart';
 import '../support/vendor_dashboard_fakes.dart';
@@ -97,6 +98,8 @@ void main() {
           vendorAuditLogRepository: FakeVendorAuditLogRepository(),
           vendorDashboardRepository: FakeVendorDashboardRepository(),
           vendorProfileRepository: FakeVendorProfileRepository(),
+          retailerOwnerOverviewRepository:
+              FakeRetailerOwnerOverviewRepository(),
         ),
       );
 
@@ -253,6 +256,8 @@ void main() {
             vendorAuditLogRepository: FakeVendorAuditLogRepository(),
             vendorDashboardRepository: FakeVendorDashboardRepository(),
             vendorProfileRepository: FakeVendorProfileRepository(),
+            retailerOwnerOverviewRepository:
+                FakeRetailerOwnerOverviewRepository(),
           ),
         );
         await tester.pump();
@@ -297,6 +302,8 @@ void main() {
             vendorAuditLogRepository: FakeVendorAuditLogRepository(),
             vendorDashboardRepository: FakeVendorDashboardRepository(),
             vendorProfileRepository: FakeVendorProfileRepository(),
+            retailerOwnerOverviewRepository:
+                FakeRetailerOwnerOverviewRepository(),
           ),
         );
         await tester.pump();

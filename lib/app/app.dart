@@ -6,6 +6,7 @@ import '../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
+import '../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../features/products/domain/repositories/vendor_product_repository.dart';
 import '../features/profile/domain/repositories/vendor_profile_repository.dart';
@@ -50,6 +51,7 @@ class SaleRewardApp extends StatefulWidget {
     this.vendorAuditLogRepository,
     this.vendorDashboardRepository,
     this.vendorProfileRepository,
+    this.retailerOwnerOverviewRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -64,6 +66,7 @@ class SaleRewardApp extends StatefulWidget {
   final VendorAuditLogRepository? vendorAuditLogRepository;
   final VendorDashboardRepository? vendorDashboardRepository;
   final VendorProfileRepository? vendorProfileRepository;
+  final RetailerOwnerOverviewRepository? retailerOwnerOverviewRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -81,6 +84,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final VendorAuditLogRepository _vendorAuditLogRepository;
   late final VendorDashboardRepository _vendorDashboardRepository;
   late final VendorProfileRepository _vendorProfileRepository;
+  late final RetailerOwnerOverviewRepository _retailerOwnerOverviewRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -107,6 +111,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.vendorDashboardRepository ?? getIt<VendorDashboardRepository>();
     _vendorProfileRepository =
         widget.vendorProfileRepository ?? getIt<VendorProfileRepository>();
+    _retailerOwnerOverviewRepository =
+        widget.retailerOwnerOverviewRepository ??
+        getIt<RetailerOwnerOverviewRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -165,6 +172,12 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<VendorProfileRepository>.value(
           value: _vendorProfileRepository,
+        ),
+        // Read by the Retailer Owner shell when it constructs its overview
+        // cubit, for the same reason as every repository above: a widget test
+        // drives the whole Overview flow over a fake with no Supabase client.
+        RepositoryProvider<RetailerOwnerOverviewRepository>.value(
+          value: _retailerOwnerOverviewRepository,
         ),
       ],
       child: MultiBlocProvider(
