@@ -136,8 +136,9 @@ PortalContext contextFor(
   PortalKind kind, {
   String organizationName = 'Example Org',
   RetailerCapabilities? capabilities,
+  String organizationId = '11111111-1111-1111-1111-111111111111',
 }) {
-  const String orgId = '11111111-1111-1111-1111-111111111111';
+  final String orgId = organizationId;
 
   switch (kind) {
     case PortalKind.vendorSuperAdmin:
@@ -185,6 +186,42 @@ const RetailerCapabilities _allCapabilities = RetailerCapabilities(
 /// A [PortalContextResolved] for [kind].
 PortalContextResult resolvedResult(PortalKind kind) =>
     PortalContextResolved(contextFor(kind));
+
+/// A **second** Retailer organization, for session-isolation tests.
+///
+/// A different `organization_id` is what makes an `Owner A -> Owner B` switch a
+/// genuine identity change rather than two states that happen to compare equal.
+/// The id is compared locally only; it is never sent anywhere, because the
+/// overview RPC takes no arguments.
+const String otherRetailerOrganizationId =
+    '22222222-2222-2222-2222-222222222222';
+
+/// A resolved Retailer Owner in a **different** organization from the default.
+PortalContextResult otherRetailerOwnerResult() => PortalContextResolved(
+  contextFor(
+    PortalKind.retailerOwner,
+    organizationName: 'Southgate Stores',
+    organizationId: otherRetailerOrganizationId,
+  ),
+);
+
+/// A resolved Retailer Owner whose Overview capability hint is off, and whose
+/// Shops/Staff/Products hints are on — so a test can prove the hint is a
+/// presentation input and never a gate on the screen's own read.
+PortalContextResult ownerWithoutOverviewHintResult() => PortalContextResolved(
+  contextFor(
+    PortalKind.retailerOwner,
+    capabilities: const RetailerCapabilities(
+      viewRetailerOverview: false,
+      viewShops: true,
+      viewStaff: true,
+      manageStaff: true,
+      assignStaffShops: true,
+      viewAssignedProducts: true,
+      submitReceipts: true,
+    ),
+  ),
+);
 
 /// The denied result.
 const PortalContextResult deniedResult = PortalContextDenied(
