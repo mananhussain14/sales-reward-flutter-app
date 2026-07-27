@@ -7,6 +7,7 @@ import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
+import '../features/products/domain/repositories/retailer_product_repository.dart';
 import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../features/products/domain/repositories/vendor_product_repository.dart';
 import '../features/profile/domain/repositories/vendor_profile_repository.dart';
@@ -14,6 +15,8 @@ import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../features/roles/domain/repositories/vendor_role_repository.dart';
+import '../features/shops/domain/repositories/retailer_shop_repository.dart';
+import '../features/staff/domain/repositories/retailer_staff_repository.dart';
 import '../features/users/domain/repositories/vendor_user_repository.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
@@ -52,6 +55,9 @@ class SaleRewardApp extends StatefulWidget {
     this.vendorDashboardRepository,
     this.vendorProfileRepository,
     this.retailerOwnerOverviewRepository,
+    this.retailerShopRepository,
+    this.retailerStaffRepository,
+    this.retailerProductRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -67,6 +73,9 @@ class SaleRewardApp extends StatefulWidget {
   final VendorDashboardRepository? vendorDashboardRepository;
   final VendorProfileRepository? vendorProfileRepository;
   final RetailerOwnerOverviewRepository? retailerOwnerOverviewRepository;
+  final RetailerShopRepository? retailerShopRepository;
+  final RetailerStaffRepository? retailerStaffRepository;
+  final RetailerProductRepository? retailerProductRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -85,6 +94,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final VendorDashboardRepository _vendorDashboardRepository;
   late final VendorProfileRepository _vendorProfileRepository;
   late final RetailerOwnerOverviewRepository _retailerOwnerOverviewRepository;
+  late final RetailerShopRepository _retailerShopRepository;
+  late final RetailerStaffRepository _retailerStaffRepository;
+  late final RetailerProductRepository _retailerProductRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
@@ -114,6 +126,12 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
     _retailerOwnerOverviewRepository =
         widget.retailerOwnerOverviewRepository ??
         getIt<RetailerOwnerOverviewRepository>();
+    _retailerShopRepository =
+        widget.retailerShopRepository ?? getIt<RetailerShopRepository>();
+    _retailerStaffRepository =
+        widget.retailerStaffRepository ?? getIt<RetailerStaffRepository>();
+    _retailerProductRepository =
+        widget.retailerProductRepository ?? getIt<RetailerProductRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -178,6 +196,19 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // drives the whole Overview flow over a fake with no Supabase client.
         RepositoryProvider<RetailerOwnerOverviewRepository>.value(
           value: _retailerOwnerOverviewRepository,
+        ),
+        // The three Retailer read-portal repositories, provided here for the
+        // same reason as every repository above: the two Retailer shells build
+        // their cubits from them, and a widget test drives the whole Shops,
+        // Staff and Products flow over fakes with no Supabase client.
+        RepositoryProvider<RetailerShopRepository>.value(
+          value: _retailerShopRepository,
+        ),
+        RepositoryProvider<RetailerStaffRepository>.value(
+          value: _retailerStaffRepository,
+        ),
+        RepositoryProvider<RetailerProductRepository>.value(
+          value: _retailerProductRepository,
         ),
       ],
       child: MultiBlocProvider(

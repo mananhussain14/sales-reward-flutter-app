@@ -13,7 +13,7 @@ import 'package:sale_reward/features/dashboard/presentation/retailer_owner/pages
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/widgets/retailer_owner_overview_copy.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/widgets/retailer_shop_count_card.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
-import 'package:sale_reward/features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
+import 'package:sale_reward/features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 
 import '../../support/fakes.dart';
 import '../../support/pump_app.dart';
@@ -89,7 +89,7 @@ void main() {
       await pumpAppInRole(tester, PortalKind.retailerManager);
 
       expect(currentLocation(tester), RetailerManagerNavigation.staff);
-      expect(find.byType(RetailerManagerStaffPage), findsOneWidget);
+      expect(find.byType(RetailerStaffPage), findsOneWidget);
       expect(find.byType(RetailerOwnerOverviewPage), findsNothing);
     });
 

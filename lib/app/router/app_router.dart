@@ -11,6 +11,7 @@ import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/unavailable_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
+import '../../features/products/presentation/retailer/pages/retailer_products_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_create_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_detail_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_edit_page.dart';
@@ -22,11 +23,11 @@ import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detai
 import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
 import '../../features/roles/presentation/vendor/pages/vendor_role_detail_page.dart';
 import '../../features/roles/presentation/vendor/pages/vendor_roles_page.dart';
-import '../../features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
+import '../../features/shops/presentation/retailer_owner/pages/retailer_owner_shops_page.dart';
+import '../../features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 import '../../features/users/presentation/vendor/pages/vendor_user_detail_page.dart';
 import '../../features/users/presentation/vendor/pages/vendor_users_page.dart';
 import '../navigation/role_navigation_registry.dart';
-import '../shells/base/placeholder_destination_page.dart';
 import '../shells/retailer_manager/retailer_manager_navigation.dart';
 import '../shells/retailer_manager/retailer_manager_shell.dart';
 import '../shells/retailer_owner/retailer_owner_navigation.dart';
@@ -174,23 +175,10 @@ ShellRoute _roleShell({
   );
 }
 
-/// A placeholder route, so the ten unbuilt destinations read identically.
-GoRoute _placeholder({
-  required String path,
-  required String roleName,
-  required String title,
-  required String backendNote,
-}) {
-  return GoRoute(
-    path: path,
-    builder: (BuildContext context, GoRouterState state) =>
-        PlaceholderDestinationPage(
-          roleName: roleName,
-          title: title,
-          backendNote: backendNote,
-        ),
-  );
-}
+// The `_placeholder` helper is gone: every route in every shell now builds a
+// real, backend-backed page. `PlaceholderDestinationPage` itself is kept — the
+// Vendor navigation still carries "Soon" entries that have no route at all, and
+// three flow tests assert it never appears on a built screen.
 
 RouteBase _vendorRoutes(SessionBloc bloc) {
   // Every Vendor destination that has a route now has a real page. The remaining
@@ -454,8 +442,6 @@ RouteBase _vendorRoutes(SessionBloc bloc) {
 }
 
 RouteBase _retailerOwnerRoutes(SessionBloc bloc) {
-  const String role = 'Retailer Owner';
-
   return _roleShell(
     bloc: bloc,
     role: PortalKind.retailerOwner,
@@ -471,40 +457,59 @@ RouteBase _retailerOwnerRoutes(SessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const RetailerOwnerOverviewPage(),
       ),
-      _placeholder(
+      // RO-02. Backed by list_retailer_owner_portal_shops(), which takes ZERO
+      // arguments and scopes itself with
+      // `resolve_retailer_owner_organization('RETAILER_SHOPS_READ')`.
+      //
+      // READ-ONLY and NOT NESTED, because there is nothing to nest: the contract
+      // returns no shop_id, so no row on this screen holds an address for
+      // anything and no detail route can exist. The list is deliberately
+      // non-tappable — see RetailerShopCard for why not even a disabled
+      // affordance is offered.
+      //
+      // Owner-only, and the Manager shell has no equivalent route. That function
+      // does not raise for an unauthorized caller; it returns an empty list, so
+      // a Manager would see an empty estate indistinguishable from a Retailer
+      // that genuinely has none.
+      GoRoute(
         path: RetailerOwnerNavigation.shops,
-        roleName: role,
-        title: 'Shops',
-        backendNote:
-            'RO-02. list_retailer_owner_portal_shops() exists but returns no '
-            'shop_id, so a list cannot key its rows or open a detail screen. '
-            'Render non-tappable until contract fix #1.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const RetailerOwnerShopsPage(),
       ),
-      _placeholder(
+      // RO-04. Backed by list_retailer_staff_members() and, for this role only,
+      // list_retailer_staff_invitations(). Both take ZERO arguments and resolve
+      // through resolve_retailer_member_organization on RETAILER_STAFF_READ and
+      // RETAILER_STAFF_MANAGE respectively.
+      //
+      // READ-ONLY. There is no invite, resend, revoke, role change, activation
+      // or shop-assignment control on this screen, and no write RPC is named
+      // anywhere in this application. Sending an invitation additionally needs
+      // the send-staff-invitation Edge Function, which holds the delivery
+      // credential and is never called here.
+      GoRoute(
         path: RetailerOwnerNavigation.staff,
-        roleName: role,
-        title: 'Staff',
-        backendNote:
-            'RO-04 to RO-09. The roster, invitation and revoke paths are ready. '
-            'Sending an invitation needs the send-staff-invitation Edge '
-            'Function, which holds the token and the Resend key. Phase 2.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const RetailerStaffPage(role: PortalKind.retailerOwner),
       ),
-      _placeholder(
+      // RO-03. Backed by list_retailer_assigned_products(), which takes ZERO
+      // arguments — no Retailer, no Vendor, no product, no status — and returns
+      // only rows whose assignment AND product are both ACTIVE.
+      //
+      // READ-ONLY, and the Retailer could not write here even if a control
+      // existed: assignment is gated on PRODUCT_RETAILER_ASSIGN, a Vendor
+      // capability, and neither assign RPC is named in the Retailer portal.
+      // Identical contract for the Manager, which is why both shells route to
+      // the same page.
+      GoRoute(
         path: RetailerOwnerNavigation.products,
-        roleName: role,
-        title: 'Products',
-        backendNote:
-            'RO-03. list_retailer_assigned_products() is ready and identical '
-            'for the Owner and the Manager; only the screen is missing. '
-            'Phase 2.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const RetailerProductsPage(role: PortalKind.retailerOwner),
       ),
     ],
   );
 }
 
 RouteBase _retailerManagerRoutes(SessionBloc bloc) {
-  const String role = 'Retailer Manager';
-
   return _roleShell(
     bloc: bloc,
     role: PortalKind.retailerManager,
@@ -515,18 +520,33 @@ RouteBase _retailerManagerRoutes(SessionBloc bloc) {
           child: child,
         ),
     routes: <RouteBase>[
+      // RM-01. The same page and the same roster RPC as the Owner's Staff
+      // screen — the narrowing to ACTIVE members happens in SQL, through
+      // `and (v_can_manage or m.status = 'ACTIVE')`, and this client applies no
+      // equivalent filter.
+      //
+      // The invitation history is absent for this role, and the shell's cubit is
+      // constructed with `includeInvitations: false` so the RPC is not called.
+      // That is not the client enforcing a permission: the function resolves
+      // through RETAILER_STAFF_MANAGE and would raise 42501 for a Manager
+      // regardless. Not calling it avoids putting a denial notice on a screen
+      // where nothing is wrong.
+      //
+      // There is NO Shops route and NO Overview route for this role. Both
+      // backend contracts resolve through the Owner-only resolver, so both would
+      // be permanently empty screens.
       GoRoute(
         path: RetailerManagerNavigation.staff,
         builder: (BuildContext context, GoRouterState state) =>
-            const RetailerManagerStaffPage(),
+            const RetailerStaffPage(role: PortalKind.retailerManager),
       ),
-      _placeholder(
+      // RM-03. Identical contract to the Owner's Products screen — the same
+      // member resolver on the same RETAILER_PRODUCTS_READ permission — which is
+      // why both shells route to the same page.
+      GoRoute(
         path: RetailerManagerNavigation.products,
-        roleName: role,
-        title: 'Products',
-        backendNote:
-            'RM-03. list_retailer_assigned_products() is ready and this role '
-            'is permitted to read it. Only the screen is missing. Phase 2.',
+        builder: (BuildContext context, GoRouterState state) =>
+            const RetailerProductsPage(role: PortalKind.retailerManager),
       ),
     ],
   );

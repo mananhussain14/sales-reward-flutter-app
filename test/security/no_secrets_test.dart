@@ -148,6 +148,13 @@ void main() {
       // The failure mapper is the one seam that classifies SDK exception types
       // into the shared Failure union — a data-adjacent boundary by design.
       if (f.path.endsWith('failure_mapper.dart')) return false;
+      // The Retailer read classifier is the same kind of seam, for the same
+      // reason: it turns SDK exception *types* and SQLSTATEs into a
+      // discriminant, reads no message, and lets no Supabase type travel
+      // onward. It lives in core rather than in one feature's data layer
+      // because Shops, Staff and Products all share it — the alternative was
+      // three copies of the same classification, which is worse.
+      if (f.path.endsWith('retailer_read_problem.dart')) return false;
       return f.readAsStringSync().contains("package:supabase_flutter");
     });
     expect(

@@ -10,7 +10,7 @@ import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
-import 'package:sale_reward/features/staff/presentation/retailer_manager/pages/retailer_manager_staff_page.dart';
+import 'package:sale_reward/features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 
 import '../../support/fakes.dart';
 import '../../support/pump_app.dart';
@@ -32,7 +32,7 @@ const Map<PortalKind, Type> _shellTypes = <PortalKind, Type>{
 const Map<PortalKind, Type> _landingPages = <PortalKind, Type>{
   PortalKind.vendorSuperAdmin: VendorDashboardPage,
   PortalKind.retailerOwner: RetailerOwnerOverviewPage,
-  PortalKind.retailerManager: RetailerManagerStaffPage,
+  PortalKind.retailerManager: RetailerStaffPage,
   PortalKind.salesStaff: SalesStaffSubmitPage,
 };
 
