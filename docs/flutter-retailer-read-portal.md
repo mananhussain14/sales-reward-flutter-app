@@ -426,6 +426,40 @@ Never `flutter run` without the config file.
    the flow tests use `ensureVisible`, matching the existing Vendor helper.
 6. **Invitation `RESERVED`/`indeterminate` states are untested against live
    data** — they need a backend state the hosted environment may not contain.
+7. **Assigning or changing shops for an *existing* staff member is not
+   available, in the app or on the web portal.** This is a backend contract gap,
+   not a gap in this PR.
+
+   The only write to `public.retailer_shop_members` anywhere in the deployed
+   schema is inside `accept_retailer_staff_invitation()`
+   (`20260724210000_retailer_staff_invitation_acceptance.sql`). Shop assignment
+   therefore happens **exactly once, at invitation acceptance**, from the shop
+   ids attached to the invitation. No function adds, removes or reassigns a shop
+   afterwards.
+
+   The `assign_staff_shops` capability hint points at
+   `list_retailer_staff_assignable_shops()` — a **read**, which exists to
+   populate an invitation form, not to perform a post-acceptance change.
+
+   Consequences this milestone accepts rather than works around:
+
+   * the roster shows assigned shop **names** and offers no way to change them —
+     correct, because no contract exists to change them through;
+   * **no direct table write was added.** `retailer_shop_members` is not
+     writable by `authenticated`, and a client-side write would be both refused
+     and wrong;
+   * **no Flutter-only assignment flow was invented.** A screen that collected a
+     shop selection with nowhere to send it would be a promise the backend
+     cannot keep, and any local record of it would be a second, drifting
+     definition of who works where;
+   * the current workaround is to revoke and re-invite with the intended shops,
+     which is the web portal's behaviour too.
+
+   Closing this needs a backend milestone first — an
+   `assign_retailer_staff_shop` / `remove_retailer_staff_shop` pair on
+   `RETAILER_STAFF_SHOP_ASSIGN`, with the same-Retailer trigger
+   (`retailer_shop_members_assert_same_retailer()`) already in place to enforce
+   tenancy.
 
 ---
 
@@ -438,7 +472,9 @@ its own milestone because each carries a different failure surface:
    (holds the delivery credential); the largest and most user-visible.
 2. **Invitation revoke / resend** — reads already exist; adds two write RPCs and
    the eligibility rules that stay in SQL.
-3. **Staff shop assignment** — `RETAILER_STAFF_SHOP_ASSIGN`; needs shop ids,
-   which the staff contract already returns even though this client drops them.
+3. **Staff shop assignment** — `RETAILER_STAFF_SHOP_ASSIGN`. **Blocked on the
+   backend**: no post-acceptance write exists (see limitation 7), so this needs a
+   backend milestone before any Flutter work. It will also need the shop ids the
+   staff contract already returns and this client deliberately drops.
 4. **Shop create / edit / status** — blocked on the `shop_id` contract fix, since
    editing requires addressing a row.
