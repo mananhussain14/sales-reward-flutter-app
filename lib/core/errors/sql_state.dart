@@ -25,4 +25,20 @@ abstract final class SqlState {
   /// `object_not_in_prerequisite_state` — an inactive relationship, retailer, or
   /// product.
   static const String objectNotInPrerequisiteState = '55000';
+
+  /// `invalid_text_representation` — a value that could not be cast to the
+  /// parameter's type.
+  ///
+  /// Raised by PostgreSQL's **type system**, before the function body runs, so
+  /// it is never a business refusal and never carries a message the backend
+  /// chose. A client sees it when it sends something that is not shaped like the
+  /// declared type — a malformed uuid in a `uuid` or `uuid[]` parameter, most
+  /// often — which is a defect in the request rather than anything the person
+  /// did.
+  ///
+  /// Deliberately **not** collapsed into [checkViolation]. "Your selection broke
+  /// a rule" and "this build sent something unreadable" call for different copy
+  /// and different follow-up, and merging them would send a person to fix a
+  /// selection that was never the problem.
+  static const String invalidTextRepresentation = '22P02';
 }

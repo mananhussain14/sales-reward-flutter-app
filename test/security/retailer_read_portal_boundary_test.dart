@@ -417,9 +417,12 @@ void main() {
   // -------------------------------------------------------------------------
   group('nothing identifying reaches the client', () {
     test('no Retailer entity holds an identifier', () {
+      // `retailer_staff_member.dart` is deliberately absent from this list: the
+      // shop editor addresses a membership and preselects from its ACTIVE shop
+      // ids, so that one entity carries exactly two identifiers. Its own
+      // narrower assertions are the group below.
       for (final String file in <String>[
         'retailer_shop.dart',
-        'retailer_staff_member.dart',
         'retailer_staff_invitation.dart',
         'retailer_assigned_product.dart',
       ]) {
@@ -446,9 +449,11 @@ void main() {
     });
 
     test('the parsers never read an id column into an entity', () {
+      // The staff roster parser is deliberately absent: it reads exactly two id
+      // columns, because the shop editor addresses a membership and preselects
+      // from its ACTIVE shop ids. The group below pins which two, and no more.
       for (final String file in <String>[
         'retailer_shop_parser.dart',
-        'retailer_staff_parsers.dart',
         'retailer_assigned_product_parser.dart',
       ]) {
         final String src = codeOf(named(file));
@@ -462,6 +467,79 @@ void main() {
           expect(src.contains(column), isFalse, reason: '$file reads $column');
         }
       }
+    });
+
+    group('the staff roster carries exactly two identifiers', () {
+      test('the entity holds the membership id and the ACTIVE shop ids, and '
+          'nothing else addressable', () {
+        final String src = codeOf(named('retailer_staff_member.dart'));
+
+        // The two the shop editor needs.
+        expect(src.contains('this.membershipId'), isTrue);
+        expect(src.contains('this.shopIds'), isTrue);
+
+        // And no other address, in either direction: nothing that could name a
+        // person outside this membership, and nothing that could name a tenant.
+        for (final String forbidden in <String>[
+          'invitationId',
+          'productId',
+          'organizationId',
+          'retailerId',
+          'tenantId',
+          'profileId',
+          'userId',
+          'authUserId',
+          'memberRoleId',
+          'roleId',
+          'vendorId',
+          'email',
+        ]) {
+          expect(
+            src.contains(forbidden),
+            isFalse,
+            reason: 'the roster entity must carry no $forbidden',
+          );
+        }
+      });
+
+      test('the parser reads those two columns and no other id column', () {
+        final String src = codeOf(named('retailer_staff_parsers.dart'));
+
+        expect(src.contains("row['membership_id']"), isTrue);
+        expect(src.contains("row['shop_ids']"), isTrue);
+
+        for (final String column in <String>[
+          "row['invitation_id']",
+          "row['user_id']",
+          "row['profile_id']",
+          "row['organization_id']",
+          "row['member_role_id']",
+          "row['role_id']",
+        ]) {
+          expect(
+            src.contains(column),
+            isFalse,
+            reason: 'the roster parser reads $column',
+          );
+        }
+      });
+
+      test('neither identifier is rendered by the roster card', () {
+        final String src = codeOf(
+          named('retailer_staff_member_card.dart'),
+        ).replaceAll(RegExp(r'\s+'), '');
+
+        for (final String forbidden in <String>[
+          'member.membershipId',
+          'member.shopIds',
+        ]) {
+          expect(
+            src.contains(forbidden),
+            isFalse,
+            reason: 'the card must not touch $forbidden at all',
+          );
+        }
+      });
     });
 
     test('failure_code is not carried onto the invitation entity', () {

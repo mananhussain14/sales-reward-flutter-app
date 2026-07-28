@@ -24,9 +24,10 @@ posts to as well.
   link into the Next.js portal.
 - **Mobile deep links.** No custom scheme, no App Links, no Universal Links, no
   link handler of any kind.
-- **Post-acceptance Shop reassignment.** An accepted member's shops cannot be
-  changed from here — see the backend limitation recorded in the previous
-  milestone.
+- **Post-acceptance Shop reassignment.** An accepted member's shops are not
+  changed from here. That is now a separate, implemented feature — see
+  `docs/flutter-retailer-manage-staff-shops.md` — reached from the roster card
+  rather than from this form.
 - **Role changes** for an existing member.
 - **Staff activation / deactivation.**
 - **Invitation revoke and resend controls.** A resend still *happens* — inviting
@@ -368,8 +369,13 @@ same feature.
    exists; restating the difference here would undo that.
 4. **A timeout is unresolvable from the client.** The invitation history is the
    only authority, which is why the copy points there.
-5. **Post-acceptance shop assignment remains unreachable** from any client — the
-   backend limitation recorded in the previous milestone still stands.
+5. ~~**Post-acceptance shop assignment remains unreachable** from any client — the
+   backend limitation recorded in the previous milestone still stands.~~
+   **Closed.** `set_retailer_staff_shop_assignments()` was deployed and is
+   consumed by `docs/flutter-retailer-manage-staff-shops.md`. An accepted
+   member's ACTIVE shops can now be edited from the Staff screen; this form still
+   does not do it, because attaching shops to an *invitation* and replacing an
+   *existing member's* shops are different operations.
 6. **The Owner sees no confirmation of *which* shops were attached** until the
    history re-read lands, because the send response carries no invitation record
    and nothing is assembled locally.

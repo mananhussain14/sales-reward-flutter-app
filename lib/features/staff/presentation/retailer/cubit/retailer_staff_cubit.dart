@@ -245,6 +245,78 @@ final class RetailerStaffCubit extends Cubit<RetailerStaffState> {
     }
   }
 
+  /// Re-reads **only** the staff roster, and reports whether it landed.
+  ///
+  /// ## Why the shop editor needs this rather than [refresh]
+  ///
+  /// `set_retailer_staff_shop_assignments()` answers with three counts and no
+  /// assignment rows — deliberately, because a returned row would be a second
+  /// member shape free to drift from the one `list_retailer_staff_members()`
+  /// returns. So after a save the only honest way to show which shops a person
+  /// now works in is to re-read the canonical roster, and **nothing is ever
+  /// patched locally**: a row rebuilt from the submitted ids would state an
+  /// assignment set this client never received, and would silently drop the
+  /// member's assignments to non-ACTIVE shops, which the roster does not return
+  /// and the write deliberately preserved.
+  ///
+  /// The invitation history is left alone. Changing an accepted member's shops
+  /// creates, revokes and expires nothing, so re-reading it would be a request
+  /// whose answer cannot have changed.
+  ///
+  /// ## The return value is the whole point
+  ///
+  /// `false` means the write's own result stands but the roster beside it is
+  /// stale. The caller must **not** turn that into "the change failed" — it was
+  /// committed exactly as reported — and must not repeat the write to resolve
+  /// it. Rows already on screen are kept, and the screen's own Refresh remains
+  /// available.
+  Future<bool> rereadMembers() async {
+    // Supersedes any pass already in flight, exactly as `_fetch` does. The token
+    // is what stops that older pass from writing its answer over this one.
+    final int token = ++_token;
+
+    emit(
+      state.copyWith(
+        rosterPhase: state.members == null
+            ? RetailerStaffPhase.loading
+            : RetailerStaffPhase.ready,
+        isRefreshing: true,
+        clearRosterProblem: true,
+      ),
+    );
+
+    final RetailerStaffResult result = await _repository.members();
+
+    if (isClosed || token != _token) {
+      return false;
+    }
+
+    switch (result) {
+      case RetailerStaffLoaded(:final List<RetailerStaffMember> members):
+        emit(
+          state.copyWith(
+            rosterPhase: RetailerStaffPhase.ready,
+            members: members,
+            isRefreshing: false,
+            clearRosterProblem: true,
+          ),
+        );
+        return true;
+      case RetailerStaffFailed(:final RetailerReadProblem problem):
+        emit(
+          state.copyWith(
+            rosterPhase: RetailerStaffPhase.failed,
+            rosterProblem: problem,
+            isRefreshing: false,
+            // Rows already on screen stay. They are still the last thing the
+            // backend actually said — now one save out of date, which the notice
+            // beside the roster says in words.
+          ),
+        );
+        return false;
+    }
+  }
+
   /// Filters the rows already held. Issues no request.
   void searchChanged(String term) {
     emit(state.copyWith(searchTerm: term));

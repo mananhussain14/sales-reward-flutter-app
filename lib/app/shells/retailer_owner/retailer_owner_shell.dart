@@ -12,7 +12,9 @@ import '../../../features/shops/domain/repositories/retailer_shop_repository.dar
 import '../../../features/shops/presentation/retailer_owner/cubit/retailer_shops_cubit.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_repository.dart';
+import '../../../features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_invite_staff_cubit.dart';
+import '../../../features/staff/presentation/retailer/cubit/retailer_manage_staff_shops_cubit.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_staff_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/retailer_owner_shell_bloc.dart';
@@ -130,6 +132,42 @@ class RetailerOwnerShell extends StatelessWidget {
                 providerContext.read<RetailerStaffCubit>().rereadInvitations(),
           ),
         ),
+        // The per-member shop editor, provided **only** here for the same
+        // reason as the Invite form: the Manager shell has no such provider, so
+        // a Manager's widget tree contains no shop-assignment machinery at all
+        // and the editor cannot be rendered there even by mistake.
+        //
+        // Presentation scope, not a permission check.
+        // `set_retailer_staff_shop_assignments()` re-derives the Retailer from
+        // `auth.uid()`, re-checks `RETAILER_STAFF_SHOP_ASSIGN`, re-checks that
+        // the target is this Retailer's active Sales Staff member and validates
+        // every submitted shop against that Retailer — so a hand-crafted request
+        // is refused regardless of which shell rendered which control.
+        //
+        // Deliberately a cubit of its own rather than state on
+        // `RetailerStaffCubit`: a save that fails must not be one `copyWith`
+        // away from clearing the roster, the invitation history or the search
+        // term beside it.
+        //
+        // Not loaded on creation. The assignable shops are read the first time
+        // an editor is opened, so opening the Staff tab issues no request for an
+        // Owner who only wants to look.
+        BlocProvider<RetailerManageStaffShopsCubit>(
+          create: (BuildContext providerContext) => RetailerManageStaffShopsCubit(
+            // The same instance the Invite form reads its picker from: one
+            // deployed contract, one Dart path, no second definition of
+            // which shops may be assigned.
+            shops: providerContext.read<RetailerStaffInvitationRepository>(),
+            assignments: providerContext
+                .read<RetailerStaffShopAssignmentRepository>(),
+            // The canonical re-read, wired to the cubit that owns the roster
+            // this screen renders. The write's response carries three counts
+            // and no assignment rows — deliberately — so no row is ever
+            // patched locally.
+            rereadRoster: () =>
+                providerContext.read<RetailerStaffCubit>().rereadMembers(),
+          ),
+        ),
         BlocProvider<RetailerProductsCubit>(
           create: (BuildContext providerContext) => RetailerProductsCubit(
             providerContext.read<RetailerProductRepository>(),
@@ -242,6 +280,8 @@ class _SessionIsolation extends StatelessWidget {
         final RetailerStaffCubit staff = context.read<RetailerStaffCubit>();
         final RetailerInviteStaffCubit invite = context
             .read<RetailerInviteStaffCubit>();
+        final RetailerManageStaffShopsCubit manageShops = context
+            .read<RetailerManageStaffShopsCubit>();
         final RetailerProductsCubit products = context
             .read<RetailerProductsCubit>();
 
@@ -277,6 +317,16 @@ class _SessionIsolation extends StatelessWidget {
         // for the previous identity is dropped on arrival: no write result from
         // a previous session can reach the new one.
         invite.clear();
+        // The shop editor goes with them, and it holds the two things this
+        // milestone had to start carrying: one colleague's membership address
+        // and one Retailer's whole assignable estate, with ids. Also dropped are
+        // the ticked shops, the person's name, the editor's visibility and the
+        // last save's result. `clear()` advances a request token too, so an
+        // options read, a save, or a roster reread already in flight for the
+        // previous identity is dropped on arrival: no write result from a
+        // previous session — and no previous Retailer's shop ids — can reach the
+        // new one.
+        manageShops.clear();
         products.clear();
 
         if (_identityOf(state) != null) {

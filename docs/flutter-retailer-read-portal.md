@@ -426,9 +426,15 @@ Never `flutter run` without the config file.
    the flow tests use `ensureVisible`, matching the existing Vendor helper.
 6. **Invitation `RESERVED`/`indeterminate` states are untested against live
    data** — they need a backend state the hosted environment may not contain.
-7. **Assigning or changing shops for an *existing* staff member is not
-   available, in the app or on the web portal.** This is a backend contract gap,
-   not a gap in this PR.
+7. ~~**Assigning or changing shops for an *existing* staff member is not
+   available, in the app or on the web portal.**~~ **Closed by a later
+   milestone.** The backend contract gap described below was real when this
+   document was written; `set_retailer_staff_shop_assignments(uuid, uuid[])` on
+   `RETAILER_STAFF_SHOP_ASSIGN` has since been deployed, and Flutter consumes it
+   — see `docs/flutter-retailer-manage-staff-shops.md`. The analysis is kept
+   because it explains why the roster deliberately dropped `membership_id` and
+   `shop_ids` at the time, and why that decision was reversed rather than
+   accidental. What follows described the state as of this milestone.
 
    The only write to `public.retailer_shop_members` anywhere in the deployed
    schema is inside `accept_retailer_staff_invitation()`
@@ -472,9 +478,11 @@ its own milestone because each carries a different failure surface:
    (holds the delivery credential); the largest and most user-visible.
 2. **Invitation revoke / resend** — reads already exist; adds two write RPCs and
    the eligibility rules that stay in SQL.
-3. **Staff shop assignment** — `RETAILER_STAFF_SHOP_ASSIGN`. **Blocked on the
-   backend**: no post-acceptance write exists (see limitation 7), so this needs a
-   backend milestone before any Flutter work. It will also need the shop ids the
-   staff contract already returns and this client deliberately drops.
+3. ~~**Staff shop assignment** — `RETAILER_STAFF_SHOP_ASSIGN`. **Blocked on the
+   backend**~~ **Done.** The backend milestone landed
+   `set_retailer_staff_shop_assignments(uuid, uuid[])`, and Flutter consumes it
+   in `docs/flutter-retailer-manage-staff-shops.md`. As predicted, it needed the
+   shop ids this contract already returned — so the roster entity now carries
+   `membership_id` and `shop_ids`, bounded to that one purpose.
 4. **Shop create / edit / status** — blocked on the `shop_id` contract fix, since
    editing requires addressing a row.

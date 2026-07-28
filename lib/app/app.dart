@@ -18,6 +18,7 @@ import '../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../features/shops/domain/repositories/retailer_shop_repository.dart';
 import '../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import '../features/staff/domain/repositories/retailer_staff_repository.dart';
+import '../features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import '../features/users/domain/repositories/vendor_user_repository.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
@@ -59,6 +60,7 @@ class SaleRewardApp extends StatefulWidget {
     this.retailerShopRepository,
     this.retailerStaffRepository,
     this.retailerStaffInvitationRepository,
+    this.retailerStaffShopAssignmentRepository,
     this.retailerProductRepository,
     this.initialThemeMode = ThemeMode.system,
   });
@@ -78,6 +80,8 @@ class SaleRewardApp extends StatefulWidget {
   final RetailerShopRepository? retailerShopRepository;
   final RetailerStaffRepository? retailerStaffRepository;
   final RetailerStaffInvitationRepository? retailerStaffInvitationRepository;
+  final RetailerStaffShopAssignmentRepository?
+  retailerStaffShopAssignmentRepository;
   final RetailerProductRepository? retailerProductRepository;
   final ThemeMode initialThemeMode;
 
@@ -101,6 +105,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final RetailerStaffRepository _retailerStaffRepository;
   late final RetailerStaffInvitationRepository
   _retailerStaffInvitationRepository;
+  late final RetailerStaffShopAssignmentRepository
+  _retailerStaffShopAssignmentRepository;
   late final RetailerProductRepository _retailerProductRepository;
   late final SessionBloc _sessionBloc;
   late final ThemeCubit _themeCubit;
@@ -138,6 +144,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
     _retailerStaffInvitationRepository =
         widget.retailerStaffInvitationRepository ??
         getIt<RetailerStaffInvitationRepository>();
+    _retailerStaffShopAssignmentRepository =
+        widget.retailerStaffShopAssignmentRepository ??
+        getIt<RetailerStaffShopAssignmentRepository>();
     _retailerProductRepository =
         widget.retailerProductRepository ?? getIt<RetailerProductRepository>();
 
@@ -222,6 +231,14 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // one.
         RepositoryProvider<RetailerStaffInvitationRepository>.value(
           value: _retailerStaffInvitationRepository,
+        ),
+        // The post-acceptance shop-assignment write, kept separate again: the
+        // invitation repository is about invitations, and this operation changes
+        // an already accepted membership on a different permission with no
+        // email, token or expiry anywhere near it. Only the Retailer Owner shell
+        // reads this one.
+        RepositoryProvider<RetailerStaffShopAssignmentRepository>.value(
+          value: _retailerStaffShopAssignmentRepository,
         ),
         RepositoryProvider<RetailerProductRepository>.value(
           value: _retailerProductRepository,
