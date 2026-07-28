@@ -13,12 +13,14 @@ import 'package:sale_reward/features/products/domain/repositories/vendor_product
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
 import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
 import 'package:sale_reward/features/shops/domain/repositories/retailer_shop_repository.dart';
+import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_repository.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
 import 'receipt_fakes.dart';
 import 'retailer_owner_overview_fakes.dart';
+import 'retailer_invite_staff_fakes.dart';
 import 'retailer_read_fakes.dart';
 import 'vendor_audit_log_fakes.dart';
 import 'vendor_dashboard_fakes.dart';
@@ -65,6 +67,7 @@ typedef PumpedApp = ({
   FakeRetailerOwnerOverviewRepository retailerOverview,
   FakeRetailerShopRepository retailerShops,
   FakeRetailerStaffRepository retailerStaff,
+  FakeRetailerStaffInvitationRepository retailerStaffInvitations,
   FakeRetailerProductRepository retailerProducts,
 });
 
@@ -107,6 +110,8 @@ Future<PumpedApp> pumpApp(
   RetailerShopRepository? retailerShopRepository,
   FakeRetailerStaffRepository? retailerStaff,
   RetailerStaffRepository? retailerStaffRepository,
+  FakeRetailerStaffInvitationRepository? retailerStaffInvitations,
+  RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   FakeRetailerProductRepository? retailerProducts,
   RetailerProductRepository? retailerProductRepository,
 }) async {
@@ -158,6 +163,10 @@ Future<PumpedApp> pumpApp(
       retailerStaff ?? FakeRetailerStaffRepository();
   final RetailerStaffRepository providedStaff =
       retailerStaffRepository ?? staffRepository;
+  final FakeRetailerStaffInvitationRepository invitationRepository =
+      retailerStaffInvitations ?? FakeRetailerStaffInvitationRepository();
+  final RetailerStaffInvitationRepository providedInvitations =
+      retailerStaffInvitationRepository ?? invitationRepository;
   final FakeRetailerProductRepository productsRepository =
       retailerProducts ?? FakeRetailerProductRepository();
   final RetailerProductRepository providedRetailerProducts =
@@ -181,6 +190,7 @@ Future<PumpedApp> pumpApp(
       retailerOwnerOverviewRepository: providedOverview,
       retailerShopRepository: providedShops,
       retailerStaffRepository: providedStaff,
+      retailerStaffInvitationRepository: providedInvitations,
       retailerProductRepository: providedRetailerProducts,
       initialThemeMode: themeMode,
     ),
@@ -203,6 +213,7 @@ Future<PumpedApp> pumpApp(
     retailerOverview: overviewRepository,
     retailerShops: shopRepository,
     retailerStaff: staffRepository,
+    retailerStaffInvitations: invitationRepository,
     retailerProducts: productsRepository,
   );
 }
@@ -233,6 +244,8 @@ Future<PumpedApp> pumpAppInRole(
   RetailerShopRepository? retailerShopRepository,
   FakeRetailerStaffRepository? retailerStaff,
   RetailerStaffRepository? retailerStaffRepository,
+  FakeRetailerStaffInvitationRepository? retailerStaffInvitations,
+  RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   FakeRetailerProductRepository? retailerProducts,
   RetailerProductRepository? retailerProductRepository,
 }) {
@@ -262,6 +275,8 @@ Future<PumpedApp> pumpAppInRole(
     retailerShopRepository: retailerShopRepository,
     retailerStaff: retailerStaff,
     retailerStaffRepository: retailerStaffRepository,
+    retailerStaffInvitations: retailerStaffInvitations,
+    retailerStaffInvitationRepository: retailerStaffInvitationRepository,
     retailerProducts: retailerProducts,
     retailerProductRepository: retailerProductRepository,
   );

@@ -76,11 +76,17 @@ abstract final class RetailerStaffCopy {
       'Invitations you send appear here with their current status.';
 
   /// The milestone boundary, stated plainly rather than implied by an absent
-  /// button. Sending an invitation needs the delivery service, which the app
-  /// does not talk to.
+  /// button.
+  ///
+  /// Sending now happens in the Invite Staff form above this section. Resending
+  /// and revoking an existing invitation are separate backend operations this
+  /// app does not perform, and accepting one happens in the emailed link — so
+  /// the note says which of the four is here and which is not, rather than
+  /// leaving a reader to guess from what is missing.
   static const String invitationsReadOnlyNote =
-      'This history is read-only. Sending, resending and revoking invitations '
-      'are done on the SalesReward web portal.';
+      'This history is read-only. Use the form above to send an invitation; '
+      'resending and revoking an existing one are done on the SalesReward web '
+      'portal.';
 
   static const String invitedAsLabel = 'Invited as';
   static const String sentLabel = 'Sent';

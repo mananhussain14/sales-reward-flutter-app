@@ -167,6 +167,84 @@ final class RetailerStaffCubit extends Cubit<RetailerStaffState> {
     emit(next);
   }
 
+  /// Re-reads **only** the invitation history, and reports whether it landed.
+  ///
+  /// ## Why the invite form needs this rather than [refresh]
+  ///
+  /// The send contract's response carries no invitation record — deliberately,
+  /// because a returned row would be a second invitation shape free to drift
+  /// from the one `list_retailer_staff_invitations()` returns. So after a send
+  /// the only honest way to show what now exists is to re-read the canonical
+  /// history, and **nothing is ever appended locally**: a row assembled from the
+  /// form would state a `derived_state`, an `expires_at` and a `sent_at` this
+  /// client never received.
+  ///
+  /// The roster is left alone. Sending an invitation creates no membership, so
+  /// re-reading the roster would be a request whose answer cannot have changed.
+  ///
+  /// ## The return value is the whole point
+  ///
+  /// `false` means the send's own result stands but the history beside it is
+  /// stale. The caller must **not** turn that into "the invitation failed" — the
+  /// invitation is exactly as sent as the send result said it was — and must not
+  /// repeat the send to resolve it. Rows already on screen are kept, and the
+  /// screen's own Refresh remains available.
+  ///
+  /// Returns `false` immediately when this screen has no invitation section, so
+  /// a caller cannot accidentally issue a read whose only outcome is a refusal.
+  Future<bool> rereadInvitations() async {
+    if (!includeInvitations) {
+      return false;
+    }
+
+    // Supersedes any pass already in flight, exactly as `_fetch` does. The token
+    // is what stops that older pass from writing its answer over this one.
+    final int token = ++_token;
+
+    emit(
+      state.copyWith(
+        invitationPhase: state.invitations == null
+            ? RetailerStaffPhase.loading
+            : RetailerStaffPhase.ready,
+        isRefreshing: true,
+        clearInvitationProblem: true,
+      ),
+    );
+
+    final RetailerInvitationsResult result = await _repository.invitations();
+
+    if (isClosed || token != _token) {
+      return false;
+    }
+
+    switch (result) {
+      case RetailerInvitationsLoaded(
+        :final List<RetailerStaffInvitation> invitations,
+      ):
+        emit(
+          state.copyWith(
+            invitationPhase: RetailerStaffPhase.ready,
+            invitations: invitations,
+            isRefreshing: false,
+            clearInvitationProblem: true,
+          ),
+        );
+        return true;
+      case RetailerInvitationsFailed(:final RetailerReadProblem problem):
+        emit(
+          state.copyWith(
+            invitationPhase: RetailerStaffPhase.failed,
+            invitationProblem: problem,
+            isRefreshing: false,
+            // Rows already on screen stay. They are still the last thing the
+            // backend actually said, and the invitation just sent is missing
+            // from them — which the notice above the form says in words.
+          ),
+        );
+        return false;
+    }
+  }
+
   /// Filters the rows already held. Issues no request.
   void searchChanged(String term) {
     emit(state.copyWith(searchTerm: term));

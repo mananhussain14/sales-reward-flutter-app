@@ -10,7 +10,9 @@ import '../../../features/products/domain/repositories/retailer_product_reposito
 import '../../../features/products/presentation/retailer/cubit/retailer_products_cubit.dart';
 import '../../../features/shops/domain/repositories/retailer_shop_repository.dart';
 import '../../../features/shops/presentation/retailer_owner/cubit/retailer_shops_cubit.dart';
+import '../../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_repository.dart';
+import '../../../features/staff/presentation/retailer/cubit/retailer_invite_staff_cubit.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_staff_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/retailer_owner_shell_bloc.dart';
@@ -102,6 +104,30 @@ class RetailerOwnerShell extends StatelessWidget {
             // `list_retailer_staff_invitations()` would refuse anyone whose role
             // lacks RETAILER_STAFF_MANAGE regardless of this flag.
             includeInvitations: true,
+          ),
+        ),
+        // The Invite Staff form, provided **only** here. The Manager shell has
+        // no such provider, so a Manager's widget tree contains no
+        // invitation-sending machinery at all — the form cannot be rendered
+        // there even by mistake.
+        //
+        // Presentation scope, not a permission check: the Edge Function
+        // re-applies the whole request contract and
+        // `reserve_retailer_staff_invitation()` re-derives the Retailer from
+        // `auth.uid()` and re-checks the permission, so a hand-crafted request
+        // is refused regardless of which shell rendered which control.
+        //
+        // Not loaded on creation. The shop options are read the first time
+        // Sales Staff is chosen, so opening the Staff tab issues no
+        // assignable-shops request for an Owner who only wants to look.
+        BlocProvider<RetailerInviteStaffCubit>(
+          create: (BuildContext providerContext) => RetailerInviteStaffCubit(
+            providerContext.read<RetailerStaffInvitationRepository>(),
+            // The canonical re-read, wired to the cubit that owns the history
+            // this screen renders. The send's response carries no invitation
+            // record — deliberately — so nothing is ever appended locally.
+            rereadHistory: () =>
+                providerContext.read<RetailerStaffCubit>().rereadInvitations(),
           ),
         ),
         BlocProvider<RetailerProductsCubit>(
@@ -214,6 +240,8 @@ class _SessionIsolation extends StatelessWidget {
             .read<RetailerOwnerOverviewCubit>();
         final RetailerShopsCubit shops = context.read<RetailerShopsCubit>();
         final RetailerStaffCubit staff = context.read<RetailerStaffCubit>();
+        final RetailerInviteStaffCubit invite = context
+            .read<RetailerInviteStaffCubit>();
         final RetailerProductsCubit products = context
             .read<RetailerProductsCubit>();
 
@@ -239,6 +267,16 @@ class _SessionIsolation extends StatelessWidget {
         // list that has just been emptied.
         shops.clear();
         staff.clear();
+        // The Invite Staff form goes with them, and it holds the most personal
+        // values on the screen: a colleague's name and their personal email
+        // address, typed by hand and belonging to nobody but the session that
+        // typed them. Also dropped are the chosen role, the ticked shops, the
+        // assignable-shop options — one Retailer's estate, with ids — and the
+        // last submission's result. `clear()` advances a request token too, so a
+        // shop read, an invitation send, or a history reread already in flight
+        // for the previous identity is dropped on arrival: no write result from
+        // a previous session can reach the new one.
+        invite.clear();
         products.clear();
 
         if (_identityOf(state) != null) {

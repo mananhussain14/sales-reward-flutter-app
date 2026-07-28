@@ -21,6 +21,7 @@ import 'package:sale_reward/features/shops/presentation/retailer_owner/widgets/r
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_repository.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/widgets/retailer_invitation_card.dart';
+import 'package:sale_reward/features/staff/presentation/retailer/widgets/retailer_invite_staff_form.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/widgets/retailer_staff_copy.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/widgets/retailer_staff_member_card.dart';
 
@@ -468,22 +469,31 @@ void main() {
       expect(find.textContaining('RETAILER_MANAGER'), findsNothing);
     });
 
-    testWidgets('no invitation write control exists', (
+    testWidgets('the only invitation write is sending a new one', (
       WidgetTester tester,
     ) async {
       await onStaff(tester);
 
+      // Sending is this milestone's one write, and it lives in the Owner-only
+      // form above the history.
+      expect(find.byType(RetailerInviteStaffForm), findsOneWidget);
+
+      // Everything else an invitation could be done to is still absent — not
+      // disabled, absent. Each is a separate backend operation this app does
+      // not perform, and acceptance happens in the emailed link rather than
+      // here.
       for (final String label in <String>[
-        'Invite',
         'Resend',
         'Revoke',
-        'Send invitation',
+        'Accept',
         'Deactivate',
+        'Reactivate',
+        'Change role',
+        'Reassign shops',
       ]) {
         expect(find.text(label), findsNothing, reason: label);
       }
       expect(find.byIcon(Icons.add), findsNothing);
-      expect(find.byIcon(Icons.send), findsNothing);
     });
 
     testWidgets('a failed invitation read keeps the roster on screen', (
@@ -518,7 +528,16 @@ void main() {
     testWidgets('search filters both sections', (WidgetTester tester) async {
       await onStaff(tester);
 
-      await tester.enterText(find.byType(TextField).first, 'lena');
+      // Addressed through the search field itself rather than by position:
+      // the Owner's Invite Staff form sits above it and owns the first three
+      // text fields on the screen.
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(SrSearchField),
+          matching: find.byType(TextField),
+        ),
+        'lena',
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(RetailerStaffMemberCard), findsNothing);

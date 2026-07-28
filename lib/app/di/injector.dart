@@ -42,8 +42,11 @@ import '../../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../../features/shops/data/datasources/retailer_shop_rpc_data_source.dart';
 import '../../features/shops/data/repositories/supabase_retailer_shop_repository.dart';
 import '../../features/shops/domain/repositories/retailer_shop_repository.dart';
+import '../../features/staff/data/datasources/retailer_staff_invitation_rpc_data_source.dart';
 import '../../features/staff/data/datasources/retailer_staff_rpc_data_source.dart';
+import '../../features/staff/data/repositories/supabase_retailer_staff_invitation_repository.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_repository.dart';
+import '../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_repository.dart';
 import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
 import '../../features/users/data/repositories/supabase_vendor_user_repository.dart';
@@ -223,6 +226,35 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The Retailer staff **invitation** contracts: one zero-argument read for the
+  // shop picker, and one Edge Function call to send.
+  //
+  // The read is `list_retailer_staff_assignable_shops()`, which is the only
+  // Retailer contract that returns a shop id — deliberately, and for exactly one
+  // purpose: so the id can be handed straight back to the reservation. A direct
+  // table read would not work in its place, because the shop table carries one
+  // vendor-scoped SELECT policy that returns zero rows to a Retailer Owner.
+  //
+  // The send goes to the shared `send-retailer-staff-invitation` function, the
+  // same one the web portal posts to, so reserve → prepare → send → record
+  // exists once for both clients. **No service-role key and no Resend
+  // credential is registered here or exists anywhere in this application**:
+  // three of the four RPCs behind that function are granted to the privileged
+  // database role alone and the delivery credential lives only in the function's own
+  // environment, which is precisely why sending is a function call rather than
+  // an RPC. It travels on the caller's own session, so `auth.uid()` is the real
+  // person and the Retailer is resolved in PostgreSQL.
+  //
+  // No invitation acceptance, revoke, resend, role change, membership status
+  // change or post-acceptance shop reassignment is registered, because none is
+  // implemented: acceptance happens in the emailed link, and the rest are
+  // separate backend operations.
+  getIt.registerLazySingleton<RetailerStaffInvitationRepository>(
+    () => SupabaseRetailerStaffInvitationRepository(
+      rpc: RetailerStaffInvitationRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer Owner Overview read. One RPC, zero arguments, and no table
   // access at all — the organization resolution, the role and permission gates,
   // the single-qualifying-organization rule and both shop counts happen in SQL.
@@ -312,6 +344,7 @@ void registerTestDependencies({
   RetailerOwnerOverviewRepository? retailerOwnerOverviewRepository,
   RetailerShopRepository? retailerShopRepository,
   RetailerStaffRepository? retailerStaffRepository,
+  RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   RetailerProductRepository? retailerProductRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
@@ -372,6 +405,11 @@ void registerTestDependencies({
   if (retailerStaffRepository != null) {
     getIt.registerLazySingleton<RetailerStaffRepository>(
       () => retailerStaffRepository,
+    );
+  }
+  if (retailerStaffInvitationRepository != null) {
+    getIt.registerLazySingleton<RetailerStaffInvitationRepository>(
+      () => retailerStaffInvitationRepository,
     );
   }
   if (retailerProductRepository != null) {
