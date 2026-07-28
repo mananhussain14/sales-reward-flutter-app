@@ -8,6 +8,7 @@ import '../../../domain/entities/retailer_staff_invitation.dart';
 import '../../../domain/entities/retailer_staff_member.dart';
 import '../cubit/retailer_staff_cubit.dart';
 import '../widgets/retailer_invitation_card.dart';
+import '../widgets/retailer_invite_staff_form.dart';
 import '../widgets/retailer_staff_copy.dart';
 import '../widgets/retailer_staff_member_card.dart';
 
@@ -32,11 +33,25 @@ import '../widgets/retailer_staff_member_card.dart';
 /// narrower question (`and (v_can_manage or m.status = 'ACTIVE')`). This page
 /// applies no equivalent filter and renders exactly the rows it was given.
 ///
-/// ## Read-only
+/// ## One write, and only for the role whose shell asked for it
 ///
-/// No invite, resend, revoke, role change, activation or shop-assignment
-/// control anywhere — not disabled ones, none at all. The section note says so,
-/// so the absence reads as scope rather than as a broken screen.
+/// The Owner's screen carries the Invite Staff form; the Manager's does not,
+/// which is the same arrangement the invitation history already had and rests on
+/// the same fact — both contracts resolve through `RETAILER_STAFF_MANAGE`, so a
+/// Manager would be refused either. `includeInvitations` is read from the cubit
+/// rather than from [role] because it is set once at construction by the shell,
+/// which makes it stable from the first frame; the phase-derived
+/// `state.showsInvitations` only settles after a read.
+///
+/// It remains presentation scope and never authorization: the backend decides on
+/// every call, and a hidden form is not a boundary. The Retailer Owner shell is
+/// also the only place `RetailerInviteStaffCubit` is provided, so the Manager's
+/// tree contains no invitation-sending machinery at all.
+///
+/// Everything else here is still read-only: no resend, revoke, role change,
+/// activation or shop-assignment control anywhere — not disabled ones, none at
+/// all. The section note says so, so the absence reads as scope rather than as a
+/// broken screen.
 class RetailerStaffPage extends StatefulWidget {
   const RetailerStaffPage({super.key, required this.role});
 
@@ -153,6 +168,20 @@ class _Body extends StatelessWidget {
         if (!state.showsInvitations) ...<Widget>[
           const _Note(text: RetailerStaffCopy.managerScopeNote),
           const SizedBox(height: SrSpacing.xl),
+        ],
+
+        // Owner only, and deliberately outside the search branch below: the
+        // form is an action rather than a row, so filtering the lists must not
+        // take it off the screen — least of all while a submission is in
+        // flight.
+        if (cubit.includeInvitations) ...<Widget>[
+          RetailerInviteStaffForm(
+            // A read. It re-reads `list_retailer_staff_invitations()` and
+            // nothing else, and it is offered only when a send landed and the
+            // history beside it did not reload.
+            onRefreshHistory: cubit.rereadInvitations,
+          ),
+          const SizedBox(height: SrSpacing.xxl),
         ],
 
         // Hidden when there is genuinely nothing on the screen to filter.
