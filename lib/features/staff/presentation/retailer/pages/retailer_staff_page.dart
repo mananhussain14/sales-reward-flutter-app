@@ -4,11 +4,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
 import '../../../../auth/domain/entities/portal_kind.dart';
+import '../../../../auth/domain/entities/retailer_capabilities.dart';
+import '../../../../auth/presentation/bloc/session_bloc.dart';
 import '../../../domain/entities/retailer_staff_invitation.dart';
 import '../../../domain/entities/retailer_staff_member.dart';
+import '../cubit/retailer_manage_staff_shops_cubit.dart';
 import '../cubit/retailer_staff_cubit.dart';
 import '../widgets/retailer_invitation_card.dart';
 import '../widgets/retailer_invite_staff_form.dart';
+import '../widgets/retailer_manage_staff_shops_copy.dart';
+import '../widgets/retailer_manage_staff_shops_dialog.dart';
 import '../widgets/retailer_staff_copy.dart';
 import '../widgets/retailer_staff_member_card.dart';
 
@@ -48,10 +53,28 @@ import '../widgets/retailer_staff_member_card.dart';
 /// also the only place `RetailerInviteStaffCubit` is provided, so the Manager's
 /// tree contains no invitation-sending machinery at all.
 ///
-/// Everything else here is still read-only: no resend, revoke, role change,
-/// activation or shop-assignment control anywhere — not disabled ones, none at
-/// all. The section note says so, so the absence reads as scope rather than as a
-/// broken screen.
+/// ## Manage shops: three presentation signals, and none of them a role label
+///
+/// The per-member editor is offered only when all three hold:
+///
+/// * the **shell** provided the write — the same `includeInvitations` marker the
+///   Invite form uses, set once at construction by the Owner shell, so a
+///   Manager's tree contains no shop-assignment machinery to render;
+/// * the caller's **backend-derived capability hint** offers shop assignment.
+///   `assign_staff_shops` is computed by the same resolver, on the same
+///   permission (`RETAILER_STAFF_SHOP_ASSIGN`), that the write itself resolves
+///   through, so the hint cannot drift from its gate;
+/// * the **row itself** is one the backend described as an active, accepted
+///   Sales Staff member.
+///
+/// None of the three is a role name compared in Dart, and none of them is
+/// authorization. The database re-derives the caller, the Retailer, the
+/// permission and the target's own role and status on every call. A false hint
+/// is a reason not to advertise a dead end, never proof of anything.
+///
+/// Everything else here is still read-only: no resend, revoke, role change or
+/// activation control anywhere — not disabled ones, none at all. The section
+/// note says so, so the absence reads as scope rather than as a broken screen.
 class RetailerStaffPage extends StatefulWidget {
   const RetailerStaffPage({super.key, required this.role});
 
@@ -82,8 +105,22 @@ class _RetailerStaffPageState extends State<RetailerStaffPage> {
     });
   }
 
+  /// Whether this caller's backend-derived hints offer shop assignment.
+  ///
+  /// Presentation only. See the class doc: the hint is computed by the resolver
+  /// the write itself uses, and the write re-decides regardless.
+  static bool _offersShopAssignment(BuildContext context) {
+    final SessionState session = context.watch<SessionBloc>().state;
+    return session is SessionActive &&
+        session.portalContext.capabilities.allows(
+          RetailerCapability.assignStaffShops,
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool offersShopAssignment = _offersShopAssignment(context);
+
     return BlocBuilder<RetailerStaffCubit, RetailerStaffState>(
       builder: (BuildContext context, RetailerStaffState state) {
         final RetailerStaffCubit cubit = context.read<RetailerStaffCubit>();
@@ -119,7 +156,11 @@ class _RetailerStaffPageState extends State<RetailerStaffPage> {
                 ],
               ),
               const SizedBox(height: SrSpacing.xxl),
-              _Body(state: state, cubit: cubit),
+              _Body(
+                state: state,
+                cubit: cubit,
+                offersShopAssignment: offersShopAssignment,
+              ),
             ],
           ),
         );
@@ -129,10 +170,15 @@ class _RetailerStaffPageState extends State<RetailerStaffPage> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.state, required this.cubit});
+  const _Body({
+    required this.state,
+    required this.cubit,
+    required this.offersShopAssignment,
+  });
 
   final RetailerStaffState state;
   final RetailerStaffCubit cubit;
+  final bool offersShopAssignment;
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +214,25 @@ class _Body extends StatelessWidget {
         if (!state.showsInvitations) ...<Widget>[
           const _Note(text: RetailerStaffCopy.managerScopeNote),
           const SizedBox(height: SrSpacing.xl),
+        ],
+
+        // Owner only, for the same structural reason as the form below: the
+        // Manager shell provides no `RetailerManageStaffShopsCubit`, so reading
+        // one there would not merely be wrong, it would throw. `includeInvitations`
+        // is the shell-set marker, stable from the first frame.
+        //
+        // Deliberately outside the search branch: a committed save must be
+        // acknowledged whatever is typed in the filter, and a filter that hid
+        // the confirmation of a write would be the worst possible place to hide
+        // something.
+        if (cubit.includeInvitations) ...<Widget>[
+          _ManageShopsOutcome(
+            members: state.members,
+            // A read. It re-reads `list_retailer_staff_members()` and nothing
+            // else, and it is offered only when a save landed and the roster
+            // beside it did not reload.
+            onRefreshRoster: cubit.rereadMembers,
+          ),
         ],
 
         // Owner only, and deliberately outside the search branch below: the
@@ -210,7 +275,11 @@ class _Body extends StatelessWidget {
             ),
           )
         else ...<Widget>[
-          _RosterSection(state: state, cubit: cubit),
+          _RosterSection(
+            state: state,
+            cubit: cubit,
+            offersShopAssignment: offersShopAssignment,
+          ),
           if (state.showsInvitations) ...<Widget>[
             const SizedBox(height: SrSpacing.xxxl),
             _InvitationSection(state: state, cubit: cubit),
@@ -221,12 +290,150 @@ class _Body extends StatelessWidget {
   }
 }
 
+/// The Manage Shops result, and the roster-change watcher that goes with it.
+///
+/// ## Why the result lives here rather than in the editor
+///
+/// A committed save closes the editor, deliberately — an editor left armed over
+/// a change that already happened is an editor whose Save button resubmits it.
+/// So the success sentence is shown beside the roster, which is both the thing
+/// the save changed and the thing that was re-read to prove it.
+///
+/// ## Two separate sentences, never merged
+///
+/// When the write committed but the roster reread did not land, that is stated
+/// as an additional notice with its own action — and that action is a **read**.
+/// Nothing on this screen repeats a write on anyone's behalf, least of all one
+/// that already succeeded.
+class _ManageShopsOutcome extends StatelessWidget {
+  const _ManageShopsOutcome({
+    required this.members,
+    required this.onRefreshRoster,
+  });
+
+  /// The canonical roster rows, or null when none has been read.
+  final List<RetailerStaffMember>? members;
+
+  /// Re-reads the roster alone. Never a write.
+  final VoidCallback onRefreshRoster;
+
+  @override
+  Widget build(BuildContext context) {
+    final RetailerManageStaffShopsCubit cubit = context
+        .read<RetailerManageStaffShopsCubit>();
+
+    // The roster is the authority on who exists. When it changes underneath an
+    // open editor — a refresh, the reread after a save, or a backend answer that
+    // no longer contains the target — the editor is closed rather than left
+    // collecting a selection with nowhere to send it.
+    final List<String> membershipIds = <String>[
+      for (final RetailerStaffMember member
+          in members ?? const <RetailerStaffMember>[])
+        member.membershipId,
+    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) {
+        cubit.rosterChanged(membershipIds);
+      }
+    });
+
+    return BlocBuilder<
+      RetailerManageStaffShopsCubit,
+      RetailerManageStaffShopsState
+    >(
+      // Only the settled result belongs on the page. Everything else — the
+      // selection, the options, a refusal — is the editor's, and rebuilding the
+      // whole screen for a ticked checkbox would be wasteful and would fight the
+      // dialog for the person's attention.
+      buildWhen:
+          (
+            RetailerManageStaffShopsState previous,
+            RetailerManageStaffShopsState current,
+          ) =>
+              previous.notice != current.notice ||
+              previous.change != current.change ||
+              previous.rosterRereadFailed != current.rosterRereadFailed ||
+              previous.isOpen != current.isOpen,
+      builder: (BuildContext context, RetailerManageStaffShopsState state) {
+        final RetailerManageShopsNotice? notice = state.notice;
+        // While the editor is open it shows its own notice; showing the same one
+        // twice, in two places, would read as two separate things happening.
+        if (notice == null || state.isOpen) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Semantics(
+              liveRegion: true,
+              child: SrAlert(
+                tone: notice.isSuccess
+                    ? SrAlertTone.success
+                    : (notice.isUnresolved
+                          ? SrAlertTone.warning
+                          : SrAlertTone.error),
+                title: RetailerManageStaffShopsCopy.noticeTitle(notice),
+                message: RetailerManageStaffShopsCopy.noticeBody(
+                  notice,
+                  change: state.change,
+                ),
+              ),
+            ),
+            if (state.rosterRereadFailed) ...<Widget>[
+              const SizedBox(height: SrSpacing.md),
+              const SrAlert(
+                tone: SrAlertTone.warning,
+                title: RetailerManageStaffShopsCopy.rosterRereadFailedTitle,
+                message: RetailerManageStaffShopsCopy.rosterRereadFailedBody,
+              ),
+              const SizedBox(height: SrSpacing.md),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Semantics(
+                  button: true,
+                  label: RetailerManageStaffShopsCopy.refreshRoster,
+                  child: SrButton(
+                    label: RetailerManageStaffShopsCopy.refreshRoster,
+                    variant: SrButtonVariant.outline,
+                    icon: Icons.refresh_rounded,
+                    // A read, and only a read.
+                    onPressed: onRefreshRoster,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: SrSpacing.xxl),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// The staff roster.
 class _RosterSection extends StatelessWidget {
-  const _RosterSection({required this.state, required this.cubit});
+  const _RosterSection({
+    required this.state,
+    required this.cubit,
+    required this.offersShopAssignment,
+  });
 
   final RetailerStaffState state;
   final RetailerStaffCubit cubit;
+
+  /// Whether this caller's backend-derived hint offers shop assignment.
+  final bool offersShopAssignment;
+
+  /// Whether [member] gets a Manage shops control.
+  ///
+  /// Three signals, all from the backend, and none of them a role label compared
+  /// in Dart. See [RetailerStaffPage] for why each is presentation scope rather
+  /// than authorization.
+  bool _canManageShopsFor(RetailerStaffMember member) =>
+      cubit.includeInvitations &&
+      offersShopAssignment &&
+      member.isEditableSalesStaff;
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +473,20 @@ class _RosterSection extends StatelessWidget {
             threeUpThreshold: 1200,
             children: <Widget>[
               for (final RetailerStaffMember member in visible)
-                RetailerStaffMemberCard(member: member),
+                RetailerStaffMemberCard(
+                  member: member,
+                  // The whole member is handed to the editor, which takes the
+                  // membership id from it. Nothing here reads an id, renders
+                  // one, or addresses a row by its position in `visible` — that
+                  // list is filtered by a local search and its indices mean
+                  // nothing.
+                  onManageShops: _canManageShopsFor(member)
+                      ? () => showRetailerManageStaffShopsDialog(
+                          context,
+                          member: member,
+                        )
+                      : null,
+                ),
             ],
           ),
       ],

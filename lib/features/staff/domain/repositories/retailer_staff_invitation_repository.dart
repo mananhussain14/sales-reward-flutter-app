@@ -1,34 +1,13 @@
-import '../../../../core/errors/retailer_read_problem.dart';
-import '../entities/retailer_assignable_shop.dart';
 import '../entities/retailer_staff_invitation_outcome.dart';
 import '../entities/retailer_staff_invitation_request.dart';
+import 'retailer_assignable_shops_reader.dart';
 
-/// The outcome of the assignable-shops read.
-sealed class RetailerAssignableShopsResult {
-  const RetailerAssignableShopsResult();
-}
-
-/// The rows, already parsed.
-///
-/// An **empty** list is a real answer and is never confused with a refusal: the
-/// function raises `insufficient_privilege` for an unresolved caller precisely
-/// so that "you may not see this" cannot be mistaken for "this Retailer has no
-/// shops" — a distinction the invite form depends on to avoid telling an Owner
-/// their Retailer is empty when they were in fact refused.
-final class RetailerAssignableShopsLoaded
-    extends RetailerAssignableShopsResult {
-  const RetailerAssignableShopsLoaded(this.shops);
-
-  final List<RetailerAssignableShop> shops;
-}
-
-/// The read did not produce an answer. [RetailerReadProblem.denied] is `42501`.
-final class RetailerAssignableShopsFailed
-    extends RetailerAssignableShopsResult {
-  const RetailerAssignableShopsFailed(this.problem);
-
-  final RetailerReadProblem problem;
-}
+// The assignable-shops read and its result types moved to
+// `retailer_assignable_shops_reader.dart` when a second feature — the
+// post-acceptance shop editor — needed the same deployed contract. They are
+// re-exported so this file remains the one import an invitation caller needs,
+// and so the move cost no call site anywhere.
+export 'retailer_assignable_shops_reader.dart';
 
 /// The outcome of one invitation send.
 ///
@@ -102,31 +81,16 @@ final class RetailerStaffInvitationUnanswered
 /// one of those is either a different backend operation this milestone does not
 /// implement or, in the case of acceptance, a flow that lives entirely in the
 /// web portal.
-abstract interface class RetailerStaffInvitationRepository {
+abstract interface class RetailerStaffInvitationRepository
+    implements RetailerAssignableShopsReader {
   /// `public.list_retailer_staff_assignable_shops()` — the ACTIVE shops that may
   /// be attached to a Sales Staff invitation, with their ids.
   ///
-  /// ## Zero arguments, and that is the whole contract
-  ///
-  /// The deployed function is declared with an empty parameter list. There is no
-  /// Retailer id, organization id, relationship id or membership id to pass, so
-  /// no URL segment, form field, header or cookie can nominate whose shops come
-  /// back. The Retailer is derived inside the function from `auth.uid()` through
-  /// the established resolver, which fails closed when the caller resolves to
-  /// zero or to more than one qualifying Retailer.
-  ///
-  /// ## A refusal is an exception, never an empty list
-  ///
-  /// An unresolved caller raises the same generic `42501` every other staff
-  /// operation raises, which arrives as [RetailerReadProblem.denied]. That is
-  /// what lets the form say "you were refused" rather than "your Retailer has no
-  /// shops".
-  ///
-  /// ## Only assignable shops exist on this contract
-  ///
-  /// The function filters `status = 'ACTIVE'` itself, matching what the
-  /// reservation will accept. This client applies no status filter of its own —
-  /// there is no status column to filter on.
+  /// Declared on [RetailerAssignableShopsReader], which the shop-assignment
+  /// editor also consumes: one deployed contract, one Dart contract. See that
+  /// interface for the zero-argument guarantee and for why a refusal arrives as
+  /// an exception rather than as an empty list.
+  @override
   Future<RetailerAssignableShopsResult> assignableShops();
 
   /// `send-retailer-staff-invitation` — the shared delivery Edge Function.

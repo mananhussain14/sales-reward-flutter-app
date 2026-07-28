@@ -7,8 +7,15 @@ import 'package:sale_reward/features/staff/domain/entities/retailer_staff_member
 /// `list_retailer_staff_members()` and `list_retailer_staff_invitations()` body
 /// parsing.
 ///
-/// Two properties carry most of the weight here: **no identifier survives
-/// parsing** (`membership_id`, `shop_ids`, `invitation_id` are all dropped), and
+/// Two properties carry most of the weight here.
+///
+/// **The roster's two identifier columns are read strictly, and no other
+/// identifier survives.** `membership_id` and `shop_ids` are carried, because
+/// the shop editor addresses a membership with one and preselects from the
+/// other — so both are validated as uuids and a malformation fails the row,
+/// unlike the display columns beside them. `invitation_id` is still dropped
+/// entirely; nothing addresses an invitation.
+///
 /// **`derived_state` may legitimately be null**, because the backend's `CASE`
 /// has no `ELSE` branch.
 void main() {
@@ -50,6 +57,8 @@ void main() {
       expect(m.roleCode, 'SALES_STAFF');
       expect(m.roleName, 'Sales Staff');
       expect(m.status, RetailerMemberStatus.active);
+      expect(m.membershipId, '22222222-2222-2222-2222-222222222222');
+      expect(m.shopIds, <String>['11111111-1111-1111-1111-111111111111']);
       expect(m.shopNames, <String>['Northwind Marina']);
       expect(m.joinedAt, DateTime.utc(2026, 4, 12, 9));
       expect(m.createdAt, DateTime.utc(2026, 4, 10, 9));
@@ -108,6 +117,7 @@ void main() {
         row(shopIds: const <Object?>[], shopNames: const <Object?>[]),
       ]).single;
 
+      expect(m.shopIds, isEmpty);
       expect(m.shopNames, isEmpty);
       expect(m.hasShops, isFalse);
     });
@@ -123,17 +133,89 @@ void main() {
     });
 
     test('mismatched shop_ids and shop_names cannot mis-pair anything', () {
-      // The client never pairs them: it reads names only and drops the ids. So a
-      // length mismatch is structurally incapable of attributing a name to the
-      // wrong shop.
+      // Both are read now, and the client still never zips them: the ids seed a
+      // selection and the names are displayed. So a length mismatch is
+      // structurally incapable of attributing a name to the wrong shop, and both
+      // arrive exactly as sent.
       final RetailerStaffMember m = RetailerStaffMemberParser.parse(<Object?>[
         row(
-          shopIds: const <Object?>['a', 'b', 'c'],
+          shopIds: const <Object?>[
+            '11111111-1111-1111-1111-111111111111',
+            '33333333-3333-3333-3333-333333333333',
+            '44444444-4444-4444-4444-444444444444',
+          ],
           shopNames: const <Object?>['Only One Shop'],
         ),
       ]).single;
 
       expect(m.shopNames, <String>['Only One Shop']);
+      expect(m.shopIds, hasLength(3));
+    });
+
+    test('membership_id must be present and shaped like a uuid', () {
+      // It becomes `p_membership_id`. A value that is not a uuid would reach
+      // PostgREST as a `22P02` cast error, dressed up as a database fault.
+      for (final Object? bad in <Object?>[
+        null,
+        '',
+        '   ',
+        42,
+        'not-a-uuid',
+        '22222222-2222-2222-2222-2222222222',
+      ]) {
+        final Map<String, Object?> broken = row()..['membership_id'] = bad;
+        expect(
+          () => RetailerStaffMemberParser.parse(<Object?>[broken]),
+          throwsFormat(),
+          reason: '\$bad',
+        );
+      }
+    });
+
+    test('membership_id and shop ids are lower-cased', () {
+      // The value held is the value the contract canonicalizes to, so two
+      // spellings of one id can never be counted as two shops.
+      final RetailerStaffMember m = RetailerStaffMemberParser.parse(<Object?>[
+        row()
+          ..['membership_id'] = '22222222-AAAA-2222-2222-222222222222'
+          ..['shop_ids'] = const <Object?>[
+            '11111111-BBBB-1111-1111-111111111111',
+          ],
+      ]).single;
+
+      expect(m.membershipId, '22222222-aaaa-2222-2222-222222222222');
+      expect(m.shopIds, <String>['11111111-bbbb-1111-1111-111111111111']);
+    });
+
+    test('a malformed or duplicated shop id fails the row', () {
+      // Strict where `shop_names` is lenient, and deliberately so: a dropped
+      // name is one missing chip, a dropped id silently shortens the set the
+      // editor preselects — and saving from a short set retires an assignment
+      // nobody chose to remove.
+      for (final Object? bad in <Object?>[
+        null,
+        'not-a-uuid',
+        const <Object?>['11111111-1111-1111-1111-111111111111', null],
+        const <Object?>[
+          '11111111-1111-1111-1111-111111111111',
+          '11111111-1111-1111-1111-111111111111',
+        ],
+      ]) {
+        final Map<String, Object?> broken = row()..['shop_ids'] = bad;
+        expect(
+          () => RetailerStaffMemberParser.parse(<Object?>[broken]),
+          throwsFormat(),
+          reason: '\$bad',
+        );
+      }
+    });
+
+    test('a missing shop_ids key is rejected', () {
+      final Map<String, Object?> without = row()..remove('shop_ids');
+      expect(
+        () => RetailerStaffMemberParser.parse(<Object?>[without]),
+        throwsFormat(),
+      );
     });
 
     test('null and blank entries inside shop_names are dropped', () {
@@ -200,16 +282,45 @@ void main() {
       }
     });
 
-    test('no identifier survives parsing', () {
+    test('the two carried identifiers are the only ones, and are bounded', () {
+      // The contract also returns nothing else addressable, and the entity holds
+      // no auth user id, profile id, member-role id or organization id — there
+      // is no field for one. What it does hold is checked here so a future
+      // widening is visible as a test change.
       final RetailerStaffMember m = RetailerStaffMemberParser.parse(<Object?>[
-        row(),
+        row()..['user_id'] = '99999999-9999-9999-9999-999999999999',
       ]).single;
 
       final String flattened = m.props
           .map((Object? p) => p.toString())
           .join(' ');
-      expect(flattened, isNot(contains('2222-2222')));
-      expect(flattened, isNot(contains('1111-1111')));
+
+      expect(flattened, contains('22222222-2222-2222-2222-222222222222'));
+      expect(flattened, contains('11111111-1111-1111-1111-111111111111'));
+      // An identifier the entity has no field for cannot arrive by being in the
+      // body.
+      expect(flattened, isNot(contains('9999-9999')));
+    });
+
+    test('nothing a card renders carries an identifier', () {
+      // The proof that the ids are bounded is what reaches a screen, and every
+      // displayed value is asserted here rather than in a widget test that could
+      // be satisfied by a lucky layout.
+      final RetailerStaffMember m = RetailerStaffMemberParser.parse(<Object?>[
+        row(),
+      ]).single;
+
+      for (final String displayed in <String>[
+        m.fullName,
+        m.roleName,
+        m.status.label,
+        ...m.shopNames,
+      ]) {
+        expect(displayed, isNot(contains(m.membershipId)));
+        for (final String shopId in m.shopIds) {
+          expect(displayed, isNot(contains(shopId)));
+        }
+      }
     });
 
     test('unexpected extra fields are ignored', () {

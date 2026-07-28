@@ -45,39 +45,81 @@ enum RetailerMemberStatus {
   bool get isActive => this == active;
 }
 
+/// The one `role_code` this application acts on rather than merely displays.
+///
+/// Matched to decide whether a roster row may have its shop assignments edited,
+/// because the deployed `set_retailer_staff_shop_assignments()` refuses any
+/// membership that is not Sales Staff. Held here, on the domain entity, and
+/// never rendered: `roleName` is what a screen shows.
+///
+/// The comparison is a **presentation gate**, not an authorization decision. The
+/// function re-derives the target's role in SQL on every call and refuses on its
+/// own terms; this only avoids offering a control whose sole outcome would be a
+/// refusal.
+const String salesStaffRoleCode = 'SALES_STAFF';
+
 /// One row of `public.list_retailer_staff_members()`.
 ///
-/// ## What is deliberately not modelled
+/// ## Why the two identifiers are carried now, and what bounds them
 ///
-/// The contract returns `membership_id` and `shop_ids`, and **neither appears
-/// here**. Both are UUIDs, both are internal addresses, and this milestone is
-/// read-only with no operation that could use one: there is no member detail
-/// screen, no role change, no activation, no shop reassignment. Carrying them
-/// would put identifiers on a phone for no purpose, and the first write feature
-/// to find them lying around would be tempted to address a row from a stale
-/// list.
+/// The read-portal milestone deliberately dropped `membership_id` and
+/// `shop_ids`: it was read-only, nothing on a screen was addressable, and
+/// identifiers lying around invite a later feature to address a row from a stale
+/// list. That reasoning ended when `set_retailer_staff_shop_assignments()` was
+/// deployed — the operation takes a membership id, and the desired shop set has
+/// to start from the shops the backend says this person currently holds.
 ///
-/// `shop_names` is carried, because a person needs to know which shops a member
-/// works in. The ids that accompany those names are dropped at the parser.
+/// So both are carried, and both are bounded by that one purpose:
+///
+/// * [membershipId] is **never displayed**, never persisted, never typed,
+///   derived from a name, or read from a route, and travels to exactly one
+///   place — `p_membership_id`;
+/// * [shopIds] is **never displayed** — [shopNames] is what a person reads — and
+///   is used only to preselect the editor and to detect an unchanged selection.
+///
+/// A staleness note that matters: both are a snapshot of one read. The editor
+/// re-reads the assignable shops when it opens and intersects, and the backend
+/// re-derives everything from `auth.uid()` regardless, so holding either grants
+/// nothing.
+///
+/// ## `shopIds` is the ACTIVE projection, not the whole truth
+///
+/// The contract's shop subquery ends `removed_at is null and s.status =
+/// 'ACTIVE'`. A member may also hold a live assignment to a **suspended or
+/// deactivated** shop, which this contract intentionally does not return and
+/// this client therefore cannot see. Nothing here may be described as the
+/// member's complete assignment history, and nothing here may be used to try to
+/// remove an assignment that is not in it — the write preserves those hidden
+/// rows by design.
 ///
 /// ## `roleCode` is carried but never displayed
 ///
 /// The backend returns both `role_code` (`SALES_STAFF`) and `role_name`
 /// (`Sales Staff`). Only the name reaches a screen. The code is kept because it
-/// is the stable value across renames — useful for grouping and for a future
-/// write feature — and it is deliberately excluded from search and from every
-/// label so an internal token cannot leak into the UI through a search match.
+/// is the stable value across renames — used by [isEditableSalesStaff] to decide
+/// whether to offer the shop editor — and it is deliberately excluded from
+/// search and from every label so an internal token cannot leak into the UI
+/// through a search match.
 final class RetailerStaffMember extends Equatable {
   const RetailerStaffMember({
+    required this.membershipId,
     required this.firstName,
     required this.lastName,
     required this.roleCode,
     required this.roleName,
     required this.status,
+    required this.shopIds,
     required this.shopNames,
     required this.joinedAt,
     required this.createdAt,
   });
+
+  /// `organization_members.id`, lower-cased at the parser.
+  ///
+  /// The canonical address of this membership, and the **only** value that may
+  /// become `p_membership_id`. Never rendered; never searched; never composed
+  /// into a label, a semantics string or a widget key that could be read back.
+  final String membershipId;
 
   /// `profiles.first_name`. `NOT NULL` and non-blank in the schema.
   final String firstName;
@@ -92,6 +134,20 @@ final class RetailerStaffMember extends Equatable {
   final String roleName;
 
   final RetailerMemberStatus status;
+
+  /// The ids of the ACTIVE shops this member is currently assigned to,
+  /// lower-cased at the parser.
+  ///
+  /// The backend builds this and [shopNames] from the same subquery with the
+  /// same ordering, so they are positionally aligned — but **this client never
+  /// pairs them**, and no code anywhere attributes a name to an id. The ids seed
+  /// the editor's preselection; the names are what a person reads. A length
+  /// mismatch therefore cannot mislabel anything.
+  ///
+  /// **Not the member's complete assignment set.** See the class doc: a live
+  /// assignment to a non-ACTIVE shop is invisible on this contract, and the
+  /// write preserves it.
+  final List<String> shopIds;
 
   /// The names of the shops this member is currently assigned to.
   ///
@@ -128,13 +184,35 @@ final class RetailerStaffMember extends Equatable {
   /// Whether this member works in at least one shop.
   bool get hasShops => shopNames.isNotEmpty;
 
+  /// Whether this row is one whose shop assignments may be offered for editing.
+  ///
+  /// Three conditions, all read from the backend's own answer:
+  ///
+  /// * **Sales Staff.** Only that role holds shop rows;
+  ///   `set_retailer_staff_shop_assignments()` refuses every other membership.
+  /// * **ACTIVE.** A suspended or deactivated membership is not editable, and
+  ///   the function refuses it.
+  /// * **Accepted.** [joinedAt] is null for a membership created by an
+  ///   invitation nobody has accepted yet. Its shops come from the invitation,
+  ///   and this operation is explicitly post-acceptance.
+  ///
+  /// **This is presentation scope, not authorization.** It exists so a control
+  /// whose only possible outcome is a refusal is not put on screen. The database
+  /// re-derives the caller, the Retailer, the permission and the target's own
+  /// role and status on every call, and would refuse a hand-crafted request
+  /// whatever any UI rendered.
+  bool get isEditableSalesStaff =>
+      roleCode == salesStaffRoleCode && status.isActive && joinedAt != null;
+
   @override
   List<Object?> get props => <Object?>[
+    membershipId,
     firstName,
     lastName,
     roleCode,
     roleName,
     status,
+    shopIds,
     shopNames,
     joinedAt,
     createdAt,

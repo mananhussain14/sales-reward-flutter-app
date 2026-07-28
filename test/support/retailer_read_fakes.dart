@@ -222,41 +222,82 @@ final List<RetailerShop> otherShops = <RetailerShop>[
   ),
 ];
 
+/// Membership ids for the roster fixtures.
+///
+/// Invented. No value here belongs to any environment; each is a well-formed
+/// uuid chosen so a test asserting on one is obviously reading a fixture, and so
+/// a leak test can search for a literal that could only have come from here.
+const String aminaMembershipId = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+const String priyaMembershipId = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
+const String tomMembershipId = 'cccccccc-3333-4333-8333-cccccccccccc';
+const String noorMembershipId = 'dddddddd-4444-4444-8444-dddddddddddd';
+
+/// A second Retailer's membership id. Shares no value with the set above.
+const String khalidMembershipId = 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee';
+
 /// An Owner's roster: every membership status the Owner view can contain, a
 /// member with two shops, and members with none (an Owner and a Manager hold no
 /// shop rows at all).
+///
+/// The shop ids here are the same literals the assignable-shop fixtures use, so
+/// a preselection test exercises a real intersection rather than two disjoint
+/// sets that would pass by accident.
 final List<RetailerStaffMember> exampleStaff = <RetailerStaffMember>[
   RetailerStaffMember(
+    membershipId: aminaMembershipId,
     firstName: 'Amina',
     lastName: 'Farouk',
     roleCode: 'RETAILER_OWNER',
     roleName: 'Retailer Owner',
     status: RetailerMemberStatus.active,
+    shopIds: const <String>[],
     shopNames: const <String>[],
     joinedAt: DateTime.utc(2026, 3, 2),
     createdAt: DateTime.utc(2026, 3, 1),
   ),
   RetailerStaffMember(
+    membershipId: priyaMembershipId,
     firstName: 'Priya',
     lastName: 'Raman',
     roleCode: 'SALES_STAFF',
     roleName: 'Sales Staff',
     status: RetailerMemberStatus.active,
+    shopIds: const <String>[
+      '22222222-2222-4222-8222-222222222222',
+      '11111111-1111-4111-8111-111111111111',
+    ],
     shopNames: const <String>['Northwind Downtown', 'Northwind Marina'],
     joinedAt: DateTime.utc(2026, 4, 12),
     createdAt: DateTime.utc(2026, 4, 10),
   ),
   RetailerStaffMember(
+    membershipId: tomMembershipId,
     firstName: 'Tom',
     lastName: 'Byrne',
     roleCode: 'SALES_STAFF',
     roleName: 'Sales Staff',
     status: RetailerMemberStatus.suspended,
+    shopIds: const <String>['11111111-1111-4111-8111-111111111111'],
     shopNames: const <String>['Northwind Marina'],
     // Never accepted, so no joining date. Rendered as an absence and never as
     // `created_at`.
     joinedAt: null,
     createdAt: DateTime.utc(2026, 5, 1),
+  ),
+  // Active Sales Staff who *has* accepted but holds no ACTIVE shop today —
+  // the shape that proves the editor opens from an empty preselection rather
+  // than refusing to open at all.
+  RetailerStaffMember(
+    membershipId: noorMembershipId,
+    firstName: 'Noor',
+    lastName: 'Aziz',
+    roleCode: 'SALES_STAFF',
+    roleName: 'Sales Staff',
+    status: RetailerMemberStatus.active,
+    shopIds: const <String>[],
+    shopNames: const <String>[],
+    joinedAt: DateTime.utc(2026, 6, 20),
+    createdAt: DateTime.utc(2026, 6, 18),
   ),
 ];
 
@@ -269,11 +310,13 @@ final List<RetailerStaffMember> managerVisibleStaff = exampleStaff
 /// A second Retailer's roster.
 final List<RetailerStaffMember> otherStaff = <RetailerStaffMember>[
   RetailerStaffMember(
+    membershipId: khalidMembershipId,
     firstName: 'Khalid',
     lastName: 'Nasser',
     roleCode: 'RETAILER_OWNER',
     roleName: 'Retailer Owner',
     status: RetailerMemberStatus.active,
+    shopIds: const <String>[],
     shopNames: const <String>[],
     joinedAt: DateTime.utc(2026, 1, 9),
     createdAt: DateTime.utc(2026, 1, 8),

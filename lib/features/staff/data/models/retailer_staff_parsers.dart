@@ -2,6 +2,54 @@ import '../../../../core/parsing/rpc_row.dart';
 import '../../domain/entities/retailer_staff_invitation.dart';
 import '../../domain/entities/retailer_staff_member.dart';
 
+/// The canonical uuid shape, matched case-insensitively.
+///
+/// Applied to `membership_id` and to every element of `shop_ids` because these
+/// are the roster values that are **sent back** to the backend. Everywhere else
+/// an unexpected string would only be displayed; here it would become an
+/// argument of a `uuid` / `uuid[]` parameter, and a client that forwarded a
+/// malformed one would turn a readable local refusal into an opaque `22P02`
+/// cast error raised before the function body ever ran.
+final RegExp _uuidShape = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+  r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
+/// One `uuid` column, lower-cased.
+///
+/// Lower-cased so the value held is the value the contract canonicalizes to, and
+/// so two spellings of one id can never be counted as two shops.
+String _requiredUuid(Object? raw, String what) {
+  final String value = RpcRow.requiredString(raw, what).trim();
+  if (!_uuidShape.hasMatch(value)) {
+    throw RpcFormatException('$what is not shaped like a uuid');
+  }
+  return value.toLowerCase();
+}
+
+/// A `uuid[]` column, lower-cased, order preserved.
+///
+/// Unlike [RpcRow.stringArray], a null or malformed **element** fails the row
+/// rather than being dropped. A dropped shop name is one missing chip; a dropped
+/// shop id would silently change the set the editor preselects, and saving from
+/// it would retire an assignment nobody chose to remove.
+///
+/// A **duplicate** fails the row too: `retailer_shop_members` is keyed on the
+/// pair, so the same shop cannot legitimately appear twice for one member, and a
+/// response that says it does is not this contract.
+List<String> _uuidArray(Object? raw, String what) {
+  if (raw is! List) {
+    throw RpcFormatException('$what is not an array');
+  }
+  final List<String> ids = raw
+      .map((Object? value) => _requiredUuid(value, '$what element'))
+      .toList(growable: false);
+  if (ids.toSet().length != ids.length) {
+    throw RpcFormatException('$what contains a duplicate');
+  }
+  return ids;
+}
+
 /// Parses `list_retailer_staff_members()`.
 ///
 /// ## The whole roster, or none of it
@@ -17,7 +65,11 @@ import '../../domain/entities/retailer_staff_member.dart';
 /// * a body that is not a list, or a row that is not an object;
 /// * a missing, null, blank or non-string `first_name`, `last_name`,
 ///   `role_code`, `role_name` or `membership_status`;
+/// * a missing, null, blank or non-string `membership_id`, or one that is not
+///   shaped like a uuid;
 /// * a missing or non-array `shop_names`;
+/// * a missing or non-array `shop_ids`, an element that is not a uuid, or a
+///   duplicate element;
 /// * a missing, null or unparseable `created_at`;
 /// * an unparseable `joined_at` — distinct from a **null** one, which is legal.
 ///
@@ -34,10 +86,19 @@ import '../../domain/entities/retailer_staff_member.dart';
 /// * a **null `joined_at`** → null. A membership created but never accepted has
 ///   no joining date, and substituting `created_at` would state a date that
 ///   never happened.
-/// * an **empty `shop_names`** → an empty list. Owners and Managers hold no shop
-///   rows at all, so this is the expected shape for them.
-/// * **`shop_ids` of a different length from `shop_names`** → ignored entirely.
-///   See below.
+/// * an **empty `shop_names`** or **`shop_ids`** → an empty list. Owners and
+///   Managers hold no shop rows at all, so this is the expected shape for them.
+/// * **`shop_ids` of a different length from `shop_names`** → both kept as they
+///   arrived. See below.
+///
+/// ## Why the two identifier columns are strict where the names are not
+///
+/// `shop_names` drops a blank element rather than failing the row: a name that
+/// cannot be shown is one missing chip. `membership_id` and `shop_ids` are the
+/// values this client **sends back**, so the same leniency would mean addressing
+/// a row with something the backend never returned, or preselecting a shop set
+/// that is quietly short by one — and saving from a short set retires an
+/// assignment nobody chose to remove.
 abstract final class RetailerStaffMemberParser {
   static List<RetailerStaffMember> parse(Object? raw) {
     return RpcRow.asRows(
@@ -48,6 +109,9 @@ abstract final class RetailerStaffMemberParser {
 
   static RetailerStaffMember parseRow(Map<String, Object?> row) {
     return RetailerStaffMember(
+      // The canonical address of this membership, and the only value that may
+      // become `p_membership_id`. Read here, held on the entity, never rendered.
+      membershipId: _requiredUuid(row['membership_id'], 'membership_id'),
       firstName: RpcRow.requiredString(row['first_name'], 'first_name'),
       lastName: RpcRow.requiredString(row['last_name'], 'last_name'),
       roleCode: RpcRow.requiredString(row['role_code'], 'role_code'),
@@ -55,21 +119,27 @@ abstract final class RetailerStaffMemberParser {
       status: RetailerMemberStatus.fromCode(
         RpcRow.requiredString(row['membership_status'], 'membership_status'),
       ),
-      // Names only. `shop_ids` is read by nobody: the two arrays are built by
-      // the backend from the same subquery with the same `order by s.name,
-      // s.id`, so they are positionally aligned by construction — but this
-      // client never pairs them, because it has no use for an id. Nothing here
-      // can therefore be mis-paired by a length mismatch, and a mismatch cannot
-      // produce a shop name attributed to the wrong shop, because no name is
-      // ever attributed to an id at all.
+      // Both arrays are read, and the two are deliberately **never paired**.
       //
-      // That is a stronger guarantee than validating the lengths would give: a
-      // validation would have to decide what to do on mismatch, and every
-      // available answer (drop the row, truncate, pad) loses information.
+      // The backend builds them from the same subquery with the same `order by
+      // s.name, s.id`, so they are positionally aligned by construction. This
+      // parser still does not zip them, and no code downstream does either: the
+      // ids seed the editor's preselection, the names are what a person reads,
+      // and no name is ever attributed to an id anywhere.
+      //
+      // That is a stronger guarantee than validating the lengths would give. A
+      // length check would have to decide what to do on mismatch, and every
+      // available answer (fail the row, truncate, pad) either hides a colleague
+      // or invents a pairing. Not pairing them at all makes a mismatch
+      // incapable of mislabelling anything.
+      //
+      // These are the ACTIVE shops only — the contract's own `removed_at is
+      // null and s.status = 'ACTIVE'` predicate. A live assignment to a
+      // suspended or deactivated shop is not here, and the write preserves it.
+      shopIds: _uuidArray(row['shop_ids'], 'shop_ids'),
       shopNames: RpcRow.stringArray(row['shop_names'], 'shop_names'),
       joinedAt: RpcRow.optionalTimestamp(row['joined_at'], 'joined_at'),
       createdAt: RpcRow.requiredTimestamp(row['created_at'], 'created_at'),
-      // No membership_id. The contract returns one; nothing here holds it.
     );
   }
 }

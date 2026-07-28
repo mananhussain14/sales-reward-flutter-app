@@ -44,10 +44,13 @@ import '../../features/shops/data/repositories/supabase_retailer_shop_repository
 import '../../features/shops/domain/repositories/retailer_shop_repository.dart';
 import '../../features/staff/data/datasources/retailer_staff_invitation_rpc_data_source.dart';
 import '../../features/staff/data/datasources/retailer_staff_rpc_data_source.dart';
+import '../../features/staff/data/datasources/retailer_staff_shop_assignment_rpc_data_source.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_invitation_repository.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_repository.dart';
+import '../../features/staff/data/repositories/supabase_retailer_staff_shop_assignment_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_repository.dart';
+import '../../features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
 import '../../features/users/data/repositories/supabase_vendor_user_repository.dart';
 import '../../features/users/domain/repositories/vendor_user_repository.dart';
@@ -255,6 +258,40 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The Retailer staff **post-acceptance shop-assignment** write: one RPC,
+  // `set_retailer_staff_shop_assignments(uuid, uuid[])`, and no table access at
+  // all.
+  //
+  // A direct write is not merely avoided here, it would not work.
+  // `retailer_shop_members` grants nothing to `authenticated`, and the
+  // same-Retailer trigger, the ACTIVE-shop validation, the `removed_at`
+  // retirement and the audit row all live in SQL — inside one transaction the
+  // client could not reproduce even if the privileges existed.
+  //
+  // This is the **same deployed function the Next.js portal calls**. There is no
+  // mobile twin and no second definition of "replace a staff member's shops", so
+  // the two clients cannot disagree about the zero-shop refusal, about which
+  // memberships are eligible, or about what happens to an assignment whose shop
+  // is no longer active.
+  //
+  // It travels on the caller's own session — the only reason `auth.uid()` means
+  // anything inside the function. **No service-role key is registered here or
+  // exists anywhere in this application**, and a service-role connection would
+  // have no identity for the function to resolve.
+  //
+  // The assignable-shop picker needs no registration of its own: it reads
+  // `list_retailer_staff_assignable_shops()` through
+  // `RetailerAssignableShopsReader`, which the invitation repository above
+  // already implements. One deployed contract, one instance, one Dart path.
+  //
+  // No staff activation, deactivation, role change, invitation accept, revoke or
+  // resend is registered, because none is implemented.
+  getIt.registerLazySingleton<RetailerStaffShopAssignmentRepository>(
+    () => SupabaseRetailerStaffShopAssignmentRepository(
+      rpc: RetailerStaffShopAssignmentRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer Owner Overview read. One RPC, zero arguments, and no table
   // access at all — the organization resolution, the role and permission gates,
   // the single-qualifying-organization rule and both shop counts happen in SQL.
@@ -345,6 +382,7 @@ void registerTestDependencies({
   RetailerShopRepository? retailerShopRepository,
   RetailerStaffRepository? retailerStaffRepository,
   RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
+  RetailerStaffShopAssignmentRepository? retailerStaffShopAssignmentRepository,
   RetailerProductRepository? retailerProductRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
@@ -410,6 +448,11 @@ void registerTestDependencies({
   if (retailerStaffInvitationRepository != null) {
     getIt.registerLazySingleton<RetailerStaffInvitationRepository>(
       () => retailerStaffInvitationRepository,
+    );
+  }
+  if (retailerStaffShopAssignmentRepository != null) {
+    getIt.registerLazySingleton<RetailerStaffShopAssignmentRepository>(
+      () => retailerStaffShopAssignmentRepository,
     );
   }
   if (retailerProductRepository != null) {
