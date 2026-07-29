@@ -295,20 +295,27 @@ contains none of "another Vendor", "multi", "DEACTIVATED", "mismatch",
 
 ## 10. What this milestone does not do
 
-PR 2 owns the Retailer-side inactive-access experience. None of it is present
-here, and a boundary test asserts its absence so half of it cannot ship by
-accident:
+This milestone owns the Vendor-side **write** — deactivating and reactivating a
+Retailer — and nothing about how a blocked Retailer user is told why.
 
-* `get_my_lifecycle_access_state()` is not called;
-* the approved copy *"This Retailer is currently inactive. Contact the Vendor or
-  your Retailer administrator."* appears nowhere;
-* there is no reactivation-refresh affordance on `/access-denied`;
-* no Owner / Manager / Sales Staff lifecycle diagnostic handling exists.
+That explanation now exists, in its own milestone, and is documented separately
+in [flutter-inactive-access-diagnostic.md](./flutter-inactive-access-diagnostic.md):
+`get_my_lifecycle_access_state()` is called by the access-denied screen and by
+nothing else, and the approved copy *"This Retailer is currently inactive.
+Contact the Vendor or your Retailer administrator."* lives in one copy module
+there.
 
-Today an inactive Retailer's users are still blocked correctly — the backend does
-that — but they see the generic, reason-free access-denied card, and reactivation
-is only detected on the next session resolution. PR 2 improves the *explanation*,
-not the enforcement.
+**Nothing in this feature changed for it.** The boundary test in
+`test/security/vendor_retailer_boundary_test.dart` still asserts that no source
+under `lib/features/retailers/` names the diagnostic RPC, carries its vocabulary,
+or reads its repository — the assertion was narrowed from "this does not exist
+anywhere" to "this does not exist *here*", and every lifecycle-write protection
+in that file is unchanged.
+
+The division of labour is unchanged too: the diagnostic improves the
+*explanation*, never the enforcement. An inactive Retailer's users are blocked by
+the backend, which re-derives its answer from `auth.uid()` on every call,
+whatever any screen says.
 
 ---
 

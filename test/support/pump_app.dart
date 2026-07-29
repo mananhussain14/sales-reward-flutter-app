@@ -21,6 +21,7 @@ import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_sh
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'fakes.dart';
+import 'lifecycle_access_fakes.dart';
 import 'receipt_fakes.dart';
 import 'retailer_owner_overview_fakes.dart';
 import 'retailer_invite_staff_fakes.dart';
@@ -61,6 +62,7 @@ void useSurface(WidgetTester tester, Size size) {
 typedef PumpedApp = ({
   FakeAuthRepository auth,
   FakePortalContextRepository portal,
+  FakeLifecycleAccessRepository lifecycleAccess,
   FakeReceiptRepository receipts,
   FakeReceiptImageSource images,
   FakeVendorRetailerRepository retailers,
@@ -98,6 +100,7 @@ Future<PumpedApp> pumpApp(
   Size surface = phoneSurface,
   ThemeMode themeMode = ThemeMode.system,
   bool settle = true,
+  FakeLifecycleAccessRepository? lifecycleAccess,
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
@@ -134,6 +137,12 @@ Future<PumpedApp> pumpApp(
   final FakePortalContextRepository portal = FakePortalContextRepository(
     portalResult,
   );
+  // Always supplied, so a test that lands on `/access-denied` without asking for
+  // one still gets a fake rather than the service locator. Its default answer is
+  // `unavailable`, which renders exactly the generic card this screen showed
+  // before the diagnostic existed — so no existing test's expectations move.
+  final FakeLifecycleAccessRepository lifecycleAccessRepository =
+      lifecycleAccess ?? FakeLifecycleAccessRepository();
   final FakeReceiptRepository receiptRepository =
       receipts ?? FakeReceiptRepository();
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
@@ -206,6 +215,7 @@ Future<PumpedApp> pumpApp(
     SaleRewardApp(
       authRepository: auth,
       portalContextRepository: portal,
+      lifecycleAccessRepository: lifecycleAccessRepository,
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
@@ -232,6 +242,7 @@ Future<PumpedApp> pumpApp(
   return (
     auth: auth,
     portal: portal,
+    lifecycleAccess: lifecycleAccessRepository,
     receipts: receiptRepository,
     images: imageSource,
     retailers: retailerRepository,
@@ -257,6 +268,7 @@ Future<PumpedApp> pumpAppInRole(
   WidgetTester tester,
   PortalKind kind, {
   Size surface = phoneSurface,
+  FakeLifecycleAccessRepository? lifecycleAccess,
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
@@ -294,6 +306,7 @@ Future<PumpedApp> pumpAppInRole(
     initialUser: testUser,
     portalResult: resolvedResult(kind),
     surface: surface,
+    lifecycleAccess: lifecycleAccess,
     receipts: receipts,
     images: images,
     retailers: retailers,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
+import '../features/auth/domain/repositories/lifecycle_access_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
@@ -49,6 +50,7 @@ class SaleRewardApp extends StatefulWidget {
     super.key,
     this.authRepository,
     this.portalContextRepository,
+    this.lifecycleAccessRepository,
     this.receiptRepository,
     this.receiptImageSource,
     this.vendorRetailerRepository,
@@ -71,6 +73,12 @@ class SaleRewardApp extends StatefulWidget {
 
   final AuthRepository? authRepository;
   final PortalContextRepository? portalContextRepository;
+
+  /// The self-only lifecycle diagnostic, read only by the access-denied screen.
+  ///
+  /// Unlike every other repository here it is **not** resolved in `initState`.
+  /// See the provider in [State.build] for why.
+  final LifecycleAccessRepository? lifecycleAccessRepository;
   final ReceiptRepository? receiptRepository;
   final ReceiptImageSource? receiptImageSource;
   final VendorRetailerRepository? vendorRetailerRepository;
@@ -191,6 +199,22 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // screen can build their own short-lived cubits over it without
         // threading it through constructors.
         RepositoryProvider<AuthRepository>.value(value: _authRepository),
+        // DELIBERATELY LAZY, and the only provider here that is.
+        //
+        // Every repository above is resolved in `initState`, which is right for
+        // dependencies some shell is certain to want. This one is read by
+        // exactly one screen — `/access-denied`, and only for a genuine
+        // `portal_kind: NONE` denial — so eagerly resolving it would make every
+        // application and every widget test pay for a dependency almost none of
+        // them reach, and would force a fake into tests that never see a
+        // denial. `create` defers the lookup until `AccessDeniedPage` actually
+        // asks, which is also exactly when the service locator is guaranteed to
+        // have been configured.
+        RepositoryProvider<LifecycleAccessRepository>(
+          create: (BuildContext context) =>
+              widget.lifecycleAccessRepository ??
+              getIt<LifecycleAccessRepository>(),
+        ),
         // Read by the Sales Staff shell when it constructs its receipt cubits.
         // Providing them here — rather than letting the shell reach into the
         // service locator — is what lets a widget test drive the whole flow over

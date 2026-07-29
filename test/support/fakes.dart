@@ -79,6 +79,18 @@ class FakeAuthRepository implements AuthRepository {
     _controller.add(AuthTokenRefreshed(user));
   }
 
+  /// Changes [currentUser] **without** emitting on the stream.
+  ///
+  /// Deliberately silent, and only useful for one thing: proving that a consumer
+  /// which re-reads `currentUser` after an await catches a subject change on its
+  /// own, rather than because `SessionBloc` happened to tear its widget down
+  /// first. Every ordinary test should drive identity through [emitSignedIn],
+  /// [emitSignedOut] or [emitTokenRefreshed] so the session machinery stays in
+  /// the loop — this bypasses it on purpose, to isolate the guard under test.
+  void setCurrentUserSilently(AuthUser? user) {
+    _currentUser = user;
+  }
+
   Future<void> dispose() => _controller.close();
 }
 

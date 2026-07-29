@@ -412,9 +412,33 @@ void main() {
     });
   });
 
-  group('PR 2 lifecycle-diagnostic work is not present', () {
-    test('the diagnostic RPC and its vocabulary are absent', () {
-      _expectAbsent(sources, <String>[
+  group('the lifecycle diagnostic stays outside this feature', () {
+    // This group used to assert the diagnostic did not exist anywhere. It now
+    // ships, in `features/auth`, so the assertion has been NARROWED rather than
+    // dropped: the property still worth defending is that the *staff lifecycle
+    // write* feature neither names the diagnostic RPC nor carries its
+    // vocabulary or copy. Every write protection in this file is unchanged.
+    test('no staff source names the diagnostic RPC or its vocabulary', () {
+      // Scanned over the staff feature AND every non-diagnostic source, so a
+      // call site added in a shell or another feature is caught too.
+      final List<File> outsideDiagnostic = sources
+          .where(
+            (File f) => !_approvedDiagnosticPaths.any(
+              (String approved) => f.path.endsWith(approved),
+            ),
+          )
+          .toList();
+
+      expect(
+        outsideDiagnostic.length,
+        greaterThan(50),
+        reason: 'the scan must not be vacuous',
+      );
+      // The exclusion list must actually exclude something, or the scan below
+      // is asserting a property no file could violate.
+      expect(outsideDiagnostic.length, lessThan(sources.length));
+
+      _expectAbsent(outsideDiagnostic, <String>[
         'get_my_lifecycle_access_state',
         'ORGANIZATION_INACTIVE',
         'MEMBERSHIP_INACTIVE',
@@ -423,14 +447,24 @@ void main() {
       ], allowInComments: true);
     });
 
-    test('the approved inactive-access copy is not added here', () {
-      for (final File file in sources) {
+    test('no staff source carries the approved inactive-access copy', () {
+      for (final File file in staffSources) {
         final String src = code(file);
         expect(src.contains('This Retailer is currently inactive'), isFalse);
         expect(
           src.contains('Your access to this Retailer is inactive'),
           isFalse,
         );
+      }
+    });
+
+    test('the staff lifecycle write does not consult the diagnostic', () {
+      // The write must never gate itself on a read: the deployed function
+      // re-derives everything it needs from auth.uid() under its own row locks.
+      for (final File file in staffSources) {
+        final String src = code(file);
+        expect(src.contains('LifecycleAccessRepository'), isFalse);
+        expect(src.contains('LifecycleAccessCubit'), isFalse);
       }
     });
   });
@@ -463,6 +497,18 @@ void main() {
     });
   });
 }
+
+/// The only files permitted to name the diagnostic RPC, its wire vocabulary or
+/// its approved copy.
+///
+/// Kept as an explicit allow-list rather than a directory prefix so that adding
+/// a file to the diagnostic feature is a visible edit here, reviewed alongside
+/// the code it exempts.
+const List<String> _approvedDiagnosticPaths = <String>[
+  'features/auth/data/models/lifecycle_access_parser.dart',
+  'features/auth/data/datasources/lifecycle_access_rpc_data_source.dart',
+  'features/auth/presentation/widgets/lifecycle_access_copy.dart',
+];
 
 /// Fails if any [needle] appears in executable source.
 void _expectAbsent(

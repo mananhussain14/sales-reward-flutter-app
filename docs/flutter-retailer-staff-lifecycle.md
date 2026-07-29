@@ -315,17 +315,28 @@ committed write.
 
 ## 9. What this milestone does not do
 
-The inactive-access diagnostic is a separate milestone. None of it is here, and a
-boundary test asserts its absence so half of it cannot ship by accident:
+This milestone owns the Retailer-side **write** — deactivating and reactivating a
+colleague's membership — and nothing about how a blocked colleague is told why.
 
-* `get_my_lifecycle_access_state()` is not called;
-* no `MEMBERSHIP_INACTIVE` / `ORGANIZATION_INACTIVE` / `PROFILE_INACTIVE` handling;
-* no inactive-access reason screens;
-* no in-place reactivation detection for blocked users.
+That explanation now exists, in its own milestone, and is documented separately
+in [flutter-inactive-access-diagnostic.md](./flutter-inactive-access-diagnostic.md):
+`get_my_lifecycle_access_state()` is called by the access-denied screen and by
+nothing else, `MEMBERSHIP_INACTIVE` / `ORGANIZATION_INACTIVE` / `PROFILE_INACTIVE`
+each map to one approved sentence there, and a blocked colleague can recover
+in place with **Check access again** rather than waiting for the next session
+resolution.
 
-A deactivated colleague is already blocked correctly — the backend does that — but
-they see the generic, reason-free access-denied card, and reactivation is detected
-on the next session resolution.
+**Nothing in this feature changed for it.** The boundary test in
+`test/security/retailer_staff_lifecycle_boundary_test.dart` still asserts that no
+staff source names the diagnostic RPC, carries its vocabulary or copy, or reads
+its repository — the assertion was narrowed from "this does not exist anywhere"
+to "this does not exist *here*", and every lifecycle-write protection in that
+file is unchanged.
+
+The division of labour is unchanged too: the diagnostic improves the
+*explanation*, never the enforcement. A deactivated colleague is blocked by the
+backend, which re-derives its answer from `auth.uid()` on every call, whatever
+any screen says.
 
 ---
 
