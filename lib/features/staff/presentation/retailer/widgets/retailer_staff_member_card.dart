@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import '../../../../../core/design/design.dart';
 import '../../../../../core/utils/date_format.dart';
 import '../../../../../core/widgets/widgets.dart';
+import '../../../domain/entities/retailer_staff_lifecycle_action.dart';
 import '../../../domain/entities/retailer_staff_member.dart';
+import '../../../domain/repositories/retailer_staff_lifecycle_repository.dart';
+import '../cubit/retailer_staff_lifecycle_cubit.dart';
 import 'retailer_manage_staff_shops_copy.dart';
 import 'retailer_staff_copy.dart';
+import 'retailer_staff_lifecycle_copy.dart';
+import 'retailer_staff_lifecycle_notices.dart';
 
 /// One staff member.
 ///
@@ -16,12 +21,28 @@ import 'retailer_staff_copy.dart';
 /// operations this application does not perform, and a greyed-out control would
 /// imply the feature exists and is merely switched off.
 ///
-/// The one exception is **Manage shops**, rendered only when [onManageShops] is
-/// supplied. The page supplies it only for a row the backend described as an
-/// active, accepted Sales Staff member, in a shell that holds the write, for a
-/// caller whose backend-derived capability hint offers shop assignment. All of
-/// that is presentation scope: the database re-decides on every call and would
-/// refuse a hand-crafted request whatever this card rendered.
+/// There are now exactly **two**, and each is rendered only when the page
+/// supplies its callback:
+///
+/// * **Manage shops** — for a row the backend described as an active, accepted
+///   Sales Staff member, in a shell that holds the write, for a caller whose
+///   backend-derived capability hint offers shop assignment.
+/// * **Deactivate / Reactivate** — for a row whose membership appears exactly
+///   once in the whole roster, holds exactly `RETAILER_MANAGER` or `SALES_STAFF`,
+///   and is `ACTIVE` or `DEACTIVATED`, for a caller whose hint offers staff
+///   management. [lifecycleAction] carries the direction, the labels and the
+///   status that will be requested, all from one table, so the verb on this
+///   button cannot disagree with what is sent.
+///
+/// All of that is presentation scope: the database re-decides on every call and
+/// would refuse a hand-crafted request whatever this card rendered.
+///
+/// ## The lifecycle outcome is scoped to this row
+///
+/// [lifecycleBusy], [lifecycleNotice] and [lifecycleProblem] are answered by the
+/// cubit for **this membership id alone**. A request for a colleague never spins
+/// this control, and a refusal that landed for them never appears under this
+/// name.
 ///
 /// ## No identifier is rendered
 ///
@@ -41,6 +62,11 @@ class RetailerStaffMemberCard extends StatelessWidget {
     super.key,
     required this.member,
     this.onManageShops,
+    this.onLifecycle,
+    this.lifecycleAction,
+    this.lifecycleBusy = false,
+    this.lifecycleNotice,
+    this.lifecycleProblem,
   });
 
   final RetailerStaffMember member;
@@ -51,6 +77,31 @@ class RetailerStaffMemberCard extends StatelessWidget {
   /// Null is the whole absence: there is no disabled variant, because a control
   /// that cannot act is a promise nothing keeps.
   final VoidCallback? onManageShops;
+
+  /// Opens the deactivate/reactivate confirmation for this member, or null when
+  /// the action does not belong on this card.
+  ///
+  /// Null for every excluded case — a Retailer Owner, the caller themselves, a
+  /// membership appearing more than once in the roster, an invited or suspended
+  /// membership, an unsupported role, and a caller without the staff-management
+  /// hint. Null is again the whole absence.
+  final VoidCallback? onLifecycle;
+
+  /// The direction, labels and requested status for [onLifecycle].
+  ///
+  /// Non-null exactly when [onLifecycle] is. Held rather than derived here, so
+  /// this card never decides eligibility — that is a whole-roster question and
+  /// this widget can only see one row.
+  final RetailerStaffLifecycleAction? lifecycleAction;
+
+  /// Whether a lifecycle request for **this** membership is in flight.
+  final bool lifecycleBusy;
+
+  /// The acknowledgement for **this** membership, or null.
+  final RetailerStaffLifecycleNotice? lifecycleNotice;
+
+  /// The refusal for **this** membership, or null.
+  final RetailerStaffLifecycleProblem? lifecycleProblem;
 
   @override
   Widget build(BuildContext context) {
@@ -136,26 +187,69 @@ class RetailerStaffMemberCard extends StatelessWidget {
             ),
           ),
 
-          // Outside the semantics node above, so a screen reader announces the
-          // member as one sentence and then the button as its own control,
-          // rather than folding a control into a description.
-          if (onManageShops != null) ...<Widget>[
+          // The outcome for THIS membership, above its own controls. A request
+          // for a colleague never renders here — the page asks the cubit for
+          // this membership id alone.
+          if (lifecycleNotice != null) ...<Widget>[
             const SizedBox(height: SrSpacing.lg),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Semantics(
-                button: true,
-                label: RetailerManageStaffShopsCopy.actionSemantics(
-                  member.fullName,
-                ),
-                child: SrButton(
-                  label: RetailerManageStaffShopsCopy.action,
-                  variant: SrButtonVariant.outline,
-                  size: SrButtonSize.sm,
-                  icon: Icons.storefront_rounded,
-                  onPressed: onManageShops,
-                ),
-              ),
+            RetailerStaffLifecycleNoticeAlert(notice: lifecycleNotice!),
+          ],
+          if (lifecycleProblem != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.lg),
+            RetailerStaffLifecycleProblemAlert(problem: lifecycleProblem!),
+          ],
+
+          // Outside the semantics node above, so a screen reader announces the
+          // member as one sentence and then each button as its own control,
+          // rather than folding a control into a description.
+          if (onManageShops != null || onLifecycle != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.lg),
+            Wrap(
+              spacing: SrSpacing.sm,
+              runSpacing: SrSpacing.sm,
+              children: <Widget>[
+                if (onManageShops != null)
+                  Semantics(
+                    button: true,
+                    label: RetailerManageStaffShopsCopy.actionSemantics(
+                      member.fullName,
+                    ),
+                    child: SrButton(
+                      label: RetailerManageStaffShopsCopy.action,
+                      variant: SrButtonVariant.outline,
+                      size: SrButtonSize.sm,
+                      icon: Icons.storefront_rounded,
+                      onPressed: onManageShops,
+                    ),
+                  ),
+                if (onLifecycle != null && lifecycleAction != null)
+                  Semantics(
+                    button: true,
+                    label: RetailerStaffLifecycleCopy.actionSemantics(
+                      member.fullName,
+                      isDeactivation: lifecycleAction!.isDeactivation,
+                    ),
+                    child: SrButton(
+                      label: lifecycleAction!.actionLabel,
+                      loadingLabel: lifecycleAction!.pendingLabel,
+                      // Outline rather than danger. Deactivation is reversible
+                      // with one press and destroys nothing — red would say
+                      // "this cannot be undone" about something that can.
+                      variant: SrButtonVariant.outline,
+                      size: SrButtonSize.sm,
+                      icon: lifecycleAction!.isDeactivation
+                          ? Icons.pause_circle_outline_rounded
+                          : Icons.play_circle_outline_rounded,
+                      loading: lifecycleBusy,
+                      // Null while busy, which is the duplicate-submission
+                      // guard's visible half. The cubit refuses a second call
+                      // regardless, and a same-status request is an idempotent
+                      // no-op in SQL — so even a request that got through twice
+                      // could not record two decisions.
+                      onPressed: lifecycleBusy ? null : onLifecycle,
+                    ),
+                  ),
+              ],
             ),
           ],
         ],

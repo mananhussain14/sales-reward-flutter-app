@@ -47,12 +47,15 @@ import '../../features/shops/data/datasources/retailer_shop_rpc_data_source.dart
 import '../../features/shops/data/repositories/supabase_retailer_shop_repository.dart';
 import '../../features/shops/domain/repositories/retailer_shop_repository.dart';
 import '../../features/staff/data/datasources/retailer_staff_invitation_rpc_data_source.dart';
+import '../../features/staff/data/datasources/retailer_staff_lifecycle_rpc_data_source.dart';
 import '../../features/staff/data/datasources/retailer_staff_rpc_data_source.dart';
 import '../../features/staff/data/datasources/retailer_staff_shop_assignment_rpc_data_source.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_invitation_repository.dart';
+import '../../features/staff/data/repositories/supabase_retailer_staff_lifecycle_repository.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_repository.dart';
 import '../../features/staff/data/repositories/supabase_retailer_staff_shop_assignment_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
+import '../../features/staff/domain/repositories/retailer_staff_lifecycle_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_repository.dart';
 import '../../features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import '../../features/users/data/datasources/vendor_user_rpc_data_source.dart';
@@ -329,6 +332,40 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The Retailer staff **lifecycle** write: one RPC,
+  // `set_retailer_staff_membership_status(uuid, text)`, and no table access at
+  // all.
+  //
+  // Registered separately from both staff interfaces above, and behind its own,
+  // because each of those documents what it is: the roster repository guarantees
+  // it holds no write, and the shop-assignment repository is about *which shops*
+  // an accepted member works in, on a different permission
+  // (`RETAILER_STAFF_SHOP_ASSIGN`). This operation is about *whether they may
+  // work at all*, on `RETAILER_STAFF_MANAGE`.
+  //
+  // A direct write is not merely avoided here, it would not work.
+  // `organization_members` is SELECT-only for the browser with a single read
+  // policy and no INSERT/UPDATE/DELETE privilege of any kind. The status column,
+  // `deactivated_at` and the audit row all move inside one transaction, under a
+  // `FOR UPDATE` lock, after the function has read the target's COMPLETE ACTIVE
+  // role set and refused every Owner, multi-role, role-less, invited, suspended,
+  // cross-tenant and self target — none of which this client could reproduce.
+  //
+  // This is the **same deployed function the Next.js portal calls**. There is no
+  // mobile twin and no second definition of "deactivate a staff member", so the
+  // two clients cannot disagree about the Owner exclusion or about what survives
+  // a deactivation.
+  //
+  // It travels on the caller's own session. **No service-role key is registered
+  // here or exists anywhere in this application** — and the migration revokes
+  // that role explicitly, because a privileged connection has no `auth.uid()`
+  // for the function to attribute its audit row to.
+  getIt.registerLazySingleton<RetailerStaffLifecycleRepository>(
+    () => SupabaseRetailerStaffLifecycleRepository(
+      rpc: RetailerStaffLifecycleRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer Owner Overview read. One RPC, zero arguments, and no table
   // access at all — the organization resolution, the role and permission gates,
   // the single-qualifying-organization rule and both shop counts happen in SQL.
@@ -421,6 +458,7 @@ void registerTestDependencies({
   RetailerStaffRepository? retailerStaffRepository,
   RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   RetailerStaffShopAssignmentRepository? retailerStaffShopAssignmentRepository,
+  RetailerStaffLifecycleRepository? retailerStaffLifecycleRepository,
   RetailerProductRepository? retailerProductRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
@@ -496,6 +534,11 @@ void registerTestDependencies({
   if (retailerStaffShopAssignmentRepository != null) {
     getIt.registerLazySingleton<RetailerStaffShopAssignmentRepository>(
       () => retailerStaffShopAssignmentRepository,
+    );
+  }
+  if (retailerStaffLifecycleRepository != null) {
+    getIt.registerLazySingleton<RetailerStaffLifecycleRepository>(
+      () => retailerStaffLifecycleRepository,
     );
   }
   if (retailerProductRepository != null) {

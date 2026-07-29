@@ -7,14 +7,17 @@ import '../../../../auth/domain/entities/portal_kind.dart';
 import '../../../../auth/domain/entities/retailer_capabilities.dart';
 import '../../../../auth/presentation/bloc/session_bloc.dart';
 import '../../../domain/entities/retailer_staff_invitation.dart';
+import '../../../domain/entities/retailer_staff_lifecycle_action.dart';
 import '../../../domain/entities/retailer_staff_member.dart';
 import '../cubit/retailer_manage_staff_shops_cubit.dart';
 import '../cubit/retailer_staff_cubit.dart';
+import '../cubit/retailer_staff_lifecycle_cubit.dart';
 import '../widgets/retailer_invitation_card.dart';
 import '../widgets/retailer_invite_staff_form.dart';
 import '../widgets/retailer_manage_staff_shops_copy.dart';
 import '../widgets/retailer_manage_staff_shops_dialog.dart';
 import '../widgets/retailer_staff_copy.dart';
+import '../widgets/retailer_staff_lifecycle_confirmations.dart';
 import '../widgets/retailer_staff_member_card.dart';
 
 /// The Retailer staff screen, for both the Owner and the Manager.
@@ -117,9 +120,29 @@ class _RetailerStaffPageState extends State<RetailerStaffPage> {
         );
   }
 
+  /// Whether this caller's backend-derived hints offer staff management.
+  ///
+  /// The **existing** server-derived capability, computed by the backend from
+  /// the same resolver `set_retailer_staff_membership_status()` gates on
+  /// (`RETAILER_STAFF_MANAGE`, mapped to `RETAILER_OWNER` alone). No second
+  /// probe is added: a client-side permission call would duplicate this and be
+  /// strictly worse, because this flag is derived from the very resolver the
+  /// write uses.
+  ///
+  /// Presentation only, and it fails closed — every capability flag defaults to
+  /// false, and the write re-decides regardless.
+  static bool _offersStaffManagement(BuildContext context) {
+    final SessionState session = context.watch<SessionBloc>().state;
+    return session is SessionActive &&
+        session.portalContext.capabilities.allows(
+          RetailerCapability.manageStaff,
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool offersShopAssignment = _offersShopAssignment(context);
+    final bool offersStaffManagement = _offersStaffManagement(context);
 
     return BlocBuilder<RetailerStaffCubit, RetailerStaffState>(
       builder: (BuildContext context, RetailerStaffState state) {
@@ -160,6 +183,7 @@ class _RetailerStaffPageState extends State<RetailerStaffPage> {
                 state: state,
                 cubit: cubit,
                 offersShopAssignment: offersShopAssignment,
+                offersStaffManagement: offersStaffManagement,
               ),
             ],
           ),
@@ -174,11 +198,13 @@ class _Body extends StatelessWidget {
     required this.state,
     required this.cubit,
     required this.offersShopAssignment,
+    required this.offersStaffManagement,
   });
 
   final RetailerStaffState state;
   final RetailerStaffCubit cubit;
   final bool offersShopAssignment;
+  final bool offersStaffManagement;
 
   @override
   Widget build(BuildContext context) {
@@ -279,6 +305,7 @@ class _Body extends StatelessWidget {
             state: state,
             cubit: cubit,
             offersShopAssignment: offersShopAssignment,
+            offersStaffManagement: offersStaffManagement,
           ),
           if (state.showsInvitations) ...<Widget>[
             const SizedBox(height: SrSpacing.xxxl),
@@ -287,6 +314,92 @@ class _Body extends StatelessWidget {
         ],
       ],
     );
+  }
+}
+
+/// One roster card, bound to the lifecycle state for **its own membership**.
+///
+/// A `BlocBuilder` per card rather than one around the grid, so a request for one
+/// colleague rebuilds one card. More importantly, every question this widget asks
+/// the cubit is keyed by [RetailerStaffMember.membershipId] — `isBusyFor`,
+/// `problemFor`, `noticeFor` — which is what makes it impossible for a request
+/// for staff A to render progress, a refusal or an acknowledgement on staff B.
+///
+/// When [lifecycleAction] is null the card is built without any lifecycle
+/// affordance at all, and no cubit is read. That is the case for every excluded
+/// row: a Retailer Owner, the caller themselves, an invited or suspended
+/// membership, an unsupported role, **any membership appearing more than once in
+/// the roster**, and every caller without the staff-management hint.
+class _MemberCard extends StatelessWidget {
+  const _MemberCard({
+    required this.member,
+    required this.onManageShops,
+    required this.lifecycleAction,
+  });
+
+  final RetailerStaffMember member;
+  final VoidCallback? onManageShops;
+  final RetailerStaffLifecycleAction? lifecycleAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final RetailerStaffLifecycleAction? action = lifecycleAction;
+    if (action == null) {
+      return RetailerStaffMemberCard(
+        member: member,
+        onManageShops: onManageShops,
+      );
+    }
+
+    return BlocBuilder<
+      RetailerStaffLifecycleCubit,
+      RetailerStaffLifecycleState
+    >(
+      builder: (BuildContext context, RetailerStaffLifecycleState state) {
+        final String id = member.membershipId;
+        return RetailerStaffMemberCard(
+          member: member,
+          onManageShops: onManageShops,
+          lifecycleAction: action,
+          lifecycleBusy: state.isBusyFor(id),
+          lifecycleNotice: state.noticeFor(id),
+          lifecycleProblem: state.problemFor(id),
+          onLifecycle: () => _confirmAndApply(context, action),
+        );
+      },
+    );
+  }
+
+  /// Asks first, then applies.
+  ///
+  /// The dialog is the screen's job and the cubit knows nothing about it, so a
+  /// test can exercise the write without a widget *and* a screen cannot skip the
+  /// confirmation by calling something cheaper — the only path to
+  /// [RetailerStaffLifecycleCubit.apply] from this feature's UI is through here.
+  ///
+  /// Cancelling calls nothing at all: no RPC, no state change, no optimistic
+  /// flip.
+  Future<void> _confirmAndApply(
+    BuildContext context,
+    RetailerStaffLifecycleAction action,
+  ) async {
+    final RetailerStaffLifecycleCubit cubit = context
+        .read<RetailerStaffLifecycleCubit>();
+
+    final bool confirmed = await confirmRetailerStaffLifecycle(
+      context,
+      action: action,
+      // Display text from the canonical roster. It is never sent anywhere and is
+      // never an authorization input.
+      memberName: member.fullName,
+    );
+
+    if (confirmed) {
+      // The membership id from the canonical roster row — the same
+      // `organization_members.id` the read returned. Never a profile id, an auth
+      // user id, an email, an invitation id or a position in a filtered list.
+      await cubit.apply(member.membershipId, action);
+    }
   }
 }
 
@@ -331,9 +444,20 @@ class _ManageShopsOutcome extends StatelessWidget {
           in members ?? const <RetailerStaffMember>[])
         member.membershipId,
     ];
+    // The lifecycle cubit is told the same thing, for the same reason: a
+    // colleague who has left the roster is no longer a row an outcome can be
+    // attached to, and a notice left hanging over a card that is gone would
+    // attach itself to whichever row took its place.
+    //
+    // Read with `read` rather than `watch`, and only for its `rosterChanged`
+    // hook — this widget renders none of its state. The per-card builders own
+    // that, keyed by membership id.
+    final RetailerStaffLifecycleCubit lifecycle = context
+        .read<RetailerStaffLifecycleCubit>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (context.mounted) {
         cubit.rosterChanged(membershipIds);
+        lifecycle.rosterChanged(membershipIds);
       }
     });
 
@@ -417,6 +541,7 @@ class _RosterSection extends StatelessWidget {
     required this.state,
     required this.cubit,
     required this.offersShopAssignment,
+    required this.offersStaffManagement,
   });
 
   final RetailerStaffState state;
@@ -424,6 +549,9 @@ class _RosterSection extends StatelessWidget {
 
   /// Whether this caller's backend-derived hint offers shop assignment.
   final bool offersShopAssignment;
+
+  /// Whether this caller's backend-derived hint offers staff management.
+  final bool offersStaffManagement;
 
   /// Whether [member] gets a Manage shops control.
   ///
@@ -435,9 +563,36 @@ class _RosterSection extends StatelessWidget {
       offersShopAssignment &&
       member.isEditableSalesStaff;
 
+  /// The membership ids the lifecycle control may be offered for.
+  ///
+  /// ## Computed over the WHOLE roster, never the visible subset
+  ///
+  /// `state.members` is what the backend returned; `state.visibleMembers` is
+  /// that list narrowed by a **local search term**. The duplicate rule depends
+  /// on counting every row a membership produced, so computing it from the
+  /// filtered list would be a real defect: a search that happened to match only
+  /// one row of a two-role member would make that membership look unique, and
+  /// the control would be offered for a target the RPC refuses — including,
+  /// for an Owner who also holds another role, on the row that is not the Owner
+  /// row.
+  ///
+  /// So the set is built from the full roster and only then asked about a
+  /// visible card.
+  Set<String> _eligibleMemberships() {
+    if (!offersStaffManagement || !cubit.includeInvitations) {
+      // No hint, or a shell that does not hold the write. Nothing is offered,
+      // and nothing is computed.
+      return const <String>{};
+    }
+    return RetailerStaffLifecycleEligibility.eligibleMemberships(
+      state.members ?? const <RetailerStaffMember>[],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<RetailerStaffMember> visible = state.visibleMembers;
+    final Set<String> lifecycleEligible = _eligibleMemberships();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -473,7 +628,7 @@ class _RosterSection extends StatelessWidget {
             threeUpThreshold: 1200,
             children: <Widget>[
               for (final RetailerStaffMember member in visible)
-                RetailerStaffMemberCard(
+                _MemberCard(
                   member: member,
                   // The whole member is handed to the editor, which takes the
                   // membership id from it. Nothing here reads an id, renders
@@ -486,6 +641,11 @@ class _RosterSection extends StatelessWidget {
                           member: member,
                         )
                       : null,
+                  // Derived over the whole roster, then asked about this row.
+                  lifecycleAction: RetailerStaffLifecycleEligibility.actionFor(
+                    member,
+                    lifecycleEligible,
+                  ),
                 ),
             ],
           ),

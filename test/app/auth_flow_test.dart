@@ -18,6 +18,7 @@ import '../support/fakes.dart';
 import '../support/retailer_owner_overview_fakes.dart';
 import '../support/retailer_invite_staff_fakes.dart';
 import '../support/retailer_manage_staff_shops_fakes.dart';
+import '../support/retailer_staff_lifecycle_fakes.dart';
 import '../support/retailer_read_fakes.dart';
 import '../support/pump_app.dart';
 import '../support/vendor_audit_log_fakes.dart';
@@ -110,6 +111,8 @@ void main() {
           retailerStaffRepository: FakeRetailerStaffRepository(),
           retailerStaffInvitationRepository:
               FakeRetailerStaffInvitationRepository(),
+          retailerStaffLifecycleRepository:
+              FakeRetailerStaffLifecycleRepository(),
           retailerStaffShopAssignmentRepository:
               FakeRetailerStaffShopAssignmentRepository(),
           retailerProductRepository: FakeRetailerProductRepository(),
@@ -277,6 +280,8 @@ void main() {
             retailerStaffRepository: FakeRetailerStaffRepository(),
             retailerStaffInvitationRepository:
                 FakeRetailerStaffInvitationRepository(),
+            retailerStaffLifecycleRepository:
+                FakeRetailerStaffLifecycleRepository(),
             retailerStaffShopAssignmentRepository:
                 FakeRetailerStaffShopAssignmentRepository(),
             retailerProductRepository: FakeRetailerProductRepository(),
@@ -332,6 +337,8 @@ void main() {
             retailerStaffRepository: FakeRetailerStaffRepository(),
             retailerStaffInvitationRepository:
                 FakeRetailerStaffInvitationRepository(),
+            retailerStaffLifecycleRepository:
+                FakeRetailerStaffLifecycleRepository(),
             retailerStaffShopAssignmentRepository:
                 FakeRetailerStaffShopAssignmentRepository(),
             retailerProductRepository: FakeRetailerProductRepository(),
