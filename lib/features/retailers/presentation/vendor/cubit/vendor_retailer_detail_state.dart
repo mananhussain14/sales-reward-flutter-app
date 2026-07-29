@@ -40,6 +40,10 @@ final class VendorRetailerDetailState extends Equatable {
     this.shopsPhase = VendorRetailerShopsPhase.initial,
     this.shops = const <VendorRetailerShop>[],
     this.shopsFailure,
+    this.isRefreshing = false,
+    this.refreshFailure,
+    this.notice,
+    this.noticeRelationshipId,
   });
 
   /// The relationship currently open, or null when nothing is.
@@ -64,7 +68,38 @@ final class VendorRetailerDetailState extends Equatable {
 
   final Failure? shopsFailure;
 
+  /// Whether a canonical re-read is in flight after a committed lifecycle
+  /// write.
+  ///
+  /// The loaded Retailer stays on screen throughout: a refresh is not a reload,
+  /// and blanking a Retailer to re-read two columns would make a saved change
+  /// look like a page reset.
+  final bool isRefreshing;
+
+  /// Why the canonical re-read failed, if it did.
+  ///
+  /// **Not** a failed write. The write committed; only this client's picture of
+  /// it is stale, which is why the loaded Retailer is kept and a Reload is
+  /// offered rather than another attempt at the change.
+  final Failure? refreshFailure;
+
+  /// The lifecycle outcome this screen is acknowledging, or null.
+  ///
+  /// A statement about the past, chosen from the status the database confirmed.
+  /// It never decides what is on screen — the re-read detail row does that.
+  final VendorRetailerLifecycleNotice? notice;
+
+  /// Which Retailer [notice] belongs to.
+  ///
+  /// Held so an acknowledgement can never appear under a different Retailer: two
+  /// can be opened in sequence while one write is still settling.
+  final String? noticeRelationshipId;
+
   bool get isDetailLoading => phase == VendorRetailerDetailPhase.loading;
+
+  /// Whether an acknowledgement for [id] specifically should be shown.
+  VendorRetailerLifecycleNotice? noticeFor(String id) =>
+      noticeRelationshipId == id ? notice : null;
 
   /// A real, successful "this Retailer has no shops" — distinguishable from
   /// "not yours" only because the detail read came back first.
@@ -82,17 +117,32 @@ final class VendorRetailerDetailState extends Equatable {
     List<VendorRetailerShop>? shops,
     Failure? shopsFailure,
     bool clearShopsFailure = false,
+    bool? isRefreshing,
+    Failure? refreshFailure,
+    bool clearRefreshFailure = false,
+    VendorRetailerLifecycleNotice? notice,
+    String? noticeRelationshipId,
+    bool clearDetail = false,
+    bool clearNotice = false,
   }) {
     return VendorRetailerDetailState(
       relationshipId: relationshipId ?? this.relationshipId,
       phase: phase ?? this.phase,
-      detail: detail ?? this.detail,
+      detail: clearDetail ? null : (detail ?? this.detail),
       failure: failure ?? this.failure,
       shopsPhase: shopsPhase ?? this.shopsPhase,
       shops: shops ?? this.shops,
       shopsFailure: clearShopsFailure
           ? null
           : (shopsFailure ?? this.shopsFailure),
+      isRefreshing: isRefreshing ?? this.isRefreshing,
+      refreshFailure: clearRefreshFailure
+          ? null
+          : (refreshFailure ?? this.refreshFailure),
+      notice: clearNotice ? null : (notice ?? this.notice),
+      noticeRelationshipId: clearNotice
+          ? null
+          : (noticeRelationshipId ?? this.noticeRelationshipId),
     );
   }
 
@@ -105,5 +155,9 @@ final class VendorRetailerDetailState extends Equatable {
     shopsPhase,
     shops,
     shopsFailure,
+    isRefreshing,
+    refreshFailure,
+    notice,
+    noticeRelationshipId,
   ];
 }

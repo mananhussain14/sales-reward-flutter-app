@@ -24,6 +24,7 @@ import '../support/vendor_audit_log_fakes.dart';
 import '../support/vendor_dashboard_fakes.dart';
 import '../support/receipt_fakes.dart';
 import '../support/vendor_retailer_fakes.dart';
+import '../support/vendor_retailer_lifecycle_fakes.dart';
 import '../support/vendor_product_fakes.dart';
 import '../support/vendor_profile_fakes.dart';
 import '../support/vendor_role_fakes.dart';
@@ -95,6 +96,8 @@ void main() {
           receiptRepository: FakeReceiptRepository(),
           receiptImageSource: FakeReceiptImageSource(),
           vendorRetailerRepository: FakeVendorRetailerRepository(),
+          vendorRetailerLifecycleRepository:
+              FakeVendorRetailerLifecycleRepository(),
           vendorUserRepository: FakeVendorUserRepository(),
           vendorRoleRepository: FakeVendorRoleRepository(),
           vendorProductRepository: FakeVendorProductRepository(),
@@ -260,6 +263,8 @@ void main() {
             receiptRepository: FakeReceiptRepository(),
             receiptImageSource: FakeReceiptImageSource(),
             vendorRetailerRepository: FakeVendorRetailerRepository(),
+            vendorRetailerLifecycleRepository:
+                FakeVendorRetailerLifecycleRepository(),
             vendorUserRepository: FakeVendorUserRepository(),
             vendorRoleRepository: FakeVendorRoleRepository(),
             vendorProductRepository: FakeVendorProductRepository(),
@@ -313,6 +318,8 @@ void main() {
             receiptRepository: FakeReceiptRepository(),
             receiptImageSource: FakeReceiptImageSource(),
             vendorRetailerRepository: FakeVendorRetailerRepository(),
+            vendorRetailerLifecycleRepository:
+                FakeVendorRetailerLifecycleRepository(),
             vendorUserRepository: FakeVendorUserRepository(),
             vendorRoleRepository: FakeVendorRoleRepository(),
             vendorProductRepository: FakeVendorProductRepository(),

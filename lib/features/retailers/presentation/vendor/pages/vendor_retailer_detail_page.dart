@@ -8,9 +8,12 @@ import '../../../../../core/widgets/widgets.dart';
 import '../../../domain/entities/vendor_retailer_detail.dart';
 import '../../../domain/entities/vendor_retailer_shop.dart';
 import '../cubit/vendor_retailer_detail_cubit.dart';
+import '../cubit/vendor_retailer_lifecycle_notice.dart';
 import '../widgets/vendor_retailer_badges.dart';
 import '../widgets/vendor_retailer_copy.dart';
 import '../widgets/vendor_retailer_formatting.dart';
+import '../widgets/vendor_retailer_lifecycle_action.dart';
+import '../widgets/vendor_retailer_lifecycle_notices.dart';
 import '../widgets/vendor_retailer_shop_tile.dart';
 
 /// One Retailer, addressed by `relationship_id` from the route.
@@ -149,6 +152,9 @@ class _VendorRetailerDetailPageState extends State<VendorRetailerDetailPage> {
 
       case VendorRetailerDetailPhase.ready:
         final VendorRetailerDetail detail = state.detail!;
+        final VendorRetailerLifecycleNotice? notice = state.noticeFor(
+          detail.relationshipId,
+        );
         return <Widget>[
           SrPageHeader(
             eyebrow: VendorRetailerCopy.detailEyebrow,
@@ -159,6 +165,9 @@ class _VendorRetailerDetailPageState extends State<VendorRetailerDetailPage> {
             spacing: SrSpacing.sm,
             runSpacing: SrSpacing.sm,
             children: <Widget>[
+              // The badges are the canonical statuses and nothing else. They
+              // are never flipped ahead of a re-read, which is why a failed
+              // lifecycle write leaves them exactly as they are.
               VendorRetailerStatusBadge(
                 status: detail.relationshipStatus,
                 prefix: 'Relationship',
@@ -170,8 +179,42 @@ class _VendorRetailerDetailPageState extends State<VendorRetailerDetailPage> {
               RetailerOwnerStateBadge(ownerState: detail.ownerState),
             ],
           ),
+          // The acknowledgement for a committed lifecycle write, shown beside
+          // the statuses it was re-read with — and only for this Retailer.
+          if (notice != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.lg),
+            VendorRetailerLifecycleNoticeAlert(notice: notice),
+          ],
+          // The write committed and the canonical re-read did not. The statuses
+          // above may be out of date, and the honest thing is to say so and
+          // offer another read — never another write.
+          if (state.refreshFailure != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.lg),
+            SrAlert(
+              tone: SrAlertTone.warning,
+              title: VendorRetailerCopy.staleDetailTitle,
+              message: VendorRetailerCopy.staleDetailBody,
+            ),
+            const SizedBox(height: SrSpacing.sm),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: SrButton(
+                label: VendorRetailerCopy.reloadDetail,
+                variant: SrButtonVariant.outline,
+                size: SrButtonSize.sm,
+                icon: Icons.refresh_rounded,
+                loading: state.isRefreshing,
+                onPressed: state.isRefreshing ? null : cubit.reloadCanonical,
+              ),
+            ),
+          ],
           const SizedBox(height: SrSpacing.xxl),
           _Overview(detail: detail),
+          // The lifecycle control. It renders nothing unless RETAILERS_MANAGE is
+          // confirmed and the canonical pair is one this operation owns — and it
+          // owns its own leading gap, so a hidden control contributes no height
+          // at all rather than leaving a double space above the shops.
+          VendorRetailerLifecycleSection(detail: detail),
           const SizedBox(height: SrSpacing.xxl),
           _ShopsSection(state: state, cubit: cubit),
         ];

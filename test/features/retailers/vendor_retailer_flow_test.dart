@@ -285,7 +285,10 @@ void main() {
       await onDirectory(tester);
 
       expect(find.text('Relationship: Active'), findsOneWidget);
-      expect(find.text('Relationship: Suspended'), findsOneWidget);
+      // Stored SUSPENDED, shown "Inactive" — the word has to match the verb of
+      // the Vendor control that writes it (Deactivate / Reactivate).
+      expect(find.text('Relationship: Inactive'), findsOneWidget);
+      expect(find.text('Relationship: Suspended'), findsNothing);
       expect(find.text('Retailer: Active'), findsNWidgets(2));
       expect(find.text('Owner active'), findsOneWidget);
       expect(find.text('No owner'), findsOneWidget);
@@ -431,11 +434,14 @@ void main() {
 
       expect(find.widgetWithText(SrButton, 'All'), findsOneWidget);
       expect(find.widgetWithText(SrButton, 'Active'), findsOneWidget);
-      expect(find.widgetWithText(SrButton, 'Suspended'), findsOneWidget);
-      // Nothing in the fixture is deactivated, so no chip offers it.
+      expect(find.widgetWithText(SrButton, 'Inactive'), findsOneWidget);
+      expect(find.widgetWithText(SrButton, 'Suspended'), findsNothing);
+      // Nothing in the fixture is deactivated, so no chip offers it — and
+      // "Deactivated" stays its own distinct word, not collapsed into
+      // "Inactive".
       expect(find.widgetWithText(SrButton, 'Deactivated'), findsNothing);
 
-      await tapVisible(tester, find.widgetWithText(SrButton, 'Suspended'));
+      await tapVisible(tester, find.widgetWithText(SrButton, 'Inactive'));
 
       expect(find.text('Contoso Stores'), findsOneWidget);
       expect(find.text('Northwind Retail'), findsNothing);
@@ -496,9 +502,11 @@ void main() {
       expect(find.byType(VendorRetailerShopTile), findsNWidgets(2));
       expect(find.text('Marina Mall'), findsOneWidget);
       expect(find.text('Airport Kiosk'), findsOneWidget);
-      // Status is stated in words, never by colour alone.
+      // Status is stated in words, never by colour alone. A SUSPENDED shop
+      // reads "Inactive" for the same reason a SUSPENDED relationship does.
       expect(find.text('Active'), findsWidgets);
-      expect(find.text('Suspended'), findsWidgets);
+      expect(find.text('Inactive'), findsWidgets);
+      expect(find.text('Suspended'), findsNothing);
       expect(find.text('MM-01'), findsOneWidget);
       expect(find.text('Dubai'), findsOneWidget);
       // The nullable columns of the second shop are said out loud.

@@ -26,6 +26,31 @@ import '../../../domain/entities/vendor_retailer_status.dart';
 /// backend token is never shown — a future status must not leak a database
 /// literal into the interface — and because the enum's `isActive` tests `active`
 /// positively, nothing downstream can mistake it for a working relationship.
+///
+/// ## `SUSPENDED` reads "Inactive", and `DEACTIVATED` still reads "Deactivated"
+///
+/// The database stores `SUSPENDED`; the product says **Inactive**. "Suspended"
+/// reads as an accusation to a Retailer that is simply paused between contracts,
+/// and the Vendor control that writes this value is labelled Deactivate /
+/// Reactivate — the word on screen has to match the verb that produced it. The
+/// *stored* word stays `SUSPENDED` everywhere: in both status columns, in
+/// `p_status`, and in the audit trail.
+///
+/// The two are **not** collapsed. The web's shared badge renders `SUSPENDED` and
+/// `DEACTIVATED` identically, on the argument that they read the same to a user;
+/// this build deliberately does not follow it, because the two are different
+/// facts here and only one of them is reversible. `SUSPENDED` is a Retailer this
+/// Vendor can reactivate with one press; `DEACTIVATED` is terminal, is not this
+/// operation's to clear, and is refused by the RPC with `55000`. Rendering both
+/// as "Inactive" would invite somebody to look for a Reactivate button that
+/// cannot exist. The amber-versus-slate tone is retained as a second signal, but
+/// it is not carrying the distinction on its own.
+///
+/// The shared [SrStatusBadge] map in `core/` is deliberately **left unchanged**.
+/// It is reachable from the Retailer Owner overview, the Vendor user directory
+/// and the staff surfaces, whose `SUSPENDED` values are memberships and profiles
+/// rather than Retailer lifecycle — a different fact, on a different contract,
+/// which this milestone has not analysed and must not silently reword.
 class VendorRetailerStatusBadge extends StatelessWidget {
   const VendorRetailerStatusBadge({
     super.key,
@@ -42,7 +67,9 @@ class VendorRetailerStatusBadge extends StatelessWidget {
   /// a test can assert the mapping without building four widgets.
   static String labelFor(VendorRetailerStatus status) => switch (status) {
     VendorRetailerStatus.active => 'Active',
-    VendorRetailerStatus.suspended => 'Suspended',
+    // Stored SUSPENDED, shown Inactive. See the class comment for why, and for
+    // why this does not extend to DEACTIVATED.
+    VendorRetailerStatus.suspended => 'Inactive',
     VendorRetailerStatus.deactivated => 'Deactivated',
     VendorRetailerStatus.unknown => 'Unknown',
   };

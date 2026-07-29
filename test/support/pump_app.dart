@@ -8,6 +8,7 @@ import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/auth/domain/repositories/portal_context_repository.dart';
 import 'package:sale_reward/features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/retailer_product_repository.dart';
+import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
 import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
@@ -29,6 +30,7 @@ import 'vendor_dashboard_fakes.dart';
 import 'vendor_product_fakes.dart';
 import 'vendor_profile_fakes.dart';
 import 'vendor_retailer_fakes.dart';
+import 'vendor_retailer_lifecycle_fakes.dart';
 import 'vendor_role_fakes.dart';
 import 'vendor_user_fakes.dart';
 
@@ -60,6 +62,7 @@ typedef PumpedApp = ({
   FakeReceiptRepository receipts,
   FakeReceiptImageSource images,
   FakeVendorRetailerRepository retailers,
+  FakeVendorRetailerLifecycleRepository retailerLifecycle,
   FakeVendorUserRepository vendorUsers,
   FakeVendorRoleRepository vendorRoles,
   FakeVendorProductRepository vendorProducts,
@@ -95,6 +98,8 @@ Future<PumpedApp> pumpApp(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorRetailerLifecycleRepository? retailerLifecycle,
+  VendorRetailerLifecycleRepository? retailerLifecycleRepository,
   FakeVendorUserRepository? vendorUsers,
   VendorUserRepository? vendorUserRepository,
   FakeVendorRoleRepository? vendorRoles,
@@ -129,6 +134,10 @@ Future<PumpedApp> pumpApp(
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
   final FakeVendorRetailerRepository retailerRepository =
       retailers ?? FakeVendorRetailerRepository();
+  final FakeVendorRetailerLifecycleRepository lifecycleRepository =
+      retailerLifecycle ?? FakeVendorRetailerLifecycleRepository();
+  final VendorRetailerLifecycleRepository providedLifecycle =
+      retailerLifecycleRepository ?? lifecycleRepository;
   final FakeVendorUserRepository userRepository =
       vendorUsers ?? FakeVendorUserRepository();
   // A test that needs the *real* repository — to exercise its id-shape guard
@@ -191,6 +200,7 @@ Future<PumpedApp> pumpApp(
       receiptRepository: receiptRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
+      vendorRetailerLifecycleRepository: providedLifecycle,
       vendorUserRepository: providedUsers,
       vendorRoleRepository: providedRoles,
       vendorProductRepository: providedProducts,
@@ -215,6 +225,7 @@ Future<PumpedApp> pumpApp(
     receipts: receiptRepository,
     images: imageSource,
     retailers: retailerRepository,
+    retailerLifecycle: lifecycleRepository,
     vendorUsers: userRepository,
     vendorRoles: roleRepository,
     vendorProducts: productRepository,
@@ -238,6 +249,8 @@ Future<PumpedApp> pumpAppInRole(
   FakeReceiptRepository? receipts,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
+  FakeVendorRetailerLifecycleRepository? retailerLifecycle,
+  VendorRetailerLifecycleRepository? retailerLifecycleRepository,
   FakeVendorUserRepository? vendorUsers,
   VendorUserRepository? vendorUserRepository,
   FakeVendorRoleRepository? vendorRoles,
@@ -271,6 +284,8 @@ Future<PumpedApp> pumpAppInRole(
     receipts: receipts,
     images: images,
     retailers: retailers,
+    retailerLifecycle: retailerLifecycle,
+    retailerLifecycleRepository: retailerLifecycleRepository,
     vendorUsers: vendorUsers,
     vendorUserRepository: vendorUserRepository,
     vendorRoles: vendorRoles,

@@ -6,6 +6,7 @@ import '../../../domain/entities/vendor_retailer_detail.dart';
 import '../../../domain/entities/vendor_retailer_shop.dart';
 import '../../../domain/repositories/vendor_retailer_repository.dart';
 import '../../../domain/repositories/vendor_retailer_result.dart';
+import 'vendor_retailer_lifecycle_notice.dart';
 
 part 'vendor_retailer_detail_state.dart';
 
@@ -45,6 +46,30 @@ part 'vendor_retailer_detail_state.dart';
 /// a cubit created below the route would be unreachable from that listener. And
 /// [open] is idempotent, so a router refresh or a widget rebuild that re-enters
 /// the same relationship issues no second pair of RPCs.
+///
+/// ## It is also the read-after-write authority for the lifecycle control
+///
+/// `set_vendor_retailer_status` returns four scalars describing what it did — it
+/// does **not** return a Retailer row. So after every committed lifecycle write
+/// the canonical statuses come from `get_vendor_retailer_detail` and from
+/// nowhere else, through [refreshAfterLifecycleChange]. Nothing patches a loaded
+/// [VendorRetailerDetail] in place, and no badge is flipped ahead of that read.
+///
+/// Three properties of that refresh are load-bearing:
+///
+/// * **The loaded Retailer stays on screen throughout.** A refresh is not a
+///   reload: blanking a Retailer to re-read two columns would make a saved
+///   change look like a page reset.
+/// * **A refresh that fails does not undo the write.** The change is committed;
+///   only this client's picture of it is stale. That lands in
+///   [VendorRetailerDetailState.refreshFailure] as a stale-data warning with a
+///   Reload — never as "the change failed", and never as a reason to write
+///   again.
+/// * **The shops are not re-read.** A lifecycle change moves
+///   `organizations.status` and `vendor_retailers.status` and nothing else — no
+///   shop row is touched, not even its `updated_at` — so a second call would
+///   spend a request to learn nothing, and would replace a good answer for
+///   reasons unconnected to it.
 final class VendorRetailerDetailCubit extends Cubit<VendorRetailerDetailState> {
   VendorRetailerDetailCubit(this._repository)
     : super(const VendorRetailerDetailState());
@@ -101,12 +126,97 @@ final class VendorRetailerDetailCubit extends Cubit<VendorRetailerDetailState> {
     return _loadShops(relationshipId, _nextToken());
   }
 
+  /// Re-reads the canonical Retailer row in place, after a committed lifecycle
+  /// write.
+  ///
+  /// [notice] records which outcome it followed, so the screen can acknowledge
+  /// it truthfully; passing null keeps whatever notice is already showing, which
+  /// is what the Reload affordance does.
+  ///
+  /// The shops are **not** re-read: a lifecycle change touches no shop row, so a
+  /// second call would learn nothing.
+  ///
+  /// A no-op when nothing is open, when the open Retailer is not on screen, or
+  /// while a refresh is already running — the last of which is the duplicate-tap
+  /// guard for Reload.
+  Future<void> refreshAfterLifecycleChange({
+    VendorRetailerLifecycleNotice? notice,
+  }) async {
+    final String? relationshipId = state.relationshipId;
+    if (relationshipId == null ||
+        state.phase != VendorRetailerDetailPhase.ready ||
+        state.isRefreshing) {
+      return;
+    }
+
+    final int token = _nextToken();
+
+    emit(
+      state.copyWith(
+        isRefreshing: true,
+        clearRefreshFailure: true,
+        notice: notice,
+        noticeRelationshipId: notice == null ? null : relationshipId,
+      ),
+    );
+
+    final VendorRetailerResult<VendorRetailerDetail?> result = await _repository
+        .retailerDetail(relationshipId);
+
+    if (isClosed || token != _token) {
+      return;
+    }
+
+    switch (result) {
+      case VendorRetailerReadSuccess<VendorRetailerDetail?>(
+        :final VendorRetailerDetail? value,
+      ):
+        if (value == null) {
+          // The relationship stopped being addressable between the write and
+          // the re-read. A lifecycle change cannot cause that — it moves two
+          // status columns and deletes nothing — so this is somebody else's
+          // change or a session that is no longer what it was, and the one safe
+          // answer is the same non-leaking state a foreign id produces. The
+          // stale row is dropped rather than shown as current, and the notice
+          // goes with it: acknowledging a change to a Retailer that is no
+          // longer there would be the least useful sentence available.
+          emit(
+            state.copyWith(
+              phase: VendorRetailerDetailPhase.notFound,
+              isRefreshing: false,
+              clearDetail: true,
+              clearNotice: true,
+            ),
+          );
+          return;
+        }
+        emit(state.copyWith(detail: value, isRefreshing: false));
+
+      case VendorRetailerReadFailure<VendorRetailerDetail?>(
+        :final Failure failure,
+      ):
+        // The write stands. Only the picture of it is stale, so the Retailer
+        // already on screen is kept and the screen says it may be out of date.
+        // It is never worded as a failed write, and it never re-issues one.
+        emit(state.copyWith(isRefreshing: false, refreshFailure: failure));
+    }
+  }
+
+  /// Re-runs the canonical refresh. The Reload affordance a stale-data warning
+  /// offers.
+  ///
+  /// It never re-attempts the write, which has already committed, and it keeps
+  /// whatever notice is showing.
+  Future<void> reloadCanonical() => refreshAfterLifecycleChange();
+
   /// Drops the open Retailer and its shops.
   ///
   /// Called when the signed-in person changes, so one Vendor's Retailer can
   /// never remain on screen for the next. The token is advanced first, so an
   /// answer already in flight for the previous person cannot repopulate the
-  /// state after it has been emptied.
+  /// state after it has been emptied — including a lifecycle refresh and the
+  /// notice riding on it, which would otherwise leave a "Retailer deactivated"
+  /// acknowledgement over somebody else's Retailer.
   void clear() {
     _nextToken();
     emit(const VendorRetailerDetailState());

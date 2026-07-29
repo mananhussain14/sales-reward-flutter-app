@@ -32,6 +32,7 @@ import 'package:sale_reward/features/profile/domain/entities/vendor_administrato
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
 import 'package:sale_reward/features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
 import 'package:sale_reward/features/retailers/domain/entities/vendor_retailer_summary.dart';
+import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import 'package:sale_reward/features/retailers/domain/repositories/vendor_retailer_result.dart';
 import 'package:sale_reward/features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
@@ -56,6 +57,7 @@ import '../../support/vendor_dashboard_fakes.dart';
 import '../../support/vendor_product_fakes.dart';
 import '../../support/vendor_profile_fakes.dart';
 import '../../support/vendor_retailer_fakes.dart';
+import '../../support/vendor_retailer_lifecycle_fakes.dart';
 import '../../support/vendor_role_fakes.dart';
 import '../../support/vendor_user_fakes.dart';
 
@@ -117,6 +119,7 @@ void main() {
   late FakeVendorUserRepository users;
   late FakeVendorRetailerRepository retailers;
   late FakeVendorRoleRepository roles;
+  late FakeVendorRetailerLifecycleRepository retailerLifecycle;
   late FakeVendorProductRepository products;
   late FakeVendorAuditLogRepository auditLogs;
   late FakeVendorDashboardRepository dashboard;
@@ -140,6 +143,7 @@ void main() {
     states = StreamController<SessionState>.broadcast();
     users = FakeVendorUserRepository();
     retailers = FakeVendorRetailerRepository();
+    retailerLifecycle = FakeVendorRetailerLifecycleRepository();
     roles = FakeVendorRoleRepository();
     products = FakeVendorProductRepository();
     auditLogs = FakeVendorAuditLogRepository();
@@ -181,6 +185,9 @@ void main() {
         providers: <RepositoryProvider<dynamic>>[
           RepositoryProvider<VendorUserRepository>.value(value: users),
           RepositoryProvider<VendorRetailerRepository>.value(value: retailers),
+          RepositoryProvider<VendorRetailerLifecycleRepository>.value(
+            value: retailerLifecycle,
+          ),
           RepositoryProvider<VendorRoleRepository>.value(value: roles),
           RepositoryProvider<VendorProductRepository>.value(value: products),
           RepositoryProvider<VendorAuditLogRepository>.value(value: auditLogs),
