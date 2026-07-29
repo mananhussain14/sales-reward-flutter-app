@@ -16,11 +16,36 @@ import 'package:equatable/equatable.dart';
 /// **This client must not re-implement that filter.** It renders exactly the
 /// rows it was given. A Manager seeing only active members is not the app hiding
 /// anything; it is the database answering a narrower question.
+///
+/// ## `DEACTIVATED` reads "Inactive", and `SUSPENDED` still reads "Suspended"
+///
+/// The database stores `DEACTIVATED`; the product says **Inactive**. The word has
+/// to match the verb of the Owner control that writes it — Deactivate /
+/// Reactivate — and `set_retailer_staff_membership_status` is the only writer of
+/// this value for a membership. The *stored* token stays `DEACTIVATED`
+/// everywhere: in the column, in `p_status`, and in the audit trail.
+///
+/// The two are deliberately **not** collapsed. `DEACTIVATED` is the reversible
+/// state this control writes and clears; `SUSPENDED` is an administrative state
+/// the RPC refuses in **both** directions and this milestone defines no owner
+/// for. Rendering both as "Inactive" would put two words on screen that mean "the
+/// button is there" and "the button can never be there", and a reader could not
+/// tell which they were looking at.
+///
+/// > This is the mirror image of the Vendor Retailer milestone, and for the same
+/// > reason. There, on `organizations` / `vendor_retailers`, `SUSPENDED` is the
+/// > reversible state and reads "Inactive" while `DEACTIVATED` is terminal and
+/// > reads "Deactivated". Here, on `organization_members`, it is `DEACTIVATED`
+/// > that is reversible. The same stored token, two different facts, because they
+/// > live in different tables under different operations.
+///
+/// The shared `SrStatusBadge` map in `core/` is untouched: it is reached by
+/// profile and Vendor-side statuses this milestone has not analysed.
 enum RetailerMemberStatus {
   invited('INVITED', 'Invited'),
   active('ACTIVE', 'Active'),
   suspended('SUSPENDED', 'Suspended'),
-  deactivated('DEACTIVATED', 'Deactivated'),
+  deactivated('DEACTIVATED', 'Inactive'),
 
   /// A value this build does not know. Displayed neutrally, and nothing more.
   unknown('', 'Unknown');

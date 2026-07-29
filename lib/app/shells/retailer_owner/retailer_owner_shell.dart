@@ -11,11 +11,13 @@ import '../../../features/products/presentation/retailer/cubit/retailer_products
 import '../../../features/shops/domain/repositories/retailer_shop_repository.dart';
 import '../../../features/shops/presentation/retailer_owner/cubit/retailer_shops_cubit.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
+import '../../../features/staff/domain/repositories/retailer_staff_lifecycle_repository.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_repository.dart';
 import '../../../features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_invite_staff_cubit.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_manage_staff_shops_cubit.dart';
 import '../../../features/staff/presentation/retailer/cubit/retailer_staff_cubit.dart';
+import '../../../features/staff/presentation/retailer/cubit/retailer_staff_lifecycle_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/retailer_owner_shell_bloc.dart';
 
@@ -168,6 +170,38 @@ class RetailerOwnerShell extends StatelessWidget {
                 providerContext.read<RetailerStaffCubit>().rereadMembers(),
           ),
         ),
+        // The per-member lifecycle write, provided **only** here — the Retailer
+        // Owner shell. The Manager shell, the Sales Staff shell and the Vendor
+        // shell have no such provider, so their widget trees contain no staff
+        // deactivation machinery at all and the control cannot be rendered there
+        // even by mistake.
+        //
+        // Presentation scope, not a permission check.
+        // `set_retailer_staff_membership_status()` re-derives the Retailer from
+        // `auth.uid()`, re-checks `RETAILER_STAFF_MANAGE`, matches the membership
+        // against *that* Retailer, refuses the caller's own membership by user
+        // id, and requires the target's COMPLETE ACTIVE role set to be exactly
+        // {RETAILER_MANAGER} or {SALES_STAFF} — so a hand-crafted request is
+        // refused regardless of which shell rendered which control.
+        //
+        // Deliberately a cubit of its own rather than state on
+        // `RetailerStaffCubit`: a refused deactivation must not be one `copyWith`
+        // away from clearing the roster, the invitation history or the search
+        // term beside it.
+        //
+        // Nothing is loaded on creation. It holds no data of its own — only one
+        // decision at a time, keyed by the membership it is about.
+        BlocProvider<RetailerStaffLifecycleCubit>(
+          create: (BuildContext providerContext) => RetailerStaffLifecycleCubit(
+            providerContext.read<RetailerStaffLifecycleRepository>(),
+            // The canonical re-read, wired to the cubit that owns the roster
+            // this screen renders. The write's response carries a status and
+            // a change flag — never a roster row — so no card is ever patched
+            // locally. Called for a committed outcome only.
+            rereadRoster: () =>
+                providerContext.read<RetailerStaffCubit>().rereadMembers(),
+          ),
+        ),
         BlocProvider<RetailerProductsCubit>(
           create: (BuildContext providerContext) => RetailerProductsCubit(
             providerContext.read<RetailerProductRepository>(),
@@ -282,6 +316,8 @@ class _SessionIsolation extends StatelessWidget {
             .read<RetailerInviteStaffCubit>();
         final RetailerManageStaffShopsCubit manageShops = context
             .read<RetailerManageStaffShopsCubit>();
+        final RetailerStaffLifecycleCubit staffLifecycle = context
+            .read<RetailerStaffLifecycleCubit>();
         final RetailerProductsCubit products = context
             .read<RetailerProductsCubit>();
 
@@ -327,6 +363,14 @@ class _SessionIsolation extends StatelessWidget {
         // previous session — and no previous Retailer's shop ids — can reach the
         // new one.
         manageShops.clear();
+        // The lifecycle decision goes with them. It holds one colleague's
+        // membership address and the outcome of a decision about their access —
+        // both private to a single Retailer, and both capable of appearing beside
+        // the wrong person if they survived. `clear()` advances a request token
+        // too, so a write already in flight for the previous identity is dropped
+        // on arrival: no "now inactive" acknowledgement from a previous session
+        // can land on the new one's roster.
+        staffLifecycle.clear();
         products.clear();
 
         if (_identityOf(state) != null) {

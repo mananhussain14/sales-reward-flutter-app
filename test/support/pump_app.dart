@@ -16,6 +16,7 @@ import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repos
 import 'package:sale_reward/features/shops/domain/repositories/retailer_shop_repository.dart';
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_repository.dart';
+import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_lifecycle_repository.dart';
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_shop_assignment_repository.dart';
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
@@ -24,6 +25,7 @@ import 'receipt_fakes.dart';
 import 'retailer_owner_overview_fakes.dart';
 import 'retailer_invite_staff_fakes.dart';
 import 'retailer_manage_staff_shops_fakes.dart';
+import 'retailer_staff_lifecycle_fakes.dart';
 import 'retailer_read_fakes.dart';
 import 'vendor_audit_log_fakes.dart';
 import 'vendor_dashboard_fakes.dart';
@@ -74,6 +76,7 @@ typedef PumpedApp = ({
   FakeRetailerStaffRepository retailerStaff,
   FakeRetailerStaffInvitationRepository retailerStaffInvitations,
   FakeRetailerStaffShopAssignmentRepository retailerStaffShopAssignments,
+  FakeRetailerStaffLifecycleRepository retailerStaffLifecycle,
   FakeRetailerProductRepository retailerProducts,
 });
 
@@ -122,6 +125,8 @@ Future<PumpedApp> pumpApp(
   RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   FakeRetailerStaffShopAssignmentRepository? retailerStaffShopAssignments,
   RetailerStaffShopAssignmentRepository? retailerStaffShopAssignmentRepository,
+  FakeRetailerStaffLifecycleRepository? retailerStaffLifecycle,
+  RetailerStaffLifecycleRepository? retailerStaffLifecycleRepository,
   FakeRetailerProductRepository? retailerProducts,
   RetailerProductRepository? retailerProductRepository,
 }) async {
@@ -186,6 +191,10 @@ Future<PumpedApp> pumpApp(
       FakeRetailerStaffShopAssignmentRepository();
   final RetailerStaffShopAssignmentRepository providedShopAssignments =
       retailerStaffShopAssignmentRepository ?? shopAssignmentRepository;
+  final FakeRetailerStaffLifecycleRepository staffLifecycleRepository =
+      retailerStaffLifecycle ?? FakeRetailerStaffLifecycleRepository();
+  final RetailerStaffLifecycleRepository providedStaffLifecycle =
+      retailerStaffLifecycleRepository ?? staffLifecycleRepository;
   final FakeRetailerProductRepository productsRepository =
       retailerProducts ?? FakeRetailerProductRepository();
   final RetailerProductRepository providedRetailerProducts =
@@ -212,6 +221,7 @@ Future<PumpedApp> pumpApp(
       retailerStaffRepository: providedStaff,
       retailerStaffInvitationRepository: providedInvitations,
       retailerStaffShopAssignmentRepository: providedShopAssignments,
+      retailerStaffLifecycleRepository: providedStaffLifecycle,
       retailerProductRepository: providedRetailerProducts,
       initialThemeMode: themeMode,
     ),
@@ -237,6 +247,7 @@ Future<PumpedApp> pumpApp(
     retailerStaff: staffRepository,
     retailerStaffInvitations: invitationRepository,
     retailerStaffShopAssignments: shopAssignmentRepository,
+    retailerStaffLifecycle: staffLifecycleRepository,
     retailerProducts: productsRepository,
   );
 }
@@ -273,6 +284,8 @@ Future<PumpedApp> pumpAppInRole(
   RetailerStaffInvitationRepository? retailerStaffInvitationRepository,
   FakeRetailerStaffShopAssignmentRepository? retailerStaffShopAssignments,
   RetailerStaffShopAssignmentRepository? retailerStaffShopAssignmentRepository,
+  FakeRetailerStaffLifecycleRepository? retailerStaffLifecycle,
+  RetailerStaffLifecycleRepository? retailerStaffLifecycleRepository,
   FakeRetailerProductRepository? retailerProducts,
   RetailerProductRepository? retailerProductRepository,
 }) {
@@ -309,6 +322,8 @@ Future<PumpedApp> pumpAppInRole(
     retailerStaffShopAssignments: retailerStaffShopAssignments,
     retailerStaffShopAssignmentRepository:
         retailerStaffShopAssignmentRepository,
+    retailerStaffLifecycle: retailerStaffLifecycle,
+    retailerStaffLifecycleRepository: retailerStaffLifecycleRepository,
     retailerProducts: retailerProducts,
     retailerProductRepository: retailerProductRepository,
   );

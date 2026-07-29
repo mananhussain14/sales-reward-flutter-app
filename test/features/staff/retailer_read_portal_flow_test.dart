@@ -478,20 +478,41 @@ void main() {
       // form above the history.
       expect(find.byType(RetailerInviteStaffForm), findsOneWidget);
 
-      // Everything else an invitation could be done to is still absent — not
+      // Everything else an INVITATION could be done to is still absent — not
       // disabled, absent. Each is a separate backend operation this app does
       // not perform, and acceptance happens in the emailed link rather than
       // here.
+      //
+      // `Deactivate` / `Reactivate` are deliberately NOT in this list any more.
+      // They are not invitation writes: they act on an already accepted
+      // MEMBERSHIP, through `set_retailer_staff_membership_status` on a
+      // different permission, and they arrived with the staff lifecycle
+      // milestone. Their placement and their exclusions are asserted by
+      // `retailer_staff_lifecycle_flow_test.dart` and
+      // `retailer_staff_lifecycle_boundary_test.dart`; what this test still
+      // guarantees is that no such control reaches an *invitation* row, which
+      // the assertion below states directly.
       for (final String label in <String>[
         'Resend',
         'Revoke',
         'Accept',
-        'Deactivate',
-        'Reactivate',
         'Change role',
         'Reassign shops',
       ]) {
         expect(find.text(label), findsNothing, reason: label);
+      }
+
+      // No lifecycle control on any invitation card. An invitation is not a
+      // membership, and the RPC refuses an INVITED target outright.
+      for (final String label in <String>['Deactivate', 'Reactivate']) {
+        expect(
+          find.descendant(
+            of: find.byType(RetailerInvitationCard),
+            matching: find.text(label),
+          ),
+          findsNothing,
+          reason: '$label must never appear on an invitation',
+        );
       }
       expect(find.byIcon(Icons.add), findsNothing);
     });
