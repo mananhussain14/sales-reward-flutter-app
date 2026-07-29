@@ -2,10 +2,13 @@ import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/auth/data/datasources/lifecycle_access_rpc_data_source.dart';
 import '../../features/auth/data/datasources/portal_context_data_source.dart';
 import '../../features/auth/data/repositories/supabase_auth_repository.dart';
+import '../../features/auth/data/repositories/supabase_lifecycle_access_repository.dart';
 import '../../features/auth/data/repositories/supabase_portal_context_repository.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
+import '../../features/auth/domain/repositories/lifecycle_access_repository.dart';
 import '../../features/audit/data/datasources/vendor_audit_log_rpc_data_source.dart';
 import '../../features/audit/data/repositories/supabase_vendor_audit_log_repository.dart';
 import '../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
@@ -92,6 +95,19 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<PortalContextRepository>(
     () => SupabasePortalContextRepository(
       PortalContextDataSource(supabasePortalContextInvoker(client)),
+    ),
+  );
+
+  // The self-only lifecycle diagnostic, read ONLY by the access-denied screen
+  // after a refusal has already been decided. It is a sibling of the portal
+  // context, never a replacement: that one decides routing, this one explains a
+  // denial, and nothing may branch on this one to admit a request.
+  //
+  // Registered lazily like everything here, so a session that never reaches a
+  // denial never constructs it.
+  getIt.registerLazySingleton<LifecycleAccessRepository>(
+    () => SupabaseLifecycleAccessRepository(
+      LifecycleAccessRpcDataSource(supabaseLifecycleAccessInvoker(client)),
     ),
   );
 
@@ -443,6 +459,7 @@ ReceiptAccessTokenProvider supabaseAccessTokenProvider(SupabaseClient client) {
 void registerTestDependencies({
   required AuthRepository authRepository,
   required PortalContextRepository portalContextRepository,
+  LifecycleAccessRepository? lifecycleAccessRepository,
   ReceiptRepository? receiptRepository,
   ReceiptImageSource? receiptImageSource,
   VendorRetailerRepository? vendorRetailerRepository,
@@ -465,6 +482,13 @@ void registerTestDependencies({
   getIt.registerLazySingleton<PortalContextRepository>(
     () => portalContextRepository,
   );
+  // Optional, like every non-authentication dependency here: only a test that
+  // actually reaches the access-denied screen needs one.
+  if (lifecycleAccessRepository != null) {
+    getIt.registerLazySingleton<LifecycleAccessRepository>(
+      () => lifecycleAccessRepository,
+    );
+  }
   if (receiptRepository != null) {
     getIt.registerLazySingleton<ReceiptRepository>(() => receiptRepository);
   }

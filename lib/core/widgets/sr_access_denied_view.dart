@@ -20,12 +20,26 @@ import 'sr_card.dart';
 /// that the two are **indistinguishable to a signed-in but unauthorized,
 /// possibly hostile, account**.
 ///
-/// The handoff is explicit: Flutter must not add a reason, a role name, a
-/// "contact your administrator" line, or a retry button. Sign-out is the only
-/// affordance. Do not add a `role` or `reason` parameter to this widget —
-/// telling a caller *which* check refused them turns a denial into an
-/// enumeration oracle, which is exactly what the backend's overloaded `42501`
-/// exists to prevent.
+/// The handoff is explicit: Flutter must not add a reason, a role name or a
+/// "contact your administrator" line. **Do not add a `role`, `reason`, `title`
+/// or `body` parameter to this widget** — telling a caller *which* check refused
+/// them turns a denial into an enumeration oracle, which is exactly what the
+/// backend's overloaded `42501` exists to prevent. A lifecycle state that has
+/// something specific and safe to say renders `SrLifecycleNoticeView` instead;
+/// this card's copy stays fixed.
+///
+/// ## The optional recovery action
+///
+/// [onCheckAccessAgain] re-runs canonical portal-context resolution. It is an
+/// **action**, not a reason, so it does not weaken the rule above — and it is
+/// offered on this card precisely so that it is offered on *every* signed-in
+/// denial. If the control appeared only alongside a lifecycle explanation, its
+/// absence would itself disclose that the caller is in one of the states that
+/// has no explanation, which is the oracle the fixed copy exists to close.
+///
+/// When [onCheckAccessAgain] is null the control is not rendered at all, and
+/// this widget behaves exactly as it did before the parameter existed — which is
+/// what the route guard's fallback use of it relies on.
 ///
 /// This widget is presentation and decides nothing. The route guard that leads
 /// here is a convenience; the real refusal happens in SQL, on every call.
@@ -35,6 +49,8 @@ class SrAccessDeniedView extends StatelessWidget {
     this.onSignOut,
     this.signingOut = false,
     this.signOutFailed = false,
+    this.onCheckAccessAgain,
+    this.checkingAccess = false,
   });
 
   /// The sign-out action. When null the control is disabled — which is how the
@@ -48,6 +64,15 @@ class SrAccessDeniedView extends StatelessWidget {
   /// Whether the last sign-out attempt failed. Surfaces an inline notice, so a
   /// failed sign-out never leaves the user silently stuck on this screen.
   final bool signOutFailed;
+
+  /// Re-runs canonical portal-context resolution. **Null hides the control
+  /// entirely**, which keeps every existing consumer rendering exactly as it did
+  /// before this parameter was added.
+  final VoidCallback? onCheckAccessAgain;
+
+  /// Whether a portal-context resolution is already running. Shows a busy
+  /// button.
+  final bool checkingAccess;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +144,17 @@ class SrAccessDeniedView extends StatelessWidget {
                           ),
                         ],
                         const SizedBox(height: SrSpacing.xxl),
+                        if (onCheckAccessAgain != null ||
+                            checkingAccess) ...<Widget>[
+                          SrButton(
+                            label: 'Check access again',
+                            loadingLabel: 'Checking access…',
+                            fullWidth: true,
+                            loading: checkingAccess,
+                            onPressed: onCheckAccessAgain,
+                          ),
+                          const SizedBox(height: SrSpacing.md),
+                        ],
                         SrButton(
                           label: 'Sign out',
                           loadingLabel: 'Signing out…',

@@ -643,11 +643,29 @@ void main() {
     );
   });
 
-  group('PR 2 work is not present', () {
-    test('the lifecycle diagnostic is not implemented in this milestone', () {
-      // The Retailer inactive-access experience is a separate, later milestone.
-      // Implementing half of it here would ship copy no test in this PR covers.
-      _expectAbsent(sources, <String>[
+  group('the lifecycle diagnostic stays outside this feature', () {
+    // This group used to assert the diagnostic did not exist anywhere. It now
+    // ships, in `features/auth`, so the assertion has been NARROWED rather than
+    // dropped: the property still worth defending is that the *Vendor Retailer
+    // lifecycle write* feature neither names the diagnostic RPC nor carries its
+    // vocabulary or copy. Every write protection in this file is unchanged.
+    test('no source outside the diagnostic names its RPC or vocabulary', () {
+      final List<File> outsideDiagnostic = sources
+          .where(
+            (File f) => !_approvedDiagnosticPaths.any(
+              (String approved) => f.path.endsWith(approved),
+            ),
+          )
+          .toList();
+
+      expect(
+        outsideDiagnostic.length,
+        greaterThan(50),
+        reason: 'the scan must not be vacuous',
+      );
+      expect(outsideDiagnostic.length, lessThan(sources.length));
+
+      _expectAbsent(outsideDiagnostic, <String>[
         'get_my_lifecycle_access_state',
         'ORGANIZATION_INACTIVE',
         'MEMBERSHIP_INACTIVE',
@@ -656,13 +674,30 @@ void main() {
       ], allowInComments: true);
     });
 
-    test('the approved Retailer-inactive copy is not added here', () {
-      for (final File file in sources) {
+    test('no Vendor Retailer source carries the approved inactive copy', () {
+      final Iterable<File> vendorSources = sources.where(
+        (File f) => f.path.contains('/features/retailers/'),
+      );
+      expect(vendorSources, isNotEmpty);
+
+      for (final File file in vendorSources) {
         expect(
           code(file).contains('This Retailer is currently inactive'),
           isFalse,
-          reason: '${file.path} adds PR 2 copy',
+          reason: '${file.path} must not carry diagnostic copy',
         );
+      }
+    });
+
+    test('the Vendor lifecycle write does not consult the diagnostic', () {
+      final Iterable<File> vendorSources = sources.where(
+        (File f) => f.path.contains('/features/retailers/'),
+      );
+
+      for (final File file in vendorSources) {
+        final String src = code(file);
+        expect(src.contains('LifecycleAccessRepository'), isFalse);
+        expect(src.contains('LifecycleAccessCubit'), isFalse);
       }
     });
   });
@@ -841,6 +876,18 @@ void main() {
 }
 
 /// Fails if any [needle] appears in executable source.
+/// The only files permitted to name the diagnostic RPC, its wire vocabulary or
+/// its approved copy.
+///
+/// Kept as an explicit allow-list rather than a directory prefix so that adding
+/// a file to the diagnostic feature is a visible edit here, reviewed alongside
+/// the code it exempts.
+const List<String> _approvedDiagnosticPaths = <String>[
+  'features/auth/data/models/lifecycle_access_parser.dart',
+  'features/auth/data/datasources/lifecycle_access_rpc_data_source.dart',
+  'features/auth/presentation/widgets/lifecycle_access_copy.dart',
+];
+
 void _expectAbsent(
   List<File> sources,
   List<String> needles, {
