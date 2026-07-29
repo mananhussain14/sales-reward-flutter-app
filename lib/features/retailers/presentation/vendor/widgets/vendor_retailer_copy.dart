@@ -77,6 +77,18 @@ abstract final class VendorRetailerCopy {
       'This Retailer is not available to your account. The link may be out of '
       'date, or the Retailer may no longer be connected to your organization.';
 
+  /// Shown when a lifecycle write committed but the canonical re-read did not
+  /// succeed.
+  ///
+  /// Deliberately never worded as a failed change: the transaction committed,
+  /// and only this client's picture of it is stale. It offers another **read**,
+  /// never another write.
+  static const String staleDetailTitle = 'These details may be out of date';
+  static const String staleDetailBody =
+      'The change was submitted, but this Retailer could not be re-read. The '
+      'statuses above may not reflect it yet.';
+  static const String reloadDetail = 'Reload Retailer';
+
   // -- the shop section ------------------------------------------------------
 
   static const String shopsSectionTitle = 'Shops';

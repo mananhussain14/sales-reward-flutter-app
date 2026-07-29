@@ -13,6 +13,7 @@ import '../features/products/domain/repositories/vendor_product_repository.dart'
 import '../features/profile/domain/repositories/vendor_profile_repository.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
+import '../features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../features/shops/domain/repositories/retailer_shop_repository.dart';
@@ -50,6 +51,7 @@ class SaleRewardApp extends StatefulWidget {
     this.receiptRepository,
     this.receiptImageSource,
     this.vendorRetailerRepository,
+    this.vendorRetailerLifecycleRepository,
     this.vendorUserRepository,
     this.vendorRoleRepository,
     this.vendorProductRepository,
@@ -70,6 +72,7 @@ class SaleRewardApp extends StatefulWidget {
   final ReceiptRepository? receiptRepository;
   final ReceiptImageSource? receiptImageSource;
   final VendorRetailerRepository? vendorRetailerRepository;
+  final VendorRetailerLifecycleRepository? vendorRetailerLifecycleRepository;
   final VendorUserRepository? vendorUserRepository;
   final VendorRoleRepository? vendorRoleRepository;
   final VendorProductRepository? vendorProductRepository;
@@ -94,6 +97,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final ReceiptRepository _receiptRepository;
   late final ReceiptImageSource _receiptImageSource;
   late final VendorRetailerRepository _vendorRetailerRepository;
+  late final VendorRetailerLifecycleRepository
+  _vendorRetailerLifecycleRepository;
   late final VendorUserRepository _vendorUserRepository;
   late final VendorRoleRepository _vendorRoleRepository;
   late final VendorProductRepository _vendorProductRepository;
@@ -122,6 +127,9 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         widget.receiptImageSource ?? getIt<ReceiptImageSource>();
     _vendorRetailerRepository =
         widget.vendorRetailerRepository ?? getIt<VendorRetailerRepository>();
+    _vendorRetailerLifecycleRepository =
+        widget.vendorRetailerLifecycleRepository ??
+        getIt<VendorRetailerLifecycleRepository>();
     _vendorUserRepository =
         widget.vendorUserRepository ?? getIt<VendorUserRepository>();
     _vendorRoleRepository =
@@ -189,6 +197,14 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // flow over a fake with no Supabase client.
         RepositoryProvider<VendorRetailerRepository>.value(
           value: _vendorRetailerRepository,
+        ),
+        // The Retailer lifecycle write and its capability probe, kept behind
+        // their own interface for the same reason the staff invitation and
+        // shop-assignment contracts are kept apart from the staff read: the
+        // read repository's documentation guarantees it holds no write, and its
+        // boundary test asserts it.
+        RepositoryProvider<VendorRetailerLifecycleRepository>.value(
+          value: _vendorRetailerLifecycleRepository,
         ),
         RepositoryProvider<VendorUserRepository>.value(
           value: _vendorUserRepository,

@@ -23,6 +23,22 @@ void main() {
   late List<File> retailerSources;
   late String rpcDataSource;
 
+  /// The **one** file permitted to name the lifecycle write RPC and `p_status`.
+  late File lifecycleDataSourceFile;
+  late String lifecycleDataSource;
+
+  /// The **one** file permitted to name `has_organization_permission` and the
+  /// `RETAILERS_MANAGE` permission code.
+  late File capabilityDataSourceFile;
+  late String capabilityDataSource;
+
+  /// Every Retailer source except the two lifecycle data sources.
+  ///
+  /// The guards below are re-scoped **by file**, never relaxed globally: the two
+  /// backend symbols this milestone introduced are legitimate in exactly one
+  /// place each, and remain forbidden in the other eighty-odd.
+  late List<File> nonLifecycleSources;
+
   /// The file's executable lines only.
   ///
   /// Every check below is about what the code *does*. The doc comments in this
@@ -53,6 +69,23 @@ void main() {
         (File f) => f.path.endsWith('vendor_retailer_rpc_data_source.dart'),
       ),
     );
+    lifecycleDataSourceFile = sources.firstWhere(
+      (File f) =>
+          f.path.endsWith('vendor_retailer_lifecycle_rpc_data_source.dart'),
+    );
+    lifecycleDataSource = code(lifecycleDataSourceFile);
+    capabilityDataSourceFile = sources.firstWhere(
+      (File f) =>
+          f.path.endsWith('vendor_retailer_capability_rpc_data_source.dart'),
+    );
+    capabilityDataSource = code(capabilityDataSourceFile);
+    nonLifecycleSources = retailerSources
+        .where(
+          (File f) =>
+              f.path != lifecycleDataSourceFile.path &&
+              f.path != capabilityDataSourceFile.path,
+        )
+        .toList();
   });
 
   test('the feature is non-empty (the scan would pass vacuously)', () {
@@ -224,18 +257,55 @@ void main() {
   });
 
   group('no authorization is decided on the client', () {
-    test('no source names a permission code', () {
-      // Which permission gates this read is seed data — RETAILERS_READ, mapped
+    test('no source names a read permission code or a Vendor resolver', () {
+      // Which permission gates the READS is seed data — RETAILERS_READ, mapped
       // to VENDOR_SUPER_ADMIN and to nothing else. A client-side comparison
-      // would be a second, drifting definition.
+      // would be a second, drifting definition. The Vendor resolver is likewise
+      // never named: the Vendor is derived in SQL and cannot be nominated.
       _expectAbsent(retailerSources, <String>[
         'RETAILERS_READ',
         'RETAILERS_WRITE',
         'RBAC_READ',
-        'has_organization_permission',
         'get_vendor_super_admin_context',
       ], allowInComments: true);
     });
+
+    test(
+      'only the capability data source names the permission helper or code',
+      () {
+        // RETAILERS_MANAGE is named for exactly one purpose — to be **sent** as
+        // an argument to the helper every RLS policy already asks the question
+        // with. It is never compared against anything, and no role code appears
+        // beside it. Everywhere else in the feature both symbols stay forbidden.
+        _expectAbsent(nonLifecycleSources, <String>[
+          'has_organization_permission',
+          'RETAILERS_MANAGE',
+        ], allowInComments: true);
+        _expectAbsent(
+          <File>[lifecycleDataSourceFile],
+          <String>['has_organization_permission', 'RETAILERS_MANAGE'],
+          allowInComments: true,
+        );
+
+        // And in that one file it is an argument value, never a comparison.
+        expect(
+          capabilityDataSource,
+          contains("const String retailersManagePermissionCode ="),
+        );
+        for (final String comparison in <String>[
+          '== retailersManagePermissionCode',
+          "== 'RETAILERS_MANAGE'",
+          "contains('RETAILERS_MANAGE')",
+          'VENDOR_SUPER_ADMIN',
+        ]) {
+          expect(
+            capabilityDataSource.contains(comparison),
+            isFalse,
+            reason: 'the permission code must never be compared on the client',
+          );
+        }
+      },
+    );
 
     test('no source hardcodes a Vendor organization', () {
       // A UUID literal in this feature could only be a tenant the client chose.
@@ -332,18 +402,296 @@ void main() {
     });
   });
 
-  group('this milestone writes nothing', () {
-    test('no source names a Vendor Retailer write operation', () {
-      // Read-only. Onboarding, inviting, suspending and shop editing all exist
-      // in the backend and none of them is reachable from here.
+  group('the only write is the lifecycle RPC', () {
+    test('no source names any other Vendor Retailer write operation', () {
+      // Onboarding, inviting, and shop create/edit all exist in the backend and
+      // none of them is reachable from here. The lifecycle write is now the one
+      // exception, and it is asserted positively below.
       _expectAbsent(retailerSources, <String>[
         'onboard_vendor_retailer',
         'invite_retailer_owner',
         'update_vendor_retailer',
         'create_retailer_shop',
         'update_retailer_shop',
-        'delete',
       ], allowInComments: true);
+    });
+
+    test('only the lifecycle data source names set_vendor_retailer_status', () {
+      _expectAbsent(nonLifecycleSources, <String>[
+        'set_vendor_retailer_status',
+      ], allowInComments: true);
+      _expectAbsent(
+        <File>[capabilityDataSourceFile],
+        <String>['set_vendor_retailer_status'],
+        allowInComments: true,
+      );
+
+      final RegExp rpcNames = RegExp(r"const String \w+Rpc = '([^']+)'");
+      expect(
+        rpcNames
+            .allMatches(lifecycleDataSource)
+            .map((RegExpMatch m) => m.group(1)!)
+            .toList(),
+        <String>['set_vendor_retailer_status'],
+      );
+    });
+
+    test('only the lifecycle data source names p_status', () {
+      // Matched as a **quoted literal** rather than a bare word: the response
+      // column names `relationship_status`, `retailer_status` and `shop_status`
+      // all contain `p_status` as a substring, and those are legitimate reads.
+      // A quoted literal can only be an argument key.
+      _expectAbsent(nonLifecycleSources, <String>[
+        "'p_status'",
+      ], allowInComments: true);
+      expect(lifecycleDataSource, contains("'p_status'"));
+    });
+
+    test('the lifecycle RPC argument set is exactly two keys', () {
+      final RegExp params = RegExp(r"'(p_[a-z_]+)'");
+      expect(
+        params
+            .allMatches(lifecycleDataSource)
+            .map((RegExpMatch m) => m.group(1)!)
+            .toSet(),
+        <String>{'p_relationship_id', 'p_status'},
+      );
+    });
+
+    test('the capability probe argument set is exactly two keys', () {
+      final RegExp params = RegExp(r"'(target_[a-z_]+)'");
+      expect(
+        params
+            .allMatches(capabilityDataSource)
+            .map((RegExpMatch m) => m.group(1)!)
+            .toSet(),
+        <String>{'target_organization_id', 'target_permission_code'},
+      );
+      // And no relationship id travels beside it: a permission is held in an
+      // organization, not in one Vendor's view of one Retailer.
+      expect(capabilityDataSource.contains('p_relationship_id'), isFalse);
+    });
+
+    test('no identity or tenant argument rides on the lifecycle write', () {
+      for (final String forbidden in <String>[
+        'user_id',
+        'p_user',
+        'profile_id',
+        'p_profile',
+        'p_vendor',
+        'vendor_organization_id',
+        'retailer_organization_id',
+        'p_organization',
+        'membership_id',
+        'role_code',
+        'permission_code',
+        'target_organization_id',
+        "'email'",
+        'access_token',
+        'tenant',
+        'p_actor',
+        'p_audit',
+      ]) {
+        expect(
+          lifecycleDataSource.contains(forbidden),
+          isFalse,
+          reason: 'the lifecycle write must pass no $forbidden argument',
+        );
+      }
+    });
+
+    test('no direct table write exists anywhere in the feature', () {
+      // `organizations` and `vendor_retailers` are SELECT-only for the browser
+      // with no INSERT/UPDATE/DELETE privilege of any kind, so a direct write
+      // would not merely be poor layering — it would not work. The two status
+      // columns move together inside the RPC's own transaction.
+      _expectAbsent(retailerSources, <String>[
+        '.insert(',
+        '.update(',
+        '.upsert(',
+        '.delete(',
+        '.rpc(',
+      ], allowInComments: true);
+    });
+
+    test('the RPC is invoked through the injected client, once per write', () {
+      // `client.rpc<Object?>` appears exactly once in each data source: the
+      // invoker typedef is the seam, and there is no loop, no retry helper and
+      // no second call site.
+      for (final String source in <String>[
+        lifecycleDataSource,
+        capabilityDataSource,
+      ]) {
+        expect(RegExp(r'client\.rpc<Object\?>').allMatches(source).length, 1);
+        for (final String retry in <String>[
+          'retry',
+          'Retry',
+          'while (',
+          'for (int attempt',
+          'RetryPolicy',
+        ]) {
+          expect(
+            source.contains(retry),
+            isFalse,
+            reason: 'no retry may exist on a write path',
+          );
+        }
+      }
+    });
+
+    test('no source retries a lifecycle write', () {
+      for (final File file in retailerSources) {
+        final String src = code(file);
+        for (final String retry in <String>[
+          'retryWrite',
+          'retryLifecycle',
+          'RetryPolicy',
+          'exponentialBackoff',
+        ]) {
+          expect(
+            src.contains(retry),
+            isFalse,
+            reason: '${file.path} introduces a retry',
+          );
+        }
+      }
+    });
+
+    test('INACTIVE is never expressible as a request value', () {
+      // The display word. It is not a member of the request enum and appears in
+      // no executable line of the feature — only the two stored tokens do.
+      for (final File file in retailerSources) {
+        expect(
+          code(file).contains("'INACTIVE'"),
+          isFalse,
+          reason: '${file.path} could send the display word INACTIVE',
+        );
+      }
+    });
+
+    test('the request vocabulary lives in the pure domain model alone', () {
+      // The two stored tokens may be written in `domain/entities/` — that is
+      // where the closed vocabulary is declared — and nowhere else. Everything
+      // downstream carries the enum, so no screen, cubit, parser or data source
+      // can assemble a status of its own.
+      final Iterable<File> outsideDomain = retailerSources.where(
+        (File f) => !f.path.contains('/domain/entities/'),
+      );
+
+      for (final File file in outsideDomain) {
+        final String src = code(file);
+        for (final String token in <String>[
+          "'ACTIVE'",
+          "'SUSPENDED'",
+          "'DEACTIVATED'",
+          "'DELIVERY_FAILED'",
+        ]) {
+          expect(
+            src.contains(token),
+            isFalse,
+            reason: '${file.path} writes a backend status literal',
+          );
+        }
+      }
+    });
+  });
+
+  group('the lifecycle control is confined to the detail screen', () {
+    test('no list, card, grid or filter widget names the lifecycle', () {
+      final Iterable<File> listSurfaces = retailerSources.where(
+        (File f) =>
+            f.path.endsWith('vendor_retailers_page.dart') ||
+            f.path.endsWith('vendor_retailer_card.dart') ||
+            f.path.endsWith('vendor_retailer_grid.dart') ||
+            f.path.endsWith('vendor_retailer_filter_bar.dart'),
+      );
+      expect(listSurfaces, isNotEmpty);
+
+      for (final File file in listSurfaces) {
+        final String src = code(file);
+        for (final String forbidden in <String>[
+          'VendorRetailerLifecycleSection',
+          'VendorRetailerLifecycleCubit',
+          'VendorRetailerCapabilityCubit',
+          'confirmVendorRetailerLifecycle',
+          'Deactivate Retailer',
+          'Reactivate Retailer',
+        ]) {
+          expect(
+            src.contains(forbidden),
+            isFalse,
+            reason: '${file.path} must carry no lifecycle control',
+          );
+        }
+      }
+    });
+
+    test(
+      'the action widget is mounted by the detail page and nowhere else',
+      () {
+        final Iterable<File> mounts = sources.where(
+          (File f) =>
+              !f.path.endsWith('vendor_retailer_lifecycle_action.dart') &&
+              code(f).contains('VendorRetailerLifecycleSection('),
+        );
+
+        expect(mounts.map((File f) => f.path), <String>[
+          'lib/features/retailers/presentation/vendor/pages/'
+              'vendor_retailer_detail_page.dart',
+        ]);
+      },
+    );
+  });
+
+  group('PR 2 work is not present', () {
+    test('the lifecycle diagnostic is not implemented in this milestone', () {
+      // The Retailer inactive-access experience is a separate, later milestone.
+      // Implementing half of it here would ship copy no test in this PR covers.
+      _expectAbsent(sources, <String>[
+        'get_my_lifecycle_access_state',
+        'ORGANIZATION_INACTIVE',
+        'MEMBERSHIP_INACTIVE',
+        'PROFILE_INACTIVE',
+        'NO_SUPPORTED_ACCESS',
+      ], allowInComments: true);
+    });
+
+    test('the approved Retailer-inactive copy is not added here', () {
+      for (final File file in sources) {
+        expect(
+          code(file).contains('This Retailer is currently inactive'),
+          isFalse,
+          reason: '${file.path} adds PR 2 copy',
+        );
+      }
+    });
+  });
+
+  group('no backend artefact lives in the Flutter repository', () {
+    test('there is no migration, Edge Function or SQL file', () {
+      for (final String path in <String>[
+        'supabase',
+        'migrations',
+        'functions',
+      ]) {
+        expect(
+          Directory(path).existsSync(),
+          isFalse,
+          reason: 'the Flutter repository must contain no backend directory',
+        );
+      }
+
+      final Iterable<File> sqlFiles = Directory('.')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where(
+            (File f) =>
+                f.path.endsWith('.sql') &&
+                !f.path.contains('/build/') &&
+                !f.path.contains('/.dart_tool/'),
+          );
+
+      expect(sqlFiles.map((File f) => f.path), isEmpty);
     });
   });
 

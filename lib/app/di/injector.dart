@@ -33,8 +33,12 @@ import '../../features/receipts/data/repositories/supabase_receipt_repository.da
 import '../../features/receipts/data/services/image_picker_receipt_image_source.dart';
 import '../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../features/receipts/domain/services/receipt_image_source.dart';
+import '../../features/retailers/data/datasources/vendor_retailer_capability_rpc_data_source.dart';
+import '../../features/retailers/data/datasources/vendor_retailer_lifecycle_rpc_data_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_rpc_data_source.dart';
+import '../../features/retailers/data/repositories/supabase_vendor_retailer_lifecycle_repository.dart';
 import '../../features/retailers/data/repositories/supabase_vendor_retailer_repository.dart';
+import '../../features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
 import '../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
 import '../../features/roles/data/datasources/vendor_role_rpc_data_source.dart';
 import '../../features/roles/data/repositories/supabase_vendor_role_repository.dart';
@@ -121,6 +125,39 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton<VendorRetailerRepository>(
     () => SupabaseVendorRetailerRepository(
       rpc: VendorRetailerRpcDataSource.forClient(client),
+    ),
+  );
+
+  // The Vendor Retailer **lifecycle**: one write, and one capability probe.
+  //
+  // Registered separately from the reads above, and behind a separate interface,
+  // because that one's contract guarantees it is read-only and its boundary test
+  // asserts exactly that. Two data sources behind one repository, so each one's
+  // payload vocabulary can be asserted exactly: the write takes a relationship id
+  // and one of two status tokens, the probe takes an organization id and a
+  // permission code, and neither can express the other's arguments.
+  //
+  // **No table access at all.** `organizations` and `vendor_retailers` are
+  // SELECT-only for the browser with read-only policies and no INSERT/UPDATE/
+  // DELETE privilege of any kind, so there is no route to a status change but
+  // this RPC — which moves both status columns atomically, each with a
+  // compare-and-set predicate and a checked row count, and writes its own audit
+  // row inside the same transaction.
+  //
+  // **This is the same deployed function the Next.js portal calls.** There is no
+  // mobile twin and no second definition of "deactivate a Retailer", so the two
+  // clients cannot disagree about the multi-Vendor refusal, about which pairs are
+  // eligible, or about what survives a deactivation.
+  //
+  // **No service-role key is registered here or exists anywhere in this
+  // application.** Both calls travel on the caller's own session, which is the
+  // only reason `auth.uid()` means anything inside either function — a
+  // service-role connection has no identity for them to derive and could only
+  // ever be refused.
+  getIt.registerLazySingleton<VendorRetailerLifecycleRepository>(
+    () => SupabaseVendorRetailerLifecycleRepository(
+      rpc: VendorRetailerLifecycleRpcDataSource.forClient(client),
+      capability: VendorRetailerCapabilityRpcDataSource.forClient(client),
     ),
   );
 
@@ -372,6 +409,7 @@ void registerTestDependencies({
   ReceiptRepository? receiptRepository,
   ReceiptImageSource? receiptImageSource,
   VendorRetailerRepository? vendorRetailerRepository,
+  VendorRetailerLifecycleRepository? vendorRetailerLifecycleRepository,
   VendorUserRepository? vendorUserRepository,
   VendorRoleRepository? vendorRoleRepository,
   VendorProductRepository? vendorProductRepository,
@@ -398,6 +436,11 @@ void registerTestDependencies({
   if (vendorRetailerRepository != null) {
     getIt.registerLazySingleton<VendorRetailerRepository>(
       () => vendorRetailerRepository,
+    );
+  }
+  if (vendorRetailerLifecycleRepository != null) {
+    getIt.registerLazySingleton<VendorRetailerLifecycleRepository>(
+      () => vendorRetailerLifecycleRepository,
     );
   }
   if (vendorUserRepository != null) {

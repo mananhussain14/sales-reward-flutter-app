@@ -18,8 +18,12 @@ import '../../../features/products/presentation/vendor/cubit/vendor_product_stat
 import '../../../features/products/presentation/vendor/cubit/vendor_product_write_notice.dart';
 import '../../../features/profile/domain/repositories/vendor_profile_repository.dart';
 import '../../../features/profile/presentation/vendor/cubit/vendor_profile_cubit.dart';
+import '../../../features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
 import '../../../features/retailers/domain/repositories/vendor_retailer_repository.dart';
+import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_capability_cubit.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_detail_cubit.dart';
+import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_lifecycle_cubit.dart';
+import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_lifecycle_notice.dart';
 import '../../../features/retailers/presentation/vendor/cubit/vendor_retailer_list_cubit.dart';
 import '../../../features/roles/domain/repositories/vendor_role_repository.dart';
 import '../../../features/roles/presentation/vendor/cubit/vendor_role_detail_cubit.dart';
@@ -76,8 +80,10 @@ import 'bloc/vendor_shell_bloc.dart';
 ///
 /// [_SessionIsolation] closes that gap by listening to [SessionBloc] directly. A
 /// listener runs on every emitted state whether or not a frame was built, so the
-/// moment the session stops being *this* person's, all fourteen cubits are cleared:
-/// the Retailer summaries, the open Retailer, its shops, the user summaries with
+/// moment the session stops being *this* person's, all sixteen cubits are cleared:
+/// the Retailer summaries, the open Retailer, its shops, **whether this caller
+/// was confirmed to hold `RETAILERS_MANAGE` and any pending deactivate-or-
+/// reactivate decision**, the user summaries with
 /// their names and roles, the open user, the role catalogue with **this
 /// Vendor's own assigned member counts**, the open role and its permissions, the
 /// product catalogue with its codes, barcodes, brands and assignment counts, the
@@ -145,6 +151,72 @@ class VendorShell extends StatelessWidget {
           create: (BuildContext providerContext) => VendorRetailerDetailCubit(
             providerContext.read<VendorRetailerRepository>(),
           ),
+        ),
+        // "May this caller change a Retailer's lifecycle?", asked once per
+        // Vendor session.
+        //
+        // The organization id comes from the **session's** resolved portal
+        // context — a value the backend produced from `auth.uid()` in
+        // `get_my_portal_context()` — and from nowhere else. Not from a route,
+        // not from a form, not from local storage, and emphatically not from a
+        // Retailer record: a Retailer organization id would be the wrong tenant
+        // entirely, and the probe would be asking whether this Vendor holds a
+        // permission inside somebody else's company.
+        //
+        // A Vendor session with no vendor block loads nothing at all, which
+        // leaves the capability unresolved and the control hidden. That is the
+        // only safe direction.
+        BlocProvider<VendorRetailerCapabilityCubit>(
+          create: (BuildContext providerContext) {
+            final VendorRetailerCapabilityCubit cubit =
+                VendorRetailerCapabilityCubit(
+                  providerContext.read<VendorRetailerLifecycleRepository>(),
+                );
+            final String? organizationId = portalContext.vendor?.organizationId;
+            if (organizationId != null) {
+              cubit.load(organizationId);
+            }
+            return cubit;
+          },
+        ),
+        // The Retailer lifecycle WRITE, owned here for the same reasons the
+        // read cubits are — and for a fourth that is specific to a write.
+        //
+        // A cubit created inside the detail route would be a level *below* the
+        // session listener, which is precisely the subtree that must be emptied
+        // when the signed-in person changes. An in-flight lifecycle decision is
+        // worse than stale data: an answer that landed after a Vendor A →
+        // Vendor B switch could otherwise leave a "Retailer deactivated" notice
+        // over a Retailer B does not manage. `clear()` advances a request token,
+        // so those answers are dropped on arrival.
+        //
+        // Declared AFTER the list and detail cubits so its callback can read
+        // them: `MultiBlocProvider` nests, so a later provider's `create` sees
+        // every earlier one. That callback is the whole read-after-write path —
+        // `set_vendor_retailer_status` returns four scalars describing what it
+        // did and never a Retailer row, so the canonical statuses always come
+        // from `get_vendor_retailer_detail` and the directory is always re-read
+        // rather than patched in place.
+        BlocProvider<VendorRetailerLifecycleCubit>(
+          create: (BuildContext providerContext) {
+            final VendorRetailerListCubit list = providerContext
+                .read<VendorRetailerListCubit>();
+            final VendorRetailerDetailCubit detail = providerContext
+                .read<VendorRetailerDetailCubit>();
+            return VendorRetailerLifecycleCubit(
+              providerContext.read<VendorRetailerLifecycleRepository>(),
+              onRetailerWritten: (VendorRetailerLifecycleNotice notice) {
+                // Re-reads the Retailer row alone. Shop rows are deliberately
+                // NOT re-read: a lifecycle change moves two status columns and
+                // touches no shop, not even its `updated_at`, so a second call
+                // would learn nothing.
+                detail.refreshAfterLifecycleChange(notice: notice);
+                // And the directory, whose two status columns for this row moved
+                // too.
+                list.refresh();
+              },
+            );
+          },
         ),
         BlocProvider<VendorUserListCubit>(
           create: (BuildContext providerContext) =>
@@ -425,6 +497,10 @@ class _SessionIsolation extends StatelessWidget {
             .read<VendorRetailerListCubit>();
         final VendorRetailerDetailCubit retailerDetail = context
             .read<VendorRetailerDetailCubit>();
+        final VendorRetailerCapabilityCubit retailerCapability = context
+            .read<VendorRetailerCapabilityCubit>();
+        final VendorRetailerLifecycleCubit retailerLifecycle = context
+            .read<VendorRetailerLifecycleCubit>();
         final VendorUserListCubit users = context.read<VendorUserListCubit>();
         final VendorUserDetailCubit userDetail = context
             .read<VendorUserDetailCubit>();
@@ -457,6 +533,16 @@ class _SessionIsolation extends StatelessWidget {
         // arrival rather than repopulating state that has just been emptied.
         retailers.clear();
         retailerDetail.clear();
+        // The Retailer lifecycle pair. The capability is an answer about **one
+        // person in one organization** and must never survive into another's
+        // session — a stale `confirmed` would render a control for somebody the
+        // database has not been asked about. The write cubit goes with it: a
+        // pending decision names a Retailer in the previous Vendor's directory,
+        // and each `clear()` advances a request token so an answer already in
+        // flight is dropped on arrival rather than leaving a "Retailer
+        // deactivated" notice over a Retailer this session does not manage.
+        retailerCapability.clear();
+        retailerLifecycle.clear();
         users.clear();
         userDetail.clear();
         roles.clear();
@@ -486,11 +572,18 @@ class _SessionIsolation extends StatelessWidget {
         dashboard.clear();
         profile.clear();
 
-        if (_identityOf(state) != null) {
+        final _VendorIdentity? identity = _identityOf(state);
+        if (identity != null) {
           // Read again from the backend under the new caller's own identity —
           // which is derived server-side from `auth.uid()`, not from anything
           // passed from here. An open Retailer or user, if any, is re-read by
           // its detail page, which notices its cubit returning to `initial`.
+          //
+          // The capability is re-probed against the **new** session's own
+          // organization id, taken from the identity this listener just
+          // resolved. Nothing is carried over: the previous answer was about a
+          // different person in a different organization.
+          retailerCapability.load(identity.organizationId);
           retailers.load();
           users.load();
           roles.load();
