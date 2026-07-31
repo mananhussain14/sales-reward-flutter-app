@@ -36,6 +36,7 @@ void main() {
   late List<(String, Map<String, Object?>)> invocations;
   late List<String> lineItemIds;
   late List<String> confirmationIds;
+  late List<String> currencyCodes;
   late List<Map<String, Object?>> confirmParams;
 
   late int functionStatus;
@@ -67,6 +68,11 @@ void main() {
           if (rpcThrows != null) throw rpcThrows!;
           return rpcResult;
         },
+        currencyMinorUnit: (String code) async {
+          currencyCodes.add(code);
+          if (rpcThrows != null) throw rpcThrows!;
+          return rpcResult;
+        },
         confirm: (Map<String, Object?> params) async {
           confirmParams.add(params);
           if (rpcThrows != null) throw rpcThrows!;
@@ -80,6 +86,7 @@ void main() {
     submissionId: extractionSubmissionUuid,
     transactionDate: ReceiptCivilDate(2026, 7, 25),
     currencyCode: 'AED',
+    currencyMinorUnit: 2,
     totalMinor: 12550,
   );
 
@@ -87,6 +94,7 @@ void main() {
     invocations = <(String, Map<String, Object?>)>[];
     lineItemIds = <String>[];
     confirmationIds = <String>[];
+    currencyCodes = <String>[];
     confirmParams = <Map<String, Object?>>[];
     functionStatus = 200;
     functionBody = getExtractionBody();
@@ -132,7 +140,7 @@ void main() {
       expect(confirmationIds, <String>[extractionSubmissionUuid]);
     });
 
-    test('confirm passes exactly the nine declared parameters', () async {
+    test('confirm passes exactly the ten declared parameters', () async {
       rpcResult = <Map<String, Object?>>[confirmationResultRow()];
       await buildRepository().confirm(validInput());
 
@@ -140,6 +148,7 @@ void main() {
         'p_submission_id',
         'p_transaction_date',
         'p_currency_code',
+        'p_currency_minor_unit',
         'p_total_minor',
         'p_merchant_name',
         'p_document_number',
@@ -148,6 +157,45 @@ void main() {
         'p_tax_total_minor',
       ]);
       expect(confirmParams.single['p_total_minor'], 12550);
+    });
+
+    test('confirm declares the scale its amounts were built with', () async {
+      rpcResult = <Map<String, Object?>>[confirmationResultRow()];
+      await buildRepository().confirm(
+        const ReceiptConfirmationInput(
+          submissionId: extractionSubmissionUuid,
+          transactionDate: ReceiptCivilDate(2026, 7, 25),
+          currencyCode: 'JPY',
+          currencyMinorUnit: 0,
+          totalMinor: 1000,
+        ),
+      );
+
+      // 1000 minor units of a zero-decimal currency is ¥1000, and the request
+      // says so. The old nine-argument form could not have, which is the whole
+      // reason it no longer exists.
+      expect(confirmParams.single['p_currency_minor_unit'], 0);
+      expect(confirmParams.single['p_total_minor'], 1000);
+    });
+
+    test('the declared scale is an int, never a double', () async {
+      rpcResult = <Map<String, Object?>>[confirmationResultRow()];
+      await buildRepository().confirm(validInput());
+
+      expect(confirmParams.single['p_currency_minor_unit'], isA<int>());
+      expect(confirmParams.single['p_total_minor'], isA<int>());
+    });
+
+    test('the nine-argument parameter set cannot be produced', () async {
+      rpcResult = <Map<String, Object?>>[confirmationResultRow()];
+      await buildRepository().confirm(validInput());
+
+      // The dropped signature. A payload without the tenth key would reach
+      // PostgREST as "function not found", so the client must never build one —
+      // and with a required, non-nullable field it cannot.
+      expect(confirmParams.single.keys, contains('p_currency_minor_unit'));
+      expect(confirmParams.single.keys, hasLength(10));
+      expect(confirmParams.single['p_currency_minor_unit'], isNotNull);
     });
 
     test('a malformed id never leaves the device', () async {
@@ -504,6 +552,7 @@ void main() {
               submissionId: 'not-a-uuid',
               transactionDate: ReceiptCivilDate(2026, 7, 25),
               currencyCode: 'AED',
+              currencyMinorUnit: 2,
               totalMinor: 12550,
             ),
           );
@@ -545,6 +594,123 @@ void main() {
             .value
             .outcome,
         ReceiptConfirmationOutcome.extractionInProgress,
+      );
+    });
+
+    test(
+      'SQLSTATE 22023 is the currency-scale mismatch and nothing else',
+      () async {
+        rpcThrows = const PostgrestException(
+          message:
+              'That confirmation did not state the currency minor unit '
+              'this system uses',
+          code: '22023',
+        );
+
+        final ReceiptExtractionResult<ReceiptConfirmationResult> result =
+            await buildRepository().confirm(validInput());
+
+        expect(
+          (result as ReceiptExtractionFailed<ReceiptConfirmationResult>)
+              .problem,
+          const ExtractionCurrencyScaleMismatchProblem(),
+        );
+      },
+    );
+
+    test(
+      '22023 is not an outage, a denial or an unsupported currency',
+      () async {
+        rpcThrows = const PostgrestException(message: 'x', code: '22023');
+
+        final ReceiptExtractionProblem problem =
+            (await buildRepository().confirm(validInput())
+                    as ReceiptExtractionFailed<ReceiptConfirmationResult>)
+                .problem;
+
+        expect(problem, isNot(isA<ExtractionServiceUnavailableProblem>()));
+        expect(problem, isNot(isA<ExtractionNetworkProblem>()));
+        expect(problem, isNot(isA<ExtractionForbiddenProblem>()));
+        // An unsupported currency is still 23514, raised before the scale is
+        // considered at all, and it maps to the invalid-request problem.
+        expect(problem, isNot(isA<ExtractionInvalidRequestProblem>()));
+      },
+    );
+
+    test(
+      'an unsupported currency stays 23514 and stays invalid-request',
+      () async {
+        rpcThrows = const PostgrestException(
+          message: 'That currency could not be accepted',
+          code: '23514',
+        );
+
+        final ReceiptExtractionResult<ReceiptConfirmationResult> result =
+            await buildRepository().confirm(validInput());
+
+        expect(
+          (result as ReceiptExtractionFailed<ReceiptConfirmationResult>)
+              .problem,
+          isA<ExtractionInvalidRequestProblem>(),
+        );
+      },
+    );
+
+    test('22023 does not carry the SQLSTATE or the backend message', () async {
+      rpcThrows = const PostgrestException(
+        message: 'iso_currency_codes says 0',
+        code: '22023',
+      );
+
+      final ReceiptExtractionProblem problem =
+          (await buildRepository().confirm(validInput())
+                  as ReceiptExtractionFailed<ReceiptConfirmationResult>)
+              .problem;
+
+      // The union carries no field at all, so there is nowhere for a message,
+      // a code or an expected value to hide.
+      expect(problem.props, isEmpty);
+      expect(problem.toString(), isNot(contains('22023')));
+      expect(problem.toString(), isNot(contains('iso_currency_codes')));
+    });
+
+    test('22023 on a confirmation is attempted exactly once', () async {
+      rpcThrows = const PostgrestException(message: 'x', code: '22023');
+
+      await buildRepository().confirm(validInput());
+
+      // Nothing resends a confirmation, least of all one whose declared scale
+      // has just been refused.
+      expect(confirmParams, hasLength(1));
+    });
+  });
+
+  group('22023 is mapped in the confirmation context only', () {
+    test(
+      'the line-item read treats it as operational, not a scale problem',
+      () async {
+        rpcThrows = const PostgrestException(message: 'x', code: '22023');
+
+        final ReceiptExtractionResult<List<ReceiptExtractionLineItem>> result =
+            await buildRepository().lineItems(extractionSubmissionUuid);
+
+        expect(
+          (result as ReceiptExtractionFailed<List<ReceiptExtractionLineItem>>)
+              .problem,
+          const ExtractionServiceUnavailableProblem(),
+        );
+      },
+    );
+
+    test('the confirmation read treats it as operational too', () async {
+      rpcThrows = const PostgrestException(message: 'x', code: '22023');
+
+      final ReceiptExtractionResult<ReceiptConfirmation?> result =
+          await buildRepository().confirmation(extractionSubmissionUuid);
+
+      expect(
+        (result as ReceiptExtractionFailed<ReceiptConfirmation?>).problem,
+        const ExtractionServiceUnavailableProblem(),
       );
     });
   });

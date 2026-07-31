@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/audit/presentation/vendor/pages/vendor_audit_logs_page.dart';
@@ -17,7 +18,10 @@ import '../../features/products/presentation/vendor/pages/vendor_product_detail_
 import '../../features/products/presentation/vendor/pages/vendor_product_edit_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_products_page.dart';
 import '../../features/profile/presentation/vendor/pages/vendor_company_profile_page.dart';
+import '../../features/receipts/domain/repositories/receipt_extraction_repository.dart';
+import '../../features/receipts/presentation/sales_staff/cubit/receipt_review_cubit.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
+import '../../features/receipts/presentation/sales_staff/pages/sales_staff_receipt_review_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
@@ -569,13 +573,43 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
             const SalesStaffSubmitPage(),
       ),
       // SS-05. list_my_receipt_submissions() is scoped to auth.uid() in SQL and
-      // needs no argument. SS-06 remains out of reach: there is still no read
-      // path anywhere in the backend for a submitted image, so a row cannot be
-      // opened (Q1 / D-5).
+      // needs no argument.
       GoRoute(
         path: SalesStaffNavigation.history,
         builder: (BuildContext context, GoRouterState state) =>
             const SalesStaffHistoryPage(),
+        routes: <RouteBase>[
+          // SS-06. The receipt review, and the first route in this role that
+          // carries an id.
+          //
+          // The id is taken from the path and shape-checked here, so a typed or
+          // tampered address produces this screen's own refusal rather than a
+          // PostgREST cast error. That check is NOT authorization: whether the
+          // receipt is this person's is decided by
+          // assert_my_receipt_extraction_access under their own token, and by
+          // nothing on the device. A well-formed id belonging to somebody else
+          // reaches the same refusal.
+          //
+          // The cubit is created HERE rather than in the shell, which is what
+          // bounds the polling loop to this route: leaving the screen closes
+          // the cubit, and closing it is what stops the loop and drops the
+          // short-lived image capability.
+          GoRoute(
+            path: SalesStaffNavigation.reviewSegment,
+            builder: (BuildContext context, GoRouterState state) {
+              final String submissionId =
+                  state.pathParameters['submissionId'] ?? '';
+              return BlocProvider<ReceiptReviewCubit>(
+                create: (BuildContext providerContext) => ReceiptReviewCubit(
+                  repository: providerContext
+                      .read<ReceiptExtractionRepository>(),
+                  submissionId: submissionId,
+                ),
+                child: SalesStaffReceiptReviewPage(submissionId: submissionId),
+              );
+            },
+          ),
+        ],
       ),
     ],
   );

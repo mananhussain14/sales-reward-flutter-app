@@ -6,6 +6,7 @@ import '../../../../core/errors/sql_state.dart';
 import '../../domain/entities/receipt_confirmation.dart';
 import '../../domain/entities/receipt_confirmation_input.dart';
 import '../../domain/entities/receipt_confirmation_result.dart';
+import '../../domain/entities/receipt_currency_minor_unit.dart';
 import '../../domain/entities/receipt_extraction.dart';
 import '../../domain/entities/receipt_extraction_line_item.dart';
 import '../../domain/entities/receipt_extraction_problem.dart';
@@ -119,6 +120,46 @@ final class SupabaseReceiptExtractionRepository
   }
 
   @override
+  Future<ReceiptExtractionResult<ReceiptCurrencyMinorUnit?>> currencyMinorUnit(
+    String currencyCode,
+  ) async {
+    // The same normalization the function applies to its own argument, so the
+    // two can never disagree about which code a given input names.
+    final String code = currencyCode.trim().toUpperCase();
+
+    // A code that is not three letters cannot be in the seeded list, and the
+    // backend already answers a blank one with zero rows. Reporting the same
+    // "unsupported" here costs no round trip and produces an answer no caller
+    // can tell apart from the backend's — which is the point: this is not a
+    // membership rule, and this client carries no list to make it one.
+    if (!_currencyShape.hasMatch(code)) {
+      return const ReceiptExtractionSuccess<ReceiptCurrencyMinorUnit?>(null);
+    }
+
+    final Object? raw;
+    try {
+      raw = await _rpc.fetchCurrencyMinorUnit(code);
+    } on Object catch (error) {
+      return ReceiptExtractionFailed<ReceiptCurrencyMinorUnit?>(
+        _rpcProblem(error),
+      );
+    }
+
+    try {
+      // Zero rows is `null` and means unsupported. A malformed row and a second
+      // row are both unreadable: taking one of two candidate widths is exactly
+      // the silent mis-scaling this lookup exists to prevent.
+      return ReceiptExtractionSuccess<ReceiptCurrencyMinorUnit?>(
+        ReceiptCurrencyMinorUnitParser.parseSingle(raw),
+      );
+    } on ReceiptFormatException {
+      return const ReceiptExtractionFailed<ReceiptCurrencyMinorUnit?>(
+        ExtractionMalformedResponseProblem(),
+      );
+    }
+  }
+
+  @override
   Future<ReceiptExtractionResult<ReceiptConfirmationResult>> confirm(
     ReceiptConfirmationInput input,
   ) async {
@@ -142,7 +183,9 @@ final class SupabaseReceiptExtractionRepository
       raw = await _rpc.confirm(buildReceiptConfirmationParams(input));
     } on Object catch (error) {
       return ReceiptExtractionFailed<ReceiptConfirmationResult>(
-        _rpcProblem(error),
+        // The one call site where `22023` has a meaning, so the one call site
+        // that maps it. See `_rpcProblem`.
+        _rpcProblem(error, inConfirmation: true),
       );
     }
 
@@ -244,6 +287,13 @@ final class SupabaseReceiptExtractionRepository
   }
 }
 
+/// Three uppercase ASCII letters — the *shape* rule, never the membership rule.
+///
+/// Which codes exist is the backend's seeded list, and this client does not
+/// carry it. This only avoids a round trip for an input that could not be in any
+/// such list under any deployment.
+final RegExp _currencyShape = RegExp(r'^[A-Z]{3}$');
+
 /// Classifies a thrown RPC error by SQLSTATE, and by nothing else.
 ///
 /// This is the extraction feature's counterpart to `mapSupabaseError`, and it
@@ -261,9 +311,27 @@ final class SupabaseReceiptExtractionRepository
 /// two produce different unions: that one has no case for `not-found` or for an
 /// invalid-request reason, and widening the shared `Failure` for one feature
 /// would push this contract's distinctions into every other screen.
-ReceiptExtractionProblem _rpcProblem(Object error) {
+///
+/// ## [inConfirmation] exists for exactly one SQLSTATE
+///
+/// `22023` is raised by `confirm_receipt_extraction` and by nothing else on this
+/// contract, and it means one thing there: the declared currency minor unit is
+/// missing or is not the one the backend records. Mapping it globally would
+/// attach that meaning to the line-item and confirmation reads, where it cannot
+/// arise and where "the currency scale must be established again" would be
+/// nonsense. Everywhere else it stays an operational problem, which is the same
+/// fail-closed default any unrecognized code gets.
+ReceiptExtractionProblem _rpcProblem(
+  Object error, {
+  bool inConfirmation = false,
+}) {
   if (error is PostgrestException) {
     return switch (error.code) {
+      // The scale this request declared is not the authoritative one. NOT an
+      // unsupported currency — that is still `23514`, raised before the scale is
+      // considered at all — and never widened into an outage or a denial.
+      SqlState.invalidParameterValue when inConfirmation =>
+        const ExtractionCurrencyScaleMismatchProblem(),
       // The access predicate refused: not an authorized Sales Staff member at
       // all. Never rendered as "not found" — the backend distinguishes the two
       // deliberately, and collapsing them here would undo that.

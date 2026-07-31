@@ -1,9 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// The three authenticated RPCs this client calls directly, named exactly once
+/// The four authenticated RPCs this client calls directly, named exactly once
 /// each.
 ///
-/// The other three of the six authenticated functions are reached through Edge
+/// The other three of the seven authenticated functions are reached through Edge
 /// Functions instead, deliberately:
 ///
 /// * `assert_my_receipt_extraction_access` is the shared authorization
@@ -25,8 +25,21 @@ const String listMyReceiptExtractionLineItemsRpc =
 const String confirmReceiptExtractionRpc = 'confirm_receipt_extraction';
 const String getMyReceiptConfirmationRpc = 'get_my_receipt_confirmation';
 
-/// The only parameter the two reads accept.
+/// The authoritative currency-width lookup.
+///
+/// One code in, at most one row out. It is **not** a list endpoint: there is no
+/// parameterless form, no prefix search and no "all currencies" mode, and this
+/// client never reads the seeded table behind it — that table carries RLS with
+/// zero policies and no grant to the browser roles, so a direct query would
+/// return nothing and making it "work" would mean putting a privileged
+/// credential on a device.
+const String getReceiptCurrencyMinorUnitRpc = 'get_receipt_currency_minor_unit';
+
+/// The only parameter the two id-only reads accept.
 const String extractionSubmissionIdParameter = 'p_submission_id';
+
+/// The only parameter the currency lookup accepts.
+const String currencyMinorUnitCodeParameter = 'p_currency_code';
 
 /// Invokes one of the two id-only reads.
 ///
@@ -39,18 +52,28 @@ const String extractionSubmissionIdParameter = 'p_submission_id';
 typedef ReceiptExtractionReadInvoker =
     Future<Object?> Function(String submissionId);
 
+/// Invokes `get_receipt_currency_minor_unit(text)`.
+///
+/// One `String`, and it is an alphabetic currency code. **No identity travels
+/// beside it and no receipt is named**: the function resolves the caller through
+/// the same permission gate as every other authenticated receipt RPC and reads
+/// nothing that belongs to a tenant.
+typedef ReceiptCurrencyMinorUnitInvoker =
+    Future<Object?> Function(String currencyCode);
+
 /// Invokes `confirm_receipt_extraction(...)`.
 ///
-/// Takes the already-encoded nine-parameter map rather than a domain request, so
+/// Takes the already-encoded ten-parameter map rather than a domain request, so
 /// this boundary has one job and the encoding is pinned by its own test.
 typedef ReceiptConfirmationInvoker =
     Future<Object?> Function(Map<String, Object?> params);
 
 /// The production invokers.
 ///
-/// The only place in the application that names these three RPCs and touches the
+/// The only place in the application that names these four RPCs and touches the
 /// Supabase client for them. Note the call sites: a function name, and one
-/// submission id — or, once, the nine values a confirmation is.
+/// submission id, or one currency code — or, once, the ten values a confirmation
+/// is.
 ReceiptExtractionReadInvoker supabaseReceiptExtractionLineItemsInvoker(
   SupabaseClient client,
 ) {
@@ -66,6 +89,18 @@ ReceiptExtractionReadInvoker supabaseReceiptConfirmationInvoker(
   return (String submissionId) => client.rpc<Object?>(
     getMyReceiptConfirmationRpc,
     params: <String, Object?>{extractionSubmissionIdParameter: submissionId},
+  );
+}
+
+/// The ordinary authenticated client, and no other. The lookup is granted to
+/// `authenticated` alone, so a privileged key would buy nothing and cost
+/// everything.
+ReceiptCurrencyMinorUnitInvoker supabaseReceiptCurrencyMinorUnitInvoker(
+  SupabaseClient client,
+) {
+  return (String currencyCode) => client.rpc<Object?>(
+    getReceiptCurrencyMinorUnitRpc,
+    params: <String, Object?>{currencyMinorUnitCodeParameter: currencyCode},
   );
 }
 
@@ -97,9 +132,11 @@ final class ReceiptExtractionRpcDataSource {
   const ReceiptExtractionRpcDataSource({
     required ReceiptExtractionReadInvoker lineItems,
     required ReceiptExtractionReadInvoker confirmation,
+    required ReceiptCurrencyMinorUnitInvoker currencyMinorUnit,
     required ReceiptConfirmationInvoker confirm,
   }) : _lineItems = lineItems,
        _confirmation = confirmation,
+       _currencyMinorUnit = currencyMinorUnit,
        _confirm = confirm;
 
   /// Builds the data source against a live client.
@@ -107,12 +144,14 @@ final class ReceiptExtractionRpcDataSource {
     return ReceiptExtractionRpcDataSource(
       lineItems: supabaseReceiptExtractionLineItemsInvoker(client),
       confirmation: supabaseReceiptConfirmationInvoker(client),
+      currencyMinorUnit: supabaseReceiptCurrencyMinorUnitInvoker(client),
       confirm: supabaseConfirmReceiptExtractionInvoker(client),
     );
   }
 
   final ReceiptExtractionReadInvoker _lineItems;
   final ReceiptExtractionReadInvoker _confirmation;
+  final ReceiptCurrencyMinorUnitInvoker _currencyMinorUnit;
   final ReceiptConfirmationInvoker _confirm;
 
   Future<Object?> fetchLineItems(String submissionId) =>
@@ -120,6 +159,10 @@ final class ReceiptExtractionRpcDataSource {
 
   Future<Object?> fetchConfirmation(String submissionId) =>
       _confirmation(submissionId);
+
+  /// One currency's decimal width. A pure read, and safe to call again.
+  Future<Object?> fetchCurrencyMinorUnit(String currencyCode) =>
+      _currencyMinorUnit(currencyCode);
 
   /// One confirmation, in one round trip. Never called twice for one submission
   /// of the form.

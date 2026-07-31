@@ -14,9 +14,12 @@ import 'receipt_confirmation_field.dart';
 /// ## Four of these fields are derived and cannot be sent
 ///
 /// [entryMode], [changedFields], [sourceExtractionId] and [confirmationId] are
-/// all server-derived. `confirm_receipt_extraction` takes nine parameters and
-/// **none** of them is an entry mode, a changed-fields list, an extraction id,
-/// an organization id, a shop id or a profile id.
+/// all server-derived — the first two as *outcomes* of the confirmation, decided
+/// by comparing what was sent against what was read. `confirm_receipt_extraction`
+/// takes ten parameters: the submission id and nine values about the receipt,
+/// one of which is the currency's minor unit. **None** of the ten is an entry
+/// mode, a changed-fields list, an extraction id, an organization id, a shop id
+/// or a profile id.
 ///
 /// ## What is absent
 ///

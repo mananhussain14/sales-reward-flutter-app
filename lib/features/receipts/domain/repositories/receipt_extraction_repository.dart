@@ -1,6 +1,7 @@
 import '../entities/receipt_confirmation.dart';
 import '../entities/receipt_confirmation_input.dart';
 import '../entities/receipt_confirmation_result.dart';
+import '../entities/receipt_currency_minor_unit.dart';
 import '../entities/receipt_extraction.dart';
 import '../entities/receipt_extraction_line_item.dart';
 import '../entities/receipt_extraction_request_result.dart';
@@ -10,7 +11,7 @@ import 'receipt_extraction_result.dart';
 /// Everything the receipt review flow needs from the backend, expressed without
 /// a single Supabase, HTTP or JSON type.
 ///
-/// ## Six backend operations, and no seventh
+/// ## Seven backend operations, and no eighth
 ///
 /// | Method | Backend object | Arguments | Writes |
 /// | --- | --- | --- | --- |
@@ -18,7 +19,8 @@ import 'receipt_extraction_result.dart';
 /// | [extraction] | Edge Fn `get-receipt-extraction` | the id only | **yes**¹ |
 /// | [lineItems] | `list_my_receipt_extraction_line_items(uuid)` | the id only | no |
 /// | [imagePreview] | Edge Fn `receipt-image-preview` | the id only | no |
-/// | [confirm] | `confirm_receipt_extraction(uuid, date, text, bigint, …)` | nine values | **yes** |
+/// | [currencyMinorUnit] | `get_receipt_currency_minor_unit(text)` | one code | no |
+/// | [confirm] | `confirm_receipt_extraction(uuid, date, text, smallint, bigint, …)` | ten values | **yes** |
 /// | [confirmation] | `get_my_receipt_confirmation(uuid)` | the id only | no |
 ///
 /// ¹ [extraction] reads, but it is the only function that *completes* an
@@ -26,10 +28,14 @@ import 'receipt_extraction_result.dart';
 /// call repeatedly; it is not, however, a pure read, and this table says so
 /// rather than letting a caller assume otherwise.
 ///
-/// Five of the six take one submission id and no identity beside it. The sixth
-/// takes eight values about the receipt and, again, no identity: the caller
+/// Five of the seven take one submission id and no identity beside it,
+/// [currencyMinorUnit] takes one alphabetic code and no identity at all, and
+/// [confirm] takes ten: the submission id and nine values about the receipt, one
+/// of which is the required currency minor unit. Again no identity — the caller
 /// comes from `auth.uid()`, the Retailer is resolved in SQL, and there is no
-/// argument through which either could be nominated.
+/// argument through which either could be nominated. Nor is there one for an
+/// entry mode or a changed-fields list: both are outcomes the function derives,
+/// not inputs it accepts.
 ///
 /// ## What an implementation may not do
 ///
@@ -94,6 +100,26 @@ abstract interface class ReceiptExtractionRepository {
   /// log, not to an image-cache key. Call this again rather than storing it.
   Future<ReceiptExtractionResult<ReceiptImagePreview>> imagePreview(
     String submissionId,
+  );
+
+  /// How many decimal places one currency is written with, authoritatively.
+  ///
+  /// **A pure read, and the only source of a decimal width in this
+  /// application.** There is no ISO table here, no fallback and no assumed two:
+  /// a width this call has not returned is a width the client does not have, and
+  /// until it does no typed amount may become an integer and no confirmation may
+  /// be sent.
+  ///
+  /// `null` means **unsupported** — the backend returns zero rows for an unknown
+  /// code, a blank one and a null one alike, and that collapse is deliberate: a
+  /// currency this system will not accept and a currency that does not exist are
+  /// the same fact from a caller's side. It is never a refusal; an unauthorized
+  /// caller gets `ExtractionForbiddenProblem` instead.
+  ///
+  /// Safe to call again after a transport fault, which is what makes it the one
+  /// lookup a screen may offer an explicit retry for.
+  Future<ReceiptExtractionResult<ReceiptCurrencyMinorUnit?>> currencyMinorUnit(
+    String currencyCode,
   );
 
   /// Confirms the receipt's values.

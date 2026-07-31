@@ -7,6 +7,7 @@ import '../../domain/entities/receipt_confirmation_field.dart';
 import '../../domain/entities/receipt_confirmation_input.dart';
 import '../../domain/entities/receipt_confirmation_outcome.dart';
 import '../../domain/entities/receipt_confirmation_result.dart';
+import '../../domain/entities/receipt_currency_minor_unit.dart';
 import '../../domain/entities/receipt_extraction.dart';
 import '../../domain/entities/receipt_extraction_failure_code.dart';
 import '../../domain/entities/receipt_extraction_line_item.dart';
@@ -394,6 +395,46 @@ abstract final class ReceiptConfirmationParser {
   }
 }
 
+/// `get_receipt_currency_minor_unit(text)` — zero rows, or exactly one.
+///
+/// The two properties that matter here are both refusals:
+///
+/// * **Zero rows is `null`, and `null` means unsupported.** It is never widened
+///   into a width, never into a default, and never into an error: the backend
+///   answers an unknown code, a blank one and a null one identically, and this
+///   parser preserves that.
+/// * **More than one row is unreadable, not a first-wins.** The function selects
+///   on a primary key, so a second row means the response is not this contract's
+///   — and quietly taking one of two candidate widths is precisely the silent
+///   mis-scaling this whole correction exists to remove.
+abstract final class ReceiptCurrencyMinorUnitParser {
+  static ReceiptCurrencyMinorUnit? parseSingle(Object? raw) {
+    final List<Map<String, Object?>> rows = _rows(raw, 'currency minor unit');
+    if (rows.isEmpty) {
+      return null;
+    }
+    if (rows.length > 1) {
+      throw const ReceiptFormatException(
+        'currency minor unit returned several rows',
+      );
+    }
+
+    final Map<String, Object?> row = rows.first;
+    final String code = _requiredString(
+      row['currency_code'],
+      'currency minor unit.currency_code',
+    ).trim().toUpperCase();
+
+    return ReceiptCurrencyMinorUnit(
+      currencyCode: code,
+      minorUnit: _requiredMinorUnit(
+        row['minor_unit'],
+        'currency minor unit.minor_unit',
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Strict field readers
 //
@@ -551,7 +592,7 @@ int? _optionalMinorUnit(Object? raw) {
 
 int _requiredMinorUnit(Object? raw, String what) {
   final int value = _requiredInt(raw, what);
-  if (value > 4) {
+  if (!isSupportedMinorDigits(value)) {
     throw ReceiptFormatException('$what is not a plausible minor unit');
   }
   return value;

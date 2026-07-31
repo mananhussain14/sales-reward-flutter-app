@@ -140,6 +140,75 @@ void main() {
     });
   });
 
+  group('the currency width comes from the backend and nowhere else', () {
+    late List<File> currencySources;
+
+    setUp(() {
+      // The lookup lives in files whose paths do not all carry the word
+      // `extraction`, so this group widens the scan to the whole receipts
+      // feature rather than relying on the path filter above.
+      currencySources = sources
+          .where((File f) => f.path.contains('/features/receipts/'))
+          .toList();
+      expect(currencySources, isNotEmpty);
+    });
+
+    test('no receipt source names the seeded currency table', () {
+      // It carries RLS with zero policies and no grant to the browser roles.
+      // The lookup function reads it as its DEFINER and returns two values,
+      // which is not the same thing as letting a device read the table.
+      _expectAbsent(currencySources, <String>[
+        "'iso_currency_codes'",
+        '"iso_currency_codes"',
+        '.from(',
+      ], allowInComments: true);
+    });
+
+    test('no receipt source carries an ISO minor-unit map', () {
+      // A second definition of every currency's width, free to drift from the
+      // one the backend actually checks against — and the drift would be
+      // silent, immutable and unrecoverable. The lookup exists so that this
+      // cannot be tempting.
+      for (final File file in currencySources) {
+        final String src = code(file);
+        for (final String pattern in <String>[
+          "'JPY':",
+          '"JPY":',
+          "'KWD':",
+          "'CLF':",
+          "'EUR':",
+          "'USD':",
+        ]) {
+          expect(
+            src.contains(pattern),
+            isFalse,
+            reason: '${file.path} maps a currency code to a value',
+          );
+        }
+      }
+    });
+
+    test('no receipt source keeps a two-decimal fallback', () {
+      // The blocking defect. `defaultMinorDigits` was the name it went by, and
+      // `minorDigitsFor` was the function that returned it for any currency the
+      // backend had not spoken about.
+      _expectAbsent(currencySources, <String>[
+        'defaultMinorDigits',
+        'minorDigitsFor',
+      ], allowInComments: true);
+    });
+
+    test('the lookup names one RPC and one parameter', () {
+      final String source = read('receipt_extraction_rpc_data_source.dart');
+
+      expect(source.contains("'get_receipt_currency_minor_unit'"), isTrue);
+      expect(source.contains("'p_currency_code'"), isTrue);
+      // One code in, at most one row out. There is deliberately no list form.
+      expect(source.contains('list_currencies'), isFalse);
+      expect(source.contains('get_currencies'), isFalse);
+    });
+  });
+
   group('no worker capability exists on the client', () {
     test('no extraction source names a worker RPC', () {
       // All seven are granted to the privileged database role alone: a
@@ -310,7 +379,7 @@ void main() {
   });
 
   group('the RPC contract', () {
-    test('exactly three RPCs are named, and they are authenticated ones', () {
+    test('exactly four RPCs are named, and they are authenticated ones', () {
       final List<String> names =
           RegExp(r"^const String \w+Rpc =\s*'([^']+)'", multiLine: true)
               .allMatches(rpcDataSource.replaceAll('\n    ', ' '))
@@ -321,22 +390,27 @@ void main() {
         'list_my_receipt_extraction_line_items',
         'confirm_receipt_extraction',
         'get_my_receipt_confirmation',
+        'get_receipt_currency_minor_unit',
       ]);
     });
 
-    test('the RPC data source passes only p_submission_id', () {
-      final RegExp params = RegExp(r"'(p_[a-z_]+)'");
-      final Set<String> named = params
-          .allMatches(rpcDataSource)
-          .map((RegExpMatch m) => m.group(1)!)
-          .toSet();
+    test(
+      'the RPC data source passes only p_submission_id and p_currency_code',
+      () {
+        final RegExp params = RegExp(r"'(p_[a-z_]+)'");
+        final Set<String> named = params
+            .allMatches(rpcDataSource)
+            .map((RegExpMatch m) => m.group(1)!)
+            .toSet();
 
-      // The confirmation's other eight parameters are named in the request-body
-      // module and asserted there; this boundary passes an already-encoded map.
-      expect(named, <String>{'p_submission_id'});
-    });
+        // The confirmation's ten parameters are named in the request-body module
+        // and asserted there; this boundary passes an already-encoded map. The
+        // currency lookup takes one code and no identity beside it.
+        expect(named, <String>{'p_submission_id', 'p_currency_code'});
+      },
+    );
 
-    test('the confirmation body declares exactly the nine RPC parameters', () {
+    test('the confirmation body declares exactly the ten RPC parameters', () {
       final List<String> declared =
           RegExp(
                 r"^const String confirmation\w+Parameter =\s*'([^']+)'",
@@ -354,6 +428,7 @@ void main() {
         'p_submission_id',
         'p_transaction_date',
         'p_currency_code',
+        'p_currency_minor_unit',
         'p_total_minor',
         'p_merchant_name',
         'p_document_number',

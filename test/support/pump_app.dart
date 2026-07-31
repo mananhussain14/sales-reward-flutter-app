@@ -23,6 +23,7 @@ import 'package:sale_reward/features/users/domain/repositories/vendor_user_repos
 import 'fakes.dart';
 import 'lifecycle_access_fakes.dart';
 import 'receipt_fakes.dart';
+import 'receipt_review_fakes.dart';
 import 'retailer_owner_overview_fakes.dart';
 import 'retailer_invite_staff_fakes.dart';
 import 'retailer_manage_staff_shops_fakes.dart';
@@ -64,6 +65,7 @@ typedef PumpedApp = ({
   FakePortalContextRepository portal,
   FakeLifecycleAccessRepository lifecycleAccess,
   FakeReceiptRepository receipts,
+  FakeReceiptExtractionRepository receiptExtraction,
   FakeReceiptImageSource images,
   FakeVendorRetailerRepository retailers,
   FakeVendorRetailerLifecycleRepository retailerLifecycle,
@@ -102,6 +104,7 @@ Future<PumpedApp> pumpApp(
   bool settle = true,
   FakeLifecycleAccessRepository? lifecycleAccess,
   FakeReceiptRepository? receipts,
+  FakeReceiptExtractionRepository? receiptExtraction,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
   FakeVendorRetailerLifecycleRepository? retailerLifecycle,
@@ -145,6 +148,10 @@ Future<PumpedApp> pumpApp(
       lifecycleAccess ?? FakeLifecycleAccessRepository();
   final FakeReceiptRepository receiptRepository =
       receipts ?? FakeReceiptRepository();
+  // Always supplied, like the receipt repository above, so a test that never
+  // opens the review screen still gets a fake rather than the service locator.
+  final FakeReceiptExtractionRepository extractionRepository =
+      receiptExtraction ?? FakeReceiptExtractionRepository();
   final FakeReceiptImageSource imageSource = images ?? FakeReceiptImageSource();
   final FakeVendorRetailerRepository retailerRepository =
       retailers ?? FakeVendorRetailerRepository();
@@ -217,6 +224,7 @@ Future<PumpedApp> pumpApp(
       portalContextRepository: portal,
       lifecycleAccessRepository: lifecycleAccessRepository,
       receiptRepository: receiptRepository,
+      receiptExtractionRepository: extractionRepository,
       receiptImageSource: imageSource,
       vendorRetailerRepository: retailerRepository,
       vendorRetailerLifecycleRepository: providedLifecycle,
@@ -244,6 +252,7 @@ Future<PumpedApp> pumpApp(
     portal: portal,
     lifecycleAccess: lifecycleAccessRepository,
     receipts: receiptRepository,
+    receiptExtraction: extractionRepository,
     images: imageSource,
     retailers: retailerRepository,
     retailerLifecycle: lifecycleRepository,
@@ -270,6 +279,7 @@ Future<PumpedApp> pumpAppInRole(
   Size surface = phoneSurface,
   FakeLifecycleAccessRepository? lifecycleAccess,
   FakeReceiptRepository? receipts,
+  FakeReceiptExtractionRepository? receiptExtraction,
   FakeReceiptImageSource? images,
   FakeVendorRetailerRepository? retailers,
   FakeVendorRetailerLifecycleRepository? retailerLifecycle,
@@ -308,6 +318,7 @@ Future<PumpedApp> pumpAppInRole(
     surface: surface,
     lifecycleAccess: lifecycleAccess,
     receipts: receipts,
+    receiptExtraction: receiptExtraction,
     images: images,
     retailers: retailers,
     retailerLifecycle: retailerLifecycle,

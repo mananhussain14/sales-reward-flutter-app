@@ -12,6 +12,7 @@ import '../features/products/domain/repositories/retailer_product_repository.dar
 import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import '../features/products/domain/repositories/vendor_product_repository.dart';
 import '../features/profile/domain/repositories/vendor_profile_repository.dart';
+import '../features/receipts/domain/repositories/receipt_extraction_repository.dart';
 import '../features/receipts/domain/repositories/receipt_repository.dart';
 import '../features/receipts/domain/services/receipt_image_source.dart';
 import '../features/retailers/domain/repositories/vendor_retailer_lifecycle_repository.dart';
@@ -52,6 +53,7 @@ class SaleRewardApp extends StatefulWidget {
     this.portalContextRepository,
     this.lifecycleAccessRepository,
     this.receiptRepository,
+    this.receiptExtractionRepository,
     this.receiptImageSource,
     this.vendorRetailerRepository,
     this.vendorRetailerLifecycleRepository,
@@ -80,6 +82,16 @@ class SaleRewardApp extends StatefulWidget {
   /// See the provider in [State.build] for why.
   final LifecycleAccessRepository? lifecycleAccessRepository;
   final ReceiptRepository? receiptRepository;
+
+  /// The receipt extraction and confirmation contracts, kept behind their own
+  /// interface for the same reason the staff invitation and lifecycle writes
+  /// are kept apart from the staff read: the submission repository guarantees
+  /// it can upload a receipt and read a history, and this one begins only after
+  /// a receipt is already stored.
+  ///
+  /// Like [lifecycleAccessRepository] and unlike everything else here, it is
+  /// **not** resolved in `initState`. See the provider in [State.build].
+  final ReceiptExtractionRepository? receiptExtractionRepository;
   final ReceiptImageSource? receiptImageSource;
   final VendorRetailerRepository? vendorRetailerRepository;
   final VendorRetailerLifecycleRepository? vendorRetailerLifecycleRepository;
@@ -220,6 +232,21 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         // service locator — is what lets a widget test drive the whole flow over
         // fakes with no Supabase client and no platform channel.
         RepositoryProvider<ReceiptRepository>.value(value: _receiptRepository),
+        // DELIBERATELY LAZY, for the same reason [LifecycleAccessRepository]
+        // above is: exactly one route reads it — the receipt review screen —
+        // so resolving it eagerly would make every application and every widget
+        // test pay for a dependency almost none of them reach, and would force
+        // a fake into tests that never open a receipt.
+        //
+        // `create` defers the lookup until the review route actually builds its
+        // cubit, which is also exactly when the service locator is guaranteed
+        // to have been configured. A widget test that DOES open the screen
+        // supplies its own fake and never touches Supabase.
+        RepositoryProvider<ReceiptExtractionRepository>(
+          create: (BuildContext context) =>
+              widget.receiptExtractionRepository ??
+              getIt<ReceiptExtractionRepository>(),
+        ),
         RepositoryProvider<ReceiptImageSource>.value(
           value: _receiptImageSource,
         ),

@@ -159,3 +159,12 @@ Map<String, Object?> confirmationResultRow([
     'changed_fields': <String>[],
   }..addAll(overrides);
 }
+
+/// One `get_receipt_currency_minor_unit` row.
+///
+/// Two columns and no more, exactly as the function declares: the normalized
+/// code and its width. There is no name, no numeric code, no symbol and no
+/// provenance to fixture, because there is none to return.
+Map<String, Object?> currencyMinorUnitRow(String code, int minorUnit) {
+  return <String, Object?>{'currency_code': code, 'minor_unit': minorUnit};
+}

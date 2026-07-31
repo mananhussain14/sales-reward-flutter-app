@@ -10,14 +10,20 @@ import '../../support/receipt_extraction_fakes.dart';
 /// What leaves the device, exhaustively.
 ///
 /// Two request shapes exist in this feature and both are pinned here rather than
-/// trusted to a comment: the one-key Edge Function body, and the nine-parameter
+/// trusted to a comment: the one-key Edge Function body, and the ten-parameter
 /// confirmation. A field the backend derives must be impossible to send, and the
 /// only way to prove that cheaply is to assert the whole key set.
+///
+/// The tenth parameter is `p_currency_minor_unit`, and it is required on both
+/// sides. It declares the scale the three amount integers were built with, so
+/// the backend can verify it rather than infer it — the nine-argument signature
+/// could not express a correct JPY confirmation at all, and no longer exists.
 void main() {
   ReceiptConfirmationInput input({
     String submissionId = extractionSubmissionUuid,
     ReceiptCivilDate transactionDate = const ReceiptCivilDate(2026, 7, 25),
     String currencyCode = 'AED',
+    int currencyMinorUnit = 2,
     int totalMinor = 12550,
     String? merchantName,
     String? documentNumber,
@@ -29,6 +35,7 @@ void main() {
       submissionId: submissionId,
       transactionDate: transactionDate,
       currencyCode: currencyCode,
+      currencyMinorUnit: currencyMinorUnit,
       totalMinor: totalMinor,
       merchantName: merchantName,
       documentNumber: documentNumber,
@@ -61,11 +68,12 @@ void main() {
   });
 
   group('the confirmation parameter map', () {
-    test('names exactly the nine parameters the RPC declares', () {
+    test('names exactly the ten parameters the RPC declares', () {
       expect(buildReceiptConfirmationParams(input()).keys.toList(), <String>[
         'p_submission_id',
         'p_transaction_date',
         'p_currency_code',
+        'p_currency_minor_unit',
         'p_total_minor',
         'p_merchant_name',
         'p_document_number',
@@ -73,6 +81,99 @@ void main() {
         'p_subtotal_minor',
         'p_tax_total_minor',
       ]);
+    });
+
+    test('the declared scale sits beside the currency it qualifies', () {
+      final List<String> keys = buildReceiptConfirmationParams(
+        input(),
+      ).keys.toList();
+
+      // The function declares it there, before the amounts it scales, because
+      // it is a property of the currency and not a tenth independent value.
+      expect(
+        keys.indexOf('p_currency_minor_unit'),
+        keys.indexOf('p_currency_code') + 1,
+      );
+      expect(
+        keys.indexOf('p_currency_minor_unit'),
+        lessThan(keys.indexOf('p_total_minor')),
+      );
+    });
+
+    test('the old nine-argument parameter set cannot be produced', () {
+      // A payload without the tenth key would reach PostgREST as "function not
+      // found". With a required, non-nullable `int` field there is no input
+      // that omits it and no encoder branch that drops it.
+      for (final ReceiptConfirmationInput candidate
+          in <ReceiptConfirmationInput>[
+            input(),
+            input(currencyMinorUnit: 0),
+            input(
+              merchantName: 'Marina Pharmacy',
+              documentNumber: 'INV-2026/004512',
+              transactionTime: const ReceiptCivilTime(9, 24),
+              subtotalMinor: 11952,
+              taxTotalMinor: 598,
+            ),
+          ]) {
+        final Map<String, Object?> params = buildReceiptConfirmationParams(
+          candidate,
+        );
+        expect(params.keys, hasLength(10));
+        expect(params.containsKey('p_currency_minor_unit'), isTrue);
+        expect(params['p_currency_minor_unit'], isNotNull);
+      }
+    });
+
+    test(
+      'the declared scale is an int, never a double and never defaulted',
+      () {
+        for (final int width in <int>[0, 2, 3, 4]) {
+          final Map<String, Object?> params = buildReceiptConfirmationParams(
+            input(currencyMinorUnit: width),
+          );
+          expect(params['p_currency_minor_unit'], width);
+          expect(params['p_currency_minor_unit'], isA<int>());
+          expect(params['p_currency_minor_unit'], isNot(isA<double>()));
+        }
+      },
+    );
+
+    test('the four widths reach the RPC beside the integers they scale', () {
+      // JPY 1000 is a thousand yen and says so; a two-decimal declaration on
+      // the same integer would be ¥10.00 and the backend refuses it with 22023
+      // rather than storing either.
+      final Map<String, Object?> jpy = buildReceiptConfirmationParams(
+        input(currencyCode: 'JPY', currencyMinorUnit: 0, totalMinor: 1000),
+      );
+      expect(jpy['p_currency_minor_unit'], 0);
+      expect(jpy['p_total_minor'], 1000);
+
+      final Map<String, Object?> kwd = buildReceiptConfirmationParams(
+        input(currencyCode: 'KWD', currencyMinorUnit: 3, totalMinor: 1234),
+      );
+      expect(kwd['p_currency_minor_unit'], 3);
+      expect(kwd['p_total_minor'], 1234);
+
+      final Map<String, Object?> clf = buildReceiptConfirmationParams(
+        input(currencyCode: 'CLF', currencyMinorUnit: 4, totalMinor: 12345),
+      );
+      expect(clf['p_currency_minor_unit'], 4);
+      expect(clf['p_total_minor'], 12345);
+    });
+
+    test('a width the backend cannot report is refused before it is sent', () {
+      expect(
+        input(currencyMinorUnit: 5).validate(),
+        ReceiptConfirmationProblem.invalidCurrencyMinorUnit,
+      );
+      expect(
+        input(currencyMinorUnit: -1).validate(),
+        ReceiptConfirmationProblem.invalidCurrencyMinorUnit,
+      );
+      for (final int width in <int>[0, 2, 3, 4]) {
+        expect(input(currencyMinorUnit: width).validate(), isNull);
+      }
     });
 
     test('the key set is fixed, whatever the optional values are', () {

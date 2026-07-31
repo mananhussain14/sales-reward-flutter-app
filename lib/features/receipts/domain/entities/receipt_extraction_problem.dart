@@ -72,6 +72,29 @@ final class ExtractionInvalidRequestProblem extends ReceiptExtractionProblem {
   List<Object?> get props => <Object?>[reason];
 }
 
+/// SQLSTATE `22023`, on a confirmation and on nothing else.
+///
+/// The scale this client stated for the amounts is not the one the backend
+/// records for that currency — or none was stated at all, which the backend
+/// treats as the same defect for the same reason: in neither case is there a
+/// verified agreement about what the integers mean.
+///
+/// It is **not** an unsupported currency (that is still `23514`), not a denial,
+/// not an outage and not a transport fault. It means the width has to be
+/// established again before another confirmation may be attempted, and nothing
+/// in this application resends the confirmation on its own — a mis-scaled
+/// confirmation is immutable, so a resend that guessed the same width again
+/// would either fail identically or, worse, succeed against a width that had
+/// meanwhile changed.
+///
+/// Carries no SQLSTATE, no Postgres message and no expected value. The backend
+/// deliberately names none of them, and a client that showed "expected 0" would
+/// be inviting somebody to retype a figure to match a number they cannot check.
+final class ExtractionCurrencyScaleMismatchProblem
+    extends ReceiptExtractionProblem {
+  const ExtractionCurrencyScaleMismatchProblem();
+}
+
 /// `503 unavailable`.
 ///
 /// The endpoint could not complete: missing server configuration, a database

@@ -2,10 +2,11 @@ import 'package:equatable/equatable.dart';
 
 import 'receipt_civil_date.dart';
 import 'receipt_civil_time.dart';
+import 'receipt_currency_minor_unit.dart';
 
 /// Everything a confirmation sends, and nothing else.
 ///
-/// Nine values, matching `confirm_receipt_extraction`'s nine parameters exactly.
+/// Ten values, matching `confirm_receipt_extraction`'s ten parameters exactly.
 /// There is **no** field here for an organization id, shop id, profile id,
 /// membership id, extraction id, entry mode, changed-fields list or duplicate
 /// signal — every one of those is derived server-side, and the absence of a
@@ -20,11 +21,22 @@ import 'receipt_civil_time.dart';
 ///
 /// Null and `0` stay apart. An omitted subtotal is null, not zero, because the
 /// comparison that derives `changed_fields` treats them as different facts.
+///
+/// ## [currencyMinorUnit] is required, is an `int`, and has no default
+///
+/// It is the **scale those integers were built with**, declared so the backend
+/// can check it against its own authority and refuse rather than store a
+/// mis-scaled immutable row. A default of `2` here would silently re-create the
+/// defect this field exists to close — for JPY a total 100× too large, for KWD
+/// 10× too small — so there is none, and there is no nullable path to the RPC
+/// either. The value comes from `get_receipt_currency_minor_unit`, never from a
+/// table this client carries.
 final class ReceiptConfirmationInput extends Equatable {
   const ReceiptConfirmationInput({
     required this.submissionId,
     required this.transactionDate,
     required this.currencyCode,
+    required this.currencyMinorUnit,
     required this.totalMinor,
     this.merchantName,
     this.documentNumber,
@@ -42,6 +54,10 @@ final class ReceiptConfirmationInput extends Equatable {
   /// `p_currency_code` — required. An ISO 4217 alphabetic code, sent as a
   /// string; the backend upper-cases, trims and foreign-key checks it.
   final String currencyCode;
+
+  /// `p_currency_minor_unit` — required. The scale the three amounts below were
+  /// built with, which the backend verifies against [currencyCode]'s own.
+  final int currencyMinorUnit;
 
   /// `p_total_minor` — required, integer minor units.
   final int totalMinor;
@@ -76,6 +92,12 @@ final class ReceiptConfirmationInput extends Equatable {
     if (!_currency.hasMatch(currencyCode.trim().toUpperCase())) {
       return ReceiptConfirmationProblem.invalidCurrency;
     }
+    // A width outside the range the backend can report is a defect in this
+    // build rather than anything a person typed. Refused here so it can never
+    // become a `22023` somebody has to interpret — and never a stored row.
+    if (!isSupportedMinorDigits(currencyMinorUnit)) {
+      return ReceiptConfirmationProblem.invalidCurrencyMinorUnit;
+    }
     if (_isOutOfRange(totalMinor)) {
       return ReceiptConfirmationProblem.invalidTotal;
     }
@@ -105,6 +127,7 @@ final class ReceiptConfirmationInput extends Equatable {
     submissionId,
     transactionDate,
     currencyCode,
+    currencyMinorUnit,
     totalMinor,
     merchantName,
     documentNumber,
@@ -118,6 +141,7 @@ final class ReceiptConfirmationInput extends Equatable {
 enum ReceiptConfirmationProblem {
   invalidSubmissionId,
   invalidCurrency,
+  invalidCurrencyMinorUnit,
   invalidTotal,
   invalidSubtotal,
   invalidTax,
