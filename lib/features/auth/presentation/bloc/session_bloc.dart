@@ -69,6 +69,7 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
        super(const SessionInitial()) {
     on<SessionStarted>(_onStarted);
     on<SessionContextRequested>(_onContextRequested);
+    on<SessionContextRevalidationRequested>(_onContextRevalidationRequested);
     on<SessionAuthChanged>(_onAuthChanged);
     on<_SessionResolutionSettled>(_onResolutionSettled);
   }
@@ -120,6 +121,23 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
       return;
     }
     _beginResolution(user.id, emit);
+  }
+
+  void _onContextRevalidationRequested(
+    SessionContextRevalidationRequested event,
+    Emitter<SessionState> emit,
+  ) {
+    final AuthUser? user = _auth.currentUser;
+    if (user == null) {
+      _goUnauthenticated(emit);
+      return;
+    }
+
+    _beginResolution(
+      user.id,
+      emit,
+      preserveActiveState: state is SessionActive,
+    );
   }
 
   void _onAuthChanged(SessionAuthChanged event, Emitter<SessionState> emit) {
@@ -190,7 +208,11 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
   /// Synchronous: it sets up the new generation, emits the interim state, and
   /// fires the RPC without awaiting it. The result returns as
   /// [_SessionResolutionSettled].
-  void _beginResolution(String userId, Emitter<SessionState> emit) {
+  void _beginResolution(
+    String userId,
+    Emitter<SessionState> emit, {
+    bool preserveActiveState = false,
+  }) {
     final bool isUserChange =
         _currentUserId != null && userId != _currentUserId;
 
@@ -214,7 +236,9 @@ class SessionBloc extends Bloc<SessionEvent, SessionState> {
     _currentUserId = userId;
     _inFlightGeneration = generation;
 
-    emit(const SessionResolving());
+    if (!preserveActiveState) {
+      emit(const SessionResolving());
+    }
 
     // Fire and forget. The generation and owner are captured here and validated
     // at the commit point; the future is never awaited inside a handler.

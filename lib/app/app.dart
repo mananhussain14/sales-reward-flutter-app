@@ -138,6 +138,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final RetailerStaffLifecycleRepository _retailerStaffLifecycleRepository;
   late final RetailerProductRepository _retailerProductRepository;
   late final SessionBloc _sessionBloc;
+  late final AppLifecycleListener _appLifecycleListener;
   late final ThemeCubit _themeCubit;
   late final GoRouter _router;
 
@@ -191,12 +192,21 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
           widget.portalContextRepository ?? getIt<PortalContextRepository>(),
     )..add(const SessionStarted());
 
+    _appLifecycleListener = AppLifecycleListener(
+      onResume: () {
+        if (!_sessionBloc.isClosed) {
+          _sessionBloc.add(const SessionContextRevalidationRequested());
+        }
+      },
+    );
+
     _themeCubit = ThemeCubit(initialMode: widget.initialThemeMode);
     _router = buildAppRouter(sessionBloc: _sessionBloc);
   }
 
   @override
   void dispose() {
+    _appLifecycleListener.dispose();
     _router.dispose();
     _themeCubit.close();
     _sessionBloc.close();
