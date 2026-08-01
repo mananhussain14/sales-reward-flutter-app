@@ -47,6 +47,34 @@ abstract final class RetailerOwnerNavigation {
   /// Web route `/retailer/products`.
   static const String products = '$prefix/products';
 
+  /// Web route `/retailer/campaigns`.
+  ///
+  /// Backed by `list_my_retailer_campaigns()`, which takes zero arguments and
+  /// resolves through
+  /// `resolve_retailer_member_organization('CAMPAIGNS_VIEW_ASSIGNED')` — a
+  /// permission mapped to `RETAILER_OWNER` alone. The Retailer Manager has no
+  /// equivalent destination and no equivalent route, because that resolver
+  /// refuses them with `42501`.
+  static const String campaigns = '$prefix/campaigns';
+
+  /// The relative segment of the campaign detail route.
+  ///
+  /// Nested under [campaigns] rather than sitting beside it, for the same
+  /// reason every Vendor detail route is nested under its list:
+  /// `indexForLocation` matches on the longest prefix, so the Campaigns
+  /// destination stays highlighted while one campaign is open, and Back has an
+  /// obvious place to return to.
+  static const String campaignDetailSegment = ':campaignId';
+
+  /// The detail route for one campaign.
+  ///
+  /// The campaign id is the **only** thing this address carries. There is no
+  /// organization, Vendor, version, snapshot or profile in it: every one of
+  /// those is resolved in SQL from `auth.uid()`, and an id in a route is a value
+  /// a person can edit. Reaching another Retailer's campaign this way returns
+  /// zero rows from `get_my_retailer_campaign()`, not a different screen.
+  static String campaignDetail(String campaignId) => '$campaigns/$campaignId';
+
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
       label: 'Overview',
@@ -75,6 +103,23 @@ abstract final class RetailerOwnerNavigation {
       selectedIcon: Icons.inventory_2_rounded,
       path: products,
       requiredCapability: RetailerCapability.viewAssignedProducts,
+    ),
+    // No `requiredCapability`, because the backend returns no flag for this
+    // one. `get_retailer_owner_portal_context()` predates the campaign
+    // contracts and its `capabilities` block was deliberately **not** widened
+    // when they shipped — so there is nothing to read, and inventing a hint
+    // from a role name would be exactly the client-side authorization this
+    // codebase refuses everywhere else.
+    //
+    // Always showing it is the safe direction. Navigation is not authorization:
+    // if `CAMPAIGNS_VIEW_ASSIGNED` is ever unmapped from `RETAILER_OWNER`, the
+    // RPC raises `42501` and the screen renders the shared denial view. A
+    // hidden entry would have granted nothing either.
+    RoleDestination(
+      label: 'Campaigns',
+      icon: Icons.campaign_outlined,
+      selectedIcon: Icons.campaign_rounded,
+      path: campaigns,
     ),
   ];
 

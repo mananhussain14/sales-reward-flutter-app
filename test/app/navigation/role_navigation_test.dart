@@ -123,12 +123,12 @@ void main() {
       );
     });
 
-    test('Retailer Owner: Overview, Shops, Staff, Products', () {
+    test('Retailer Owner: Overview, Shops, Staff, Products, Campaigns', () {
       expect(
         RetailerOwnerNavigation.model.destinations.map(
           (RoleDestination d) => d.label,
         ),
-        <String>['Overview', 'Shops', 'Staff', 'Products'],
+        <String>['Overview', 'Shops', 'Staff', 'Products', 'Campaigns'],
       );
     });
 
@@ -141,12 +141,46 @@ void main() {
       );
     });
 
-    test('Sales Staff: Submit and History only', () {
+    test('Sales Staff: Submit, History, Campaigns', () {
+      // Submit stays first, and stays the landing tab: the primary action is
+      // still one tap away, which is the reason this shell has a bottom bar.
       expect(
         SalesStaffNavigation.model.destinations.map(
           (RoleDestination d) => d.label,
         ),
-        <String>['Submit', 'History'],
+        <String>['Submit', 'History', 'Campaigns'],
+      );
+      expect(
+        SalesStaffNavigation.model.landingPath,
+        SalesStaffNavigation.submit,
+      );
+    });
+
+    test('Campaigns never appears for the Retailer Manager', () {
+      // CAMPAIGNS_VIEW_ASSIGNED is mapped to RETAILER_OWNER alone and
+      // STAFF_CAMPAIGNS_VIEW to SALES_STAFF alone, so every campaign RPC
+      // refuses a Manager. Offering the entry would advertise a capability the
+      // database will not grant.
+      for (final RoleDestination destination
+          in RetailerManagerNavigation.model.destinations) {
+        expect(destination.label.toLowerCase(), isNot(contains('campaign')));
+        expect(destination.path ?? '', isNot(contains('campaign')));
+      }
+    });
+
+    test('the Vendor Campaigns entry stays a non-navigable placeholder', () {
+      // Campaign management is a Vendor capability exercised on the WEB
+      // application. This milestone builds no Vendor campaign surface in
+      // Flutter, so the long-standing roadmap placeholder must stay a
+      // placeholder rather than becoming a route.
+      final RoleDestination campaigns = VendorNavigation.model.destinations
+          .firstWhere((RoleDestination d) => d.label == 'Campaigns');
+
+      expect(campaigns.isEnabled, isFalse);
+      expect(campaigns.path, isNull);
+      expect(
+        VendorNavigation.model.routableDestinations,
+        isNot(contains(campaigns)),
       );
     });
 

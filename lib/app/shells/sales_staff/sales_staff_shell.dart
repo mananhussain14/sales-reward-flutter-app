@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../features/auth/domain/entities/portal_context.dart';
 import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../../features/auth/presentation/bloc/session_bloc.dart';
+import '../../../features/campaigns/domain/repositories/staff_campaign_repository.dart';
+import '../../../features/campaigns/presentation/shared/campaign_detail_cubit.dart';
+import '../../../features/campaigns/presentation/shared/campaign_list_cubit.dart';
 import '../../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../../features/receipts/presentation/sales_staff/cubit/receipt_history_cubit.dart';
@@ -70,8 +73,33 @@ class SalesStaffShell extends StatelessWidget {
                   .read<ReceiptHistoryCubit>()
                   .refresh,
             )..load(),
-            child: BlocProvider<SalesStaffShellBloc>(
-              create: (_) => SalesStaffShellBloc(),
+            child: MultiBlocProvider(
+              providers: <BlocProvider<dynamic>>[
+                BlocProvider<SalesStaffShellBloc>(
+                  create: (_) => SalesStaffShellBloc(),
+                ),
+                // The campaign cubits, deliberately NOT loaded on creation —
+                // unlike the two receipt cubits above, which back the landing
+                // tab. Entering this shell must still issue exactly the reads
+                // the Submit screen needs; the Campaigns tab reads itself when
+                // a user actually opens it.
+                //
+                // Provided here rather than on the routes so both sit ABOVE the
+                // session listener below, which is the subtree that has to be
+                // emptied when the signed-in person changes.
+                BlocProvider<SalesStaffCampaignListCubit>(
+                  create: (BuildContext providerContext) =>
+                      SalesStaffCampaignListCubit(
+                        providerContext.read<StaffCampaignRepository>(),
+                      ),
+                ),
+                BlocProvider<SalesStaffCampaignDetailCubit>(
+                  create: (BuildContext providerContext) =>
+                      SalesStaffCampaignDetailCubit(
+                        providerContext.read<StaffCampaignRepository>(),
+                      ),
+                ),
+              ],
               child: _SessionIsolation(
                 child: RoleShellScaffold<SalesStaffShellBloc>(
                   location: location,
@@ -112,17 +140,32 @@ class _SessionIsolation extends StatelessWidget {
         final ReceiptSubmissionCubit submission = context
             .read<ReceiptSubmissionCubit>();
         final ReceiptHistoryCubit history = context.read<ReceiptHistoryCubit>();
+        final SalesStaffCampaignListCubit campaigns = context
+            .read<SalesStaffCampaignListCubit>();
+        final SalesStaffCampaignDetailCubit campaignDetail = context
+            .read<SalesStaffCampaignDetailCubit>();
 
         if (_isSalesStaff(state)) {
           // A new Sales Staff session. Everything is read again from the
           // backend under the new caller's own identity.
           submission.load();
           history.load();
+          // The campaign cubits are deliberately NOT reloaded here. They return
+          // to `initial`, and the Campaigns tab reads itself through `loadOnce`
+          // if the new session actually opens it — eagerly refetching a screen
+          // nobody is looking at would issue a request for nothing.
           return;
         }
 
         submission.clear();
         history.clear();
+        // The campaigns go with them. What a Vendor offers a Retailer, on what
+        // terms and against which products, is private to that commercial
+        // relationship and must not survive into another person's session.
+        // `clear()` advances a request token too, so a read already in flight
+        // for the previous identity is dropped on arrival.
+        campaigns.clear();
+        campaignDetail.clear();
       },
       child: child,
     );

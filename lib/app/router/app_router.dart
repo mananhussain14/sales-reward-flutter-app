@@ -10,6 +10,10 @@ import '../../features/auth/presentation/pages/access_denied_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/unavailable_page.dart';
+import '../../features/campaigns/presentation/retailer_owner/pages/retailer_owner_campaign_detail_page.dart';
+import '../../features/campaigns/presentation/retailer_owner/pages/retailer_owner_campaigns_page.dart';
+import '../../features/campaigns/presentation/sales_staff/pages/sales_staff_campaign_detail_page.dart';
+import '../../features/campaigns/presentation/sales_staff/pages/sales_staff_campaigns_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import '../../features/products/presentation/retailer/pages/retailer_products_page.dart';
@@ -509,6 +513,40 @@ RouteBase _retailerOwnerRoutes(SessionBloc bloc) {
         builder: (BuildContext context, GoRouterState state) =>
             const RetailerProductsPage(role: PortalKind.retailerOwner),
       ),
+      // RO-05. Backed by list_my_retailer_campaigns(), which takes ZERO
+      // arguments and resolves through
+      // resolve_retailer_member_organization('CAMPAIGNS_VIEW_ASSIGNED') — a
+      // permission mapped to RETAILER_OWNER alone, which is why there is no
+      // Manager equivalent below.
+      //
+      // READ-ONLY. There is no create, edit, publish, pause, resume, version or
+      // cancel control on either of these screens, and no campaign write RPC is
+      // named anywhere in this application: all of them are gated on
+      // CAMPAIGNS_MANAGE, a Vendor capability exercised on the Web.
+      GoRoute(
+        path: RetailerOwnerNavigation.campaigns,
+        builder: (BuildContext context, GoRouterState state) =>
+            const RetailerOwnerCampaignsPage(),
+        routes: <RouteBase>[
+          // Nested, so the Campaigns destination stays selected while one
+          // campaign is open and Back has a list to return to.
+          //
+          // The id is taken from the path and passed through unvalidated. That
+          // is deliberate: the repository refuses a malformed id locally and
+          // answers exactly as the backend answers for an id that names no
+          // readable campaign, so a mistyped address and another Retailer's
+          // campaign reach the identical screen. The check that matters is
+          // get_my_retailer_campaign()'s own — it re-derives the Retailer from
+          // auth.uid() and returns zero rows — not anything on the device.
+          GoRoute(
+            path: RetailerOwnerNavigation.campaignDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                RetailerOwnerCampaignDetailPage(
+                  campaignId: state.pathParameters['campaignId'] ?? '',
+                ),
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -608,6 +646,34 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
                 child: SalesStaffReceiptReviewPage(submissionId: submissionId),
               );
             },
+          ),
+        ],
+      ),
+      // SS-07. Backed by list_my_staff_campaigns(), which takes ZERO arguments
+      // and resolves through
+      // resolve_retailer_member_organization('STAFF_CAMPAIGNS_VIEW') — a
+      // SEPARATE permission from the Retailer Owner's, returning fewer columns
+      // and only ACTIVE/SCHEDULED campaigns.
+      //
+      // READ-ONLY, and narrower than the Owner's: no Vendor name, no campaign
+      // history, no Vendor action and no Owner action.
+      GoRoute(
+        path: SalesStaffNavigation.campaigns,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SalesStaffCampaignsPage(),
+        routes: <RouteBase>[
+          // Nested, like the receipt review above and for the same reason.
+          //
+          // The id is an address only. get_my_staff_campaign() re-derives the
+          // Retailer from auth.uid() AND re-applies the ACTIVE/SCHEDULED
+          // filter, so a seller who types the id of a paused campaign reaches
+          // the same not-found screen as one who types nonsense.
+          GoRoute(
+            path: SalesStaffNavigation.campaignDetailSegment,
+            builder: (BuildContext context, GoRouterState state) =>
+                SalesStaffCampaignDetailPage(
+                  campaignId: state.pathParameters['campaignId'] ?? '',
+                ),
           ),
         ],
       ),
