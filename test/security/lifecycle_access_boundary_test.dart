@@ -281,12 +281,22 @@ void main() {
       // without protecting anything: on its own it discloses no lifecycle
       // diagnosis. The five codes below exist nowhere else in the product and
       // are the ones whose leakage would name a cause.
+      //
+      // The fifth is matched as a QUOTED LITERAL rather than as a bare
+      // substring, and only the fifth. `AMBIGUOUS` is short enough to be a
+      // prefix of a token from an unrelated vocabulary — the receipt
+      // extraction contract has an `AMBIGUOUS_AMOUNT_FORMAT` warning, which is
+      // about a decimal separator and discloses nothing whatever about anyone's
+      // lifecycle. Matching the exact literal the parser writes keeps this
+      // assertion aimed at the wire code it is protecting instead of at any
+      // word beginning with those nine characters. The other four are long,
+      // fully-qualified and unambiguous on their own.
       _expectAbsent(outsideParser, <String>[
         'ORGANIZATION_INACTIVE',
         'MEMBERSHIP_INACTIVE',
         'PROFILE_INACTIVE',
         'NO_SUPPORTED_ACCESS',
-        'AMBIGUOUS',
+        "'AMBIGUOUS'",
       ], allowInComments: true);
     });
 

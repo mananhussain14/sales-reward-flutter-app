@@ -30,10 +30,14 @@ import '../../features/products/domain/repositories/vendor_product_repository.da
 import '../../features/profile/data/datasources/vendor_profile_rpc_data_source.dart';
 import '../../features/profile/data/repositories/supabase_vendor_profile_repository.dart';
 import '../../features/profile/domain/repositories/vendor_profile_repository.dart';
+import '../../features/receipts/data/datasources/receipt_extraction_function_client.dart';
+import '../../features/receipts/data/datasources/receipt_extraction_rpc_data_source.dart';
 import '../../features/receipts/data/datasources/receipt_rpc_data_source.dart';
 import '../../features/receipts/data/datasources/submit_receipt_function_client.dart';
+import '../../features/receipts/data/repositories/supabase_receipt_extraction_repository.dart';
 import '../../features/receipts/data/repositories/supabase_receipt_repository.dart';
 import '../../features/receipts/data/services/image_picker_receipt_image_source.dart';
+import '../../features/receipts/domain/repositories/receipt_extraction_repository.dart';
 import '../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_capability_rpc_data_source.dart';
@@ -135,6 +139,42 @@ Future<void> configureDependencies() async {
         accessToken: supabaseAccessTokenProvider(client),
         httpClient: getIt<http.Client>(),
       ),
+    ),
+  );
+
+  // The receipt **extraction and confirmation** contracts: three Edge Functions
+  // and three authenticated RPCs.
+  //
+  // Registered separately from the submission repository above, and behind its
+  // own interface, because the two are separate lifecycles: that one guarantees
+  // it can upload a receipt and read a history, and this one begins only after a
+  // receipt is already SUBMITTED. They are also gated by different permissions —
+  // reading the object bytes of a stored receipt is a genuinely new capability
+  // that the submit permission never implied.
+  //
+  // **No table access at all, and here that is not merely avoided — it would not
+  // work.** All five extraction tables carry RLS with zero policies and every
+  // privilege revoked from the browser roles, so a client that queried them
+  // would render an empty review screen for every receipt and look entirely
+  // plausible doing it.
+  //
+  // **No worker RPC and no storage call is registered here**, because neither
+  // exists in this application. Claiming a job, recording an operation, a
+  // success or a failure, reading worker state, resolving the object reference
+  // and running the reaper are all executable by the privileged database role
+  // alone — deliberately, since a browser-reachable claim would let anyone who
+  // learned an extraction id take a job and write a result. **No privileged key
+  // is registered here or exists anywhere in this application**, and both gates
+  // that decide whether extraction runs at all live server-side where no request
+  // body, header or claim can reach them.
+  //
+  // Both calls travel on the caller's own session, which is the only reason
+  // `auth.uid()` means anything inside `assert_my_receipt_extraction_access` —
+  // the single predicate every one of these six operations opens by calling.
+  getIt.registerLazySingleton<ReceiptExtractionRepository>(
+    () => SupabaseReceiptExtractionRepository(
+      functions: ReceiptExtractionFunctionClient.forClient(client),
+      rpc: ReceiptExtractionRpcDataSource.forClient(client),
     ),
   );
 
@@ -461,6 +501,7 @@ void registerTestDependencies({
   required PortalContextRepository portalContextRepository,
   LifecycleAccessRepository? lifecycleAccessRepository,
   ReceiptRepository? receiptRepository,
+  ReceiptExtractionRepository? receiptExtractionRepository,
   ReceiptImageSource? receiptImageSource,
   VendorRetailerRepository? vendorRetailerRepository,
   VendorRetailerLifecycleRepository? vendorRetailerLifecycleRepository,
@@ -491,6 +532,11 @@ void registerTestDependencies({
   }
   if (receiptRepository != null) {
     getIt.registerLazySingleton<ReceiptRepository>(() => receiptRepository);
+  }
+  if (receiptExtractionRepository != null) {
+    getIt.registerLazySingleton<ReceiptExtractionRepository>(
+      () => receiptExtractionRepository,
+    );
   }
   if (receiptImageSource != null) {
     getIt.registerLazySingleton<ReceiptImageSource>(() => receiptImageSource);

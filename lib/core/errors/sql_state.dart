@@ -41,4 +41,21 @@ abstract final class SqlState {
   /// and different follow-up, and merging them would send a person to fix a
   /// selection that was never the problem.
   static const String invalidTextRepresentation = '22P02';
+
+  /// `invalid_parameter_value` — a parameter whose value the function refuses
+  /// on a rule of its own, distinct from the shape rules [checkViolation]
+  /// covers.
+  ///
+  /// `confirm_receipt_extraction` raises it for exactly one thing and raises it
+  /// for nothing else: the declared currency minor unit is absent, or it is not
+  /// the one the backend records for that currency. Absent and wrong land here
+  /// together on purpose — in neither case is there a verified agreement about
+  /// what the amount integers mean.
+  ///
+  /// Deliberately **not** collapsed into [checkViolation], which that same
+  /// function still raises for an unsupported currency, an out-of-range amount
+  /// and an over-long name. Those say "fix this value"; this one says "the scale
+  /// itself has to be established again", and only one of the two is worth
+  /// invalidating a resolved currency width over.
+  static const String invalidParameterValue = '22023';
 }

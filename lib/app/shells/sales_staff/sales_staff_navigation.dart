@@ -48,6 +48,24 @@ abstract final class SalesStaffNavigation {
   /// Web route `/retailer/receipts`, lower half.
   static const String history = '$prefix/history';
 
+  /// The relative segment of the receipt review route.
+  ///
+  /// Nested under [history] rather than sitting beside it, for the same reason
+  /// every Vendor detail route is nested under its list: `indexForLocation`
+  /// matches on the longest prefix, so the History destination stays
+  /// highlighted while a single receipt is open, and Back has an obvious place
+  /// to return to.
+  static const String reviewSegment = ':submissionId';
+
+  /// The review route for one submitted receipt.
+  ///
+  /// The submission id is the **only** thing this address carries. There is no
+  /// extraction id, shop, organization or profile in it: every one of those is
+  /// resolved in SQL from `auth.uid()`, and an id in a URL is a value a person
+  /// can edit. Reaching another person's receipt this way is refused by
+  /// `assert_my_receipt_extraction_access`, not by this path.
+  static String review(String submissionId) => '$history/$submissionId';
+
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
       label: 'Submit',

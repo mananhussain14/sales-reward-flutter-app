@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../../app/shells/sales_staff/sales_staff_navigation.dart';
 
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
@@ -16,12 +19,13 @@ import '../widgets/receipt_submission_tile.dart';
 /// nothing on this screen can widen what comes back, and no other person's
 /// receipt can appear on it.
 ///
-/// ## No row opens anything
+/// ## A stored receipt opens its review, and only a stored one
 ///
-/// There is no receipt-image retrieval path anywhere in the backend: no signed
-/// URL, no download RPC, no storage policy. Every field the RPC returns is
-/// already on the row, so a tappable row would open a screen repeating itself —
-/// or, worse, imply that the image is viewable when it is not.
+/// A `SUBMITTED` row has an object behind it and can be read, corrected and
+/// confirmed. A `RESERVED` or `UPLOAD_FAILED` row has nothing behind it, so it
+/// is offered no review control: every call the review screen makes would
+/// refuse, and that refusal is deliberately indistinguishable from "that is not
+/// yours" — an alarming thing to show somebody about their own receipt.
 class SalesStaffHistoryPage extends StatelessWidget {
   const SalesStaffHistoryPage({super.key});
 
@@ -98,7 +102,16 @@ class SalesStaffHistoryPage extends StatelessWidget {
         for (final ReceiptSubmission submission in state.submissions)
           Padding(
             padding: const EdgeInsets.only(bottom: SrSpacing.md),
-            child: ReceiptSubmissionTile(submission: submission),
+            child: Builder(
+              builder: (BuildContext context) => ReceiptSubmissionTile(
+                submission: submission,
+                onOpenReview: submission.status.isSubmitted
+                    ? () => context.go(
+                        SalesStaffNavigation.review(submission.submissionId),
+                      )
+                    : null,
+              ),
+            ),
           ),
       ],
     );

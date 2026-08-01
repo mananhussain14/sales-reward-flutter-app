@@ -24,19 +24,31 @@ import 'receipt_status_badge.dart';
 /// ## No storage path, bucket, hash or image
 ///
 /// None of those is returned by either RPC, so none of them exists here to
-/// render. There is no "view receipt" affordance either: the backend exposes no
-/// retrieval path for a submitted image.
+/// render.
+///
+/// ## Review is offered, never forced
+///
+/// [onReviewReceipt] opens the review screen for the id the function returned.
+/// It is an offer and not a redirect: somebody who has just photographed one
+/// receipt is usually about to photograph the next, and navigating them away
+/// from the camera would be the wrong default. Submitting another receipt stays
+/// the primary action.
 class ReceiptSuccessCard extends StatelessWidget {
   const ReceiptSuccessCard({
     super.key,
     required this.submissionId,
     required this.submission,
     required this.onSubmitAnother,
+    this.onReviewReceipt,
   });
 
   final String? submissionId;
   final ReceiptSubmission? submission;
   final VoidCallback onSubmitAnother;
+
+  /// Opens the review screen for [submissionId]. Null when there is no id to
+  /// open one with, which is the only case in which the action is absent.
+  final VoidCallback? onReviewReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -111,11 +123,28 @@ class ReceiptSuccessCard extends StatelessWidget {
               monospaceish: true,
             ),
           const SizedBox(height: SrSpacing.xl),
+          if (onReviewReceipt != null) ...<Widget>[
+            Semantics(
+              button: true,
+              label: 'Review this receipt',
+              child: SrButton(
+                label: 'Review receipt',
+                icon: Icons.fact_check_outlined,
+                size: SrButtonSize.lg,
+                fullWidth: true,
+                onPressed: onReviewReceipt,
+              ),
+            ),
+            const SizedBox(height: SrSpacing.md),
+          ],
           SrButton(
             label: 'Submit another receipt',
             icon: Icons.add_a_photo_outlined,
             size: SrButtonSize.lg,
             fullWidth: true,
+            variant: onReviewReceipt == null
+                ? SrButtonVariant.primary
+                : SrButtonVariant.outline,
             onPressed: onSubmitAnother,
           ),
         ],

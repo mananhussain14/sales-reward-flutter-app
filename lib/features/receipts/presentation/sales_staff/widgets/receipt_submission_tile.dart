@@ -9,17 +9,29 @@ import 'receipt_status_badge.dart';
 
 /// One row in the submission history.
 ///
-/// ## Not tappable, on purpose
+/// ## Review is offered only for a receipt that can actually be reviewed
 ///
-/// There is no detail screen behind it, because there is nothing further to
-/// show: the backend exposes **no** receipt-image retrieval path — no signed
-/// URL, no download RPC, no storage policy — and every field the two read RPCs
-/// return is already on this row. A tappable row that opened a screen repeating
-/// itself would promise something the contract cannot deliver.
+/// [onOpenReview] is supplied only for a `SUBMITTED` row. A `RESERVED` or
+/// `UPLOAD_FAILED` receipt has no stored object behind it, so every one of the
+/// review screen's calls would refuse — and the refusal is deliberately
+/// indistinguishable from "that is not yours", which would be an alarming thing
+/// to show somebody about their own receipt. Not offering the action is the
+/// honest answer.
+///
+/// The row itself is still not tappable: the affordance is an explicit control
+/// with its own label, so a person scrolling a long list cannot open a screen by
+/// brushing it.
 class ReceiptSubmissionTile extends StatelessWidget {
-  const ReceiptSubmissionTile({super.key, required this.submission});
+  const ReceiptSubmissionTile({
+    super.key,
+    required this.submission,
+    this.onOpenReview,
+  });
 
   final ReceiptSubmission submission;
+
+  /// Opens the review screen for this receipt, when it has one.
+  final VoidCallback? onOpenReview;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +95,23 @@ class ReceiptSubmissionTile extends StatelessWidget {
                 ),
             ],
           ),
+          if (onOpenReview != null) ...<Widget>[
+            const SizedBox(height: SrSpacing.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Semantics(
+                button: true,
+                label: 'Review the receipt from ${submission.shopName}',
+                child: SrButton(
+                  label: 'Review receipt',
+                  variant: SrButtonVariant.outline,
+                  size: SrButtonSize.sm,
+                  icon: Icons.fact_check_outlined,
+                  onPressed: onOpenReview,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

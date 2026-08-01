@@ -73,6 +73,14 @@ class SalesStaffSubmitPage extends StatelessWidget {
                   submissionId: state.submissionId,
                   submission: state.submission,
                   onSubmitAnother: cubit.startAnother,
+                  // Offered only when the function actually returned an id.
+                  // Without one there is nothing to review, and a control that
+                  // navigated nowhere would be worse than no control.
+                  onReviewReceipt: state.submissionId == null
+                      ? null
+                      : () => context.go(
+                          SalesStaffNavigation.review(state.submissionId!),
+                        ),
                 )
               else
                 _SubmitForm(state: state, cubit: cubit),
