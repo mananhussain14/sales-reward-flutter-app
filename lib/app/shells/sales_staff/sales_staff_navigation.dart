@@ -66,6 +66,31 @@ abstract final class SalesStaffNavigation {
   /// `assert_my_receipt_extraction_access`, not by this path.
   static String review(String submissionId) => '$history/$submissionId';
 
+  /// The campaigns running now or starting soon for this seller's Retailer.
+  ///
+  /// Backed by `list_my_staff_campaigns()`, which takes zero arguments and
+  /// resolves through
+  /// `resolve_retailer_member_organization('STAFF_CAMPAIGNS_VIEW')` — a
+  /// **separate** permission from the Retailer Owner's, mapped to `SALES_STAFF`
+  /// alone, returning fewer columns and only `ACTIVE`/`SCHEDULED` campaigns.
+  ///
+  /// It has no Web counterpart. There is no Sales Staff campaign surface on the
+  /// Web at all; the contract was written for this client.
+  static const String campaigns = '$prefix/campaigns';
+
+  /// The relative segment of the campaign detail route. Nested under
+  /// [campaigns] so the destination stays highlighted while one is open.
+  static const String campaignDetailSegment = ':campaignId';
+
+  /// The detail route for one campaign.
+  ///
+  /// The campaign id is the only thing this address carries — no Retailer, no
+  /// shop, no profile, no submission. `get_my_staff_campaign()` re-derives the
+  /// caller's Retailer from `auth.uid()` and re-applies the `ACTIVE`/`SCHEDULED`
+  /// filter, so an id naming another Retailer's campaign, or one that has since
+  /// been paused, returns zero rows.
+  static String campaignDetail(String campaignId) => '$campaigns/$campaignId';
+
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
       label: 'Submit',
@@ -80,12 +105,31 @@ abstract final class SalesStaffNavigation {
       selectedIcon: Icons.receipt_long_rounded,
       path: history,
     ),
+    // Third and last. Submit stays the landing tab, so the primary action is
+    // still one tap away — the reason this shell has a bottom bar at all.
+    //
+    // No `requiredCapability`: the portal context returns no campaign flag for
+    // either role. See the equivalent note in `RetailerOwnerNavigation`.
+    RoleDestination(
+      label: 'Campaigns',
+      icon: Icons.campaign_outlined,
+      selectedIcon: Icons.campaign_rounded,
+      path: campaigns,
+    ),
   ];
 
+  /// Declared here, in this role's own file, and nowhere else.
+  ///
+  /// The caption reads **"Sales Staff Portal"**, not "Retailer Portal". A seller
+  /// signs in on a shared shop-floor device and needs the header to say which
+  /// portal is open; "Retailer Portal" is the Retailer Owner's and Manager's
+  /// caption and reads, on this shell, as though the wrong account is signed in.
+  /// The app bar's *title* is still the organization name the backend supplied —
+  /// only this caption names the portal.
   static const RoleNavigation model = RoleNavigation(
     role: PortalKind.salesStaff,
     routePrefix: prefix,
-    portalName: 'Retailer Portal',
+    portalName: 'Sales Staff Portal',
     landingPath: submit,
     chrome: RoleShellChrome.bottomBar,
     destinations: destinations,

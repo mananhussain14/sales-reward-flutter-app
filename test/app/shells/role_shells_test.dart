@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sale_reward/app/navigation/role_destination.dart';
 import 'package:sale_reward/app/navigation/role_navigation_registry.dart';
 import 'package:sale_reward/app/shells/retailer_manager/retailer_manager_shell.dart';
+import 'package:sale_reward/app/shells/retailer_owner/retailer_owner_navigation.dart';
 import 'package:sale_reward/app/shells/retailer_owner/retailer_owner_shell.dart';
+import 'package:sale_reward/app/shells/sales_staff/sales_staff_navigation.dart';
 import 'package:sale_reward/app/shells/sales_staff/sales_staff_shell.dart';
 import 'package:sale_reward/app/shells/vendor/vendor_shell.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
+import 'package:sale_reward/features/campaigns/presentation/retailer_owner/pages/retailer_owner_campaigns_page.dart';
+import 'package:sale_reward/features/campaigns/presentation/sales_staff/pages/sales_staff_campaigns_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
@@ -35,6 +40,11 @@ const Map<PortalKind, Type> _landingPages = <PortalKind, Type>{
   PortalKind.retailerManager: RetailerStaffPage,
   PortalKind.salesStaff: SalesStaffSubmitPage,
 };
+
+Future<void> _goTo(WidgetTester tester, String location) async {
+  GoRouter.of(tester.element(find.byType(Navigator).first)).go(location);
+  await tester.pumpAndSettle();
+}
 
 Future<void> _revealNavigation(WidgetTester tester, PortalKind kind) async {
   if (RoleNavigationRegistry.forRole(kind)!.chrome != RoleShellChrome.drawer) {
@@ -134,6 +144,105 @@ void main() {
         }
       });
     }
+  });
+
+  group('the app bar caption names the role, and never another role', () {
+    // The caption is the one place a signed-in person is told which portal is
+    // open. Every other name on screen (the org, the destinations) is the same
+    // for a Retailer Owner and their seller, so a caption that reads
+    // "Retailer Portal" inside the Sales Staff shell is indistinguishable from
+    // being signed in as the wrong account.
+    const Map<PortalKind, String> captions = <PortalKind, String>{
+      PortalKind.vendorSuperAdmin: 'Vendor Admin',
+      PortalKind.retailerOwner: 'Retailer Portal',
+      PortalKind.retailerManager: 'Retailer Portal',
+      PortalKind.salesStaff: 'Sales Staff Portal',
+    };
+
+    testWidgets('the Sales Staff shell renders "Sales Staff Portal"', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, PortalKind.salesStaff);
+
+      expect(find.byType(SalesStaffShell), findsOneWidget);
+      expect(find.text('Sales Staff Portal'), findsWidgets);
+      // The Retailer caption must not appear anywhere in this shell.
+      expect(find.text('Retailer Portal'), findsNothing);
+      // The title is still the organization the backend named.
+      expect(find.text('Example Org'), findsWidgets);
+    });
+
+    testWidgets('the Retailer Owner shell still renders "Retailer Portal"', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, PortalKind.retailerOwner);
+
+      expect(find.byType(RetailerOwnerShell), findsOneWidget);
+      expect(find.text('Retailer Portal'), findsWidgets);
+      expect(find.text('Sales Staff Portal'), findsNothing);
+      expect(find.text('Example Org'), findsWidgets);
+    });
+
+    for (final PortalKind kind in _shellKinds) {
+      testWidgets('${kind.displayName} shows no other role\'s caption', (
+        tester,
+      ) async {
+        await pumpAppInRole(tester, kind);
+
+        expect(find.text(captions[kind]!), findsWidgets);
+        for (final MapEntry<PortalKind, String> other in captions.entries) {
+          if (other.value == captions[kind]) continue;
+          expect(
+            find.text(other.value),
+            findsNothing,
+            reason:
+                '"${other.value}" belongs to ${other.key.displayName}, not '
+                '${kind.displayName}',
+          );
+        }
+      });
+    }
+
+    testWidgets('the caption survives navigation within the shell', (
+      tester,
+    ) async {
+      // The caption comes from the role's navigation model, not from the page,
+      // so moving off the landing tab must not change it.
+      await pumpAppInRole(tester, PortalKind.salesStaff);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.byIcon(Icons.receipt_long_outlined),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sales Staff Portal'), findsWidgets);
+      expect(find.text('Retailer Portal'), findsNothing);
+    });
+
+    testWidgets('both roles still reach their campaigns, correctly captioned', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, PortalKind.salesStaff);
+      await _goTo(tester, SalesStaffNavigation.campaigns);
+
+      expect(find.byType(SalesStaffCampaignsPage), findsOneWidget);
+      expect(find.text('Sales Staff Portal'), findsWidgets);
+      expect(find.text('Retailer Portal'), findsNothing);
+    });
+
+    testWidgets('the Retailer Owner campaign route keeps its own caption', (
+      tester,
+    ) async {
+      await pumpAppInRole(tester, PortalKind.retailerOwner);
+      await _goTo(tester, RetailerOwnerNavigation.campaigns);
+
+      expect(find.byType(RetailerOwnerCampaignsPage), findsOneWidget);
+      expect(find.text('Retailer Portal'), findsWidgets);
+      expect(find.text('Sales Staff Portal'), findsNothing);
+    });
   });
 
   group('capability hides a destination', () {

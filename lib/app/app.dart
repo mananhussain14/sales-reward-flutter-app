@@ -7,6 +7,8 @@ import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/repositories/lifecycle_access_repository.dart';
 import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
+import '../features/campaigns/domain/repositories/retailer_campaign_repository.dart';
+import '../features/campaigns/domain/repositories/staff_campaign_repository.dart';
 import '../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../features/products/domain/repositories/retailer_product_repository.dart';
 import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
@@ -70,6 +72,8 @@ class SaleRewardApp extends StatefulWidget {
     this.retailerStaffShopAssignmentRepository,
     this.retailerStaffLifecycleRepository,
     this.retailerProductRepository,
+    this.retailerCampaignRepository,
+    this.staffCampaignRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -109,6 +113,17 @@ class SaleRewardApp extends StatefulWidget {
   retailerStaffShopAssignmentRepository;
   final RetailerStaffLifecycleRepository? retailerStaffLifecycleRepository;
   final RetailerProductRepository? retailerProductRepository;
+
+  /// The Retailer Owner campaign reads, on `CAMPAIGNS_VIEW_ASSIGNED`.
+  ///
+  /// Separate from [staffCampaignRepository] because the backend keeps the two
+  /// contracts on two permissions, so that widening either cannot widen the
+  /// other. Only the Retailer Owner shell reads this one.
+  final RetailerCampaignRepository? retailerCampaignRepository;
+
+  /// The Sales Staff campaign reads, on `STAFF_CAMPAIGNS_VIEW`. Fewer columns,
+  /// and only ACTIVE/SCHEDULED campaigns. Only the Sales Staff shell reads it.
+  final StaffCampaignRepository? staffCampaignRepository;
   final ThemeMode initialThemeMode;
 
   @override
@@ -137,6 +152,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   _retailerStaffShopAssignmentRepository;
   late final RetailerStaffLifecycleRepository _retailerStaffLifecycleRepository;
   late final RetailerProductRepository _retailerProductRepository;
+  late final RetailerCampaignRepository _retailerCampaignRepository;
+  late final StaffCampaignRepository _staffCampaignRepository;
   late final SessionBloc _sessionBloc;
   late final AppLifecycleListener _appLifecycleListener;
   late final ThemeCubit _themeCubit;
@@ -185,6 +202,11 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         getIt<RetailerStaffLifecycleRepository>();
     _retailerProductRepository =
         widget.retailerProductRepository ?? getIt<RetailerProductRepository>();
+    _retailerCampaignRepository =
+        widget.retailerCampaignRepository ??
+        getIt<RetailerCampaignRepository>();
+    _staffCampaignRepository =
+        widget.staffCampaignRepository ?? getIt<StaffCampaignRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -333,6 +355,16 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<RetailerProductRepository>.value(
           value: _retailerProductRepository,
+        ),
+        // The two campaign contracts, provided separately for the same reason
+        // they are registered separately: `CAMPAIGNS_VIEW_ASSIGNED` is mapped
+        // to RETAILER_OWNER alone and `STAFF_CAMPAIGNS_VIEW` to SALES_STAFF
+        // alone, and each shell reads only the one its role can call.
+        RepositoryProvider<RetailerCampaignRepository>.value(
+          value: _retailerCampaignRepository,
+        ),
+        RepositoryProvider<StaffCampaignRepository>.value(
+          value: _staffCampaignRepository,
         ),
       ],
       child: MultiBlocProvider(

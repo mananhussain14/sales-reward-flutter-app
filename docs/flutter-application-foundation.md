@@ -185,7 +185,7 @@ the shell chrome widget · the route guard · the access-denied surface.
 | | Vendor Super Admin | Retailer Owner | Retailer Manager | Sales Staff |
 | --- | --- | --- | --- | --- |
 | Prefix | `/vendor` | `/retailer-owner` | `/retailer-manager` | `/sales-staff` |
-| Portal name | Vendor Admin | Retailer Portal | Retailer Portal | Retailer Portal |
+| Portal name | Vendor Admin | Retailer Portal | Retailer Portal | Sales Staff Portal |
 | Navigation | `vendor_navigation.dart` | `retailer_owner_…` | `retailer_manager_…` | `sales_staff_…` |
 | Shell | `VendorShell` | `RetailerOwnerShell` | `RetailerManagerShell` | `SalesStaffShell` |
 | Shell BLoC | `VendorShellBloc` | `RetailerOwnerShellBloc` | `RetailerManagerShellBloc` | `SalesStaffShellBloc` |

@@ -14,6 +14,7 @@ import 'package:sale_reward/features/auth/presentation/pages/login_page.dart';
 import 'package:sale_reward/features/auth/presentation/pages/splash_page.dart';
 import 'package:sale_reward/features/auth/presentation/pages/unavailable_page.dart';
 
+import '../support/campaign_fakes.dart';
 import '../support/fakes.dart';
 import '../support/retailer_owner_overview_fakes.dart';
 import '../support/retailer_invite_staff_fakes.dart';
@@ -116,6 +117,8 @@ void main() {
           retailerStaffShopAssignmentRepository:
               FakeRetailerStaffShopAssignmentRepository(),
           retailerProductRepository: FakeRetailerProductRepository(),
+          retailerCampaignRepository: FakeRetailerCampaignRepository(),
+          staffCampaignRepository: FakeStaffCampaignRepository(),
         ),
       );
 
@@ -285,6 +288,8 @@ void main() {
             retailerStaffShopAssignmentRepository:
                 FakeRetailerStaffShopAssignmentRepository(),
             retailerProductRepository: FakeRetailerProductRepository(),
+            retailerCampaignRepository: FakeRetailerCampaignRepository(),
+            staffCampaignRepository: FakeStaffCampaignRepository(),
           ),
         );
         await tester.pump();
@@ -342,6 +347,8 @@ void main() {
             retailerStaffShopAssignmentRepository:
                 FakeRetailerStaffShopAssignmentRepository(),
             retailerProductRepository: FakeRetailerProductRepository(),
+            retailerCampaignRepository: FakeRetailerCampaignRepository(),
+            staffCampaignRepository: FakeStaffCampaignRepository(),
           ),
         );
         await tester.pump();

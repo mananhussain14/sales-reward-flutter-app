@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../features/auth/domain/entities/portal_context.dart';
 import '../../../features/auth/domain/entities/portal_kind.dart';
 import '../../../features/auth/presentation/bloc/session_bloc.dart';
+import '../../../features/campaigns/domain/repositories/retailer_campaign_repository.dart';
+import '../../../features/campaigns/presentation/shared/campaign_detail_cubit.dart';
+import '../../../features/campaigns/presentation/shared/campaign_list_cubit.dart';
 import '../../../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../../../features/dashboard/presentation/retailer_owner/cubit/retailer_owner_overview_cubit.dart';
 import '../../../features/products/domain/repositories/retailer_product_repository.dart';
@@ -207,6 +210,28 @@ class RetailerOwnerShell extends StatelessWidget {
             providerContext.read<RetailerProductRepository>(),
           ),
         ),
+        // The campaign list, provided here and NOT loaded on creation — the
+        // same rule as the three tab cubits above. Opening the Campaigns tab
+        // issues exactly one RPC; entering the shell issues none.
+        //
+        // Provided at the shell rather than on the route so it survives a round
+        // trip through another destination, and so it sits ABOVE the session
+        // listener below — a cubit created inside the Campaigns route would be
+        // in the subtree that must be emptied, not above it.
+        BlocProvider<RetailerCampaignListCubit>(
+          create: (BuildContext providerContext) => RetailerCampaignListCubit(
+            providerContext.read<RetailerCampaignRepository>(),
+          ),
+        ),
+        // The campaign detail, provided at the shell for the same reason: it
+        // has to be reachable by the session listener. It holds one campaign at
+        // a time, keyed by the id the route opened, and reads nothing until a
+        // detail route mounts.
+        BlocProvider<RetailerCampaignDetailCubit>(
+          create: (BuildContext providerContext) => RetailerCampaignDetailCubit(
+            providerContext.read<RetailerCampaignRepository>(),
+          ),
+        ),
       ],
       child: _SessionIsolation(
         child: RoleShellScaffold<RetailerOwnerShellBloc>(
@@ -320,6 +345,10 @@ class _SessionIsolation extends StatelessWidget {
             .read<RetailerStaffLifecycleCubit>();
         final RetailerProductsCubit products = context
             .read<RetailerProductsCubit>();
+        final RetailerCampaignListCubit campaigns = context
+            .read<RetailerCampaignListCubit>();
+        final RetailerCampaignDetailCubit campaignDetail = context
+            .read<RetailerCampaignDetailCubit>();
 
         // Always cleared first, in every direction, and before anything is
         // requested for the new identity. A new Retailer Owner session must not
@@ -372,6 +401,16 @@ class _SessionIsolation extends StatelessWidget {
         // can land on the new one's roster.
         staffLifecycle.clear();
         products.clear();
+        // The campaigns go with them, and they are commercial terms rather than
+        // a catalogue: which Vendor targets this Retailer, on what dates, at
+        // what rate, against which target, and how many of its products qualify.
+        // Every one of those is private to one commercial relationship, and the
+        // detail cubit additionally holds the id of the campaign that was open.
+        // Each `clear()` advances a request token, so a read already in flight
+        // for the previous identity is dropped on arrival rather than
+        // repopulating a screen that has just been emptied.
+        campaigns.clear();
+        campaignDetail.clear();
 
         if (_identityOf(state) != null) {
           // Read again from the backend under the new caller's own identity —

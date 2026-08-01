@@ -13,6 +13,12 @@ import '../../features/audit/data/datasources/vendor_audit_log_rpc_data_source.d
 import '../../features/audit/data/repositories/supabase_vendor_audit_log_repository.dart';
 import '../../features/audit/domain/repositories/vendor_audit_log_repository.dart';
 import '../../features/auth/domain/repositories/portal_context_repository.dart';
+import '../../features/campaigns/data/datasources/retailer_campaign_rpc_data_source.dart';
+import '../../features/campaigns/data/datasources/staff_campaign_rpc_data_source.dart';
+import '../../features/campaigns/data/repositories/supabase_retailer_campaign_repository.dart';
+import '../../features/campaigns/data/repositories/supabase_staff_campaign_repository.dart';
+import '../../features/campaigns/domain/repositories/retailer_campaign_repository.dart';
+import '../../features/campaigns/domain/repositories/staff_campaign_repository.dart';
 import '../../features/dashboard/data/datasources/retailer_owner_overview_rpc_data_source.dart';
 import '../../features/dashboard/data/datasources/vendor_dashboard_rpc_data_source.dart';
 import '../../features/dashboard/data/repositories/supabase_retailer_owner_overview_repository.dart';
@@ -325,6 +331,38 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The two campaign read contracts, registered **separately** because the
+  // backend keeps them separate: `CAMPAIGNS_VIEW_ASSIGNED` is mapped to
+  // `RETAILER_OWNER` alone and `STAFF_CAMPAIGNS_VIEW` to `SALES_STAFF` alone,
+  // and the migration is explicit that one permission behind both *"would make
+  // widening either widen the other."* Two registrations mirror that, so a
+  // shell can only be handed the repository for the contract its role can
+  // actually call.
+  //
+  // Six reads, no writes. `create_vendor_campaign_draft`,
+  // `update_vendor_campaign_draft`, `publish_vendor_campaign`,
+  // `set_vendor_campaign_lifecycle`, `create_vendor_campaign_version` and the
+  // three Retailer-group writes are all gated on `CAMPAIGNS_MANAGE` or
+  // `RETAILER_GROUPS_MANAGE` — Vendor capabilities exercised on the Web — and
+  // not one of them is named anywhere in this application.
+  //
+  // No direct table read is registered either, and none would work: all eleven
+  // campaign tables are default-deny with zero RLS policies and no privilege
+  // for `authenticated`, so a client that queried `campaigns` directly would
+  // render an empty list for every Retailer and look entirely plausible doing
+  // it.
+  getIt.registerLazySingleton<RetailerCampaignRepository>(
+    () => SupabaseRetailerCampaignRepository(
+      rpc: RetailerCampaignRpcDataSource.forClient(client),
+    ),
+  );
+
+  getIt.registerLazySingleton<StaffCampaignRepository>(
+    () => SupabaseStaffCampaignRepository(
+      rpc: StaffCampaignRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer staff **invitation** contracts: one zero-argument read for the
   // shop picker, and one Edge Function call to send.
   //
@@ -518,6 +556,8 @@ void registerTestDependencies({
   RetailerStaffShopAssignmentRepository? retailerStaffShopAssignmentRepository,
   RetailerStaffLifecycleRepository? retailerStaffLifecycleRepository,
   RetailerProductRepository? retailerProductRepository,
+  RetailerCampaignRepository? retailerCampaignRepository,
+  StaffCampaignRepository? staffCampaignRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -614,6 +654,16 @@ void registerTestDependencies({
   if (retailerProductRepository != null) {
     getIt.registerLazySingleton<RetailerProductRepository>(
       () => retailerProductRepository,
+    );
+  }
+  if (retailerCampaignRepository != null) {
+    getIt.registerLazySingleton<RetailerCampaignRepository>(
+      () => retailerCampaignRepository,
+    );
+  }
+  if (staffCampaignRepository != null) {
+    getIt.registerLazySingleton<StaffCampaignRepository>(
+      () => staffCampaignRepository,
     );
   }
 }
