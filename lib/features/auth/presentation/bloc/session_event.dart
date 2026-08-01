@@ -22,6 +22,15 @@ final class SessionContextRequested extends SessionEvent {
   const SessionContextRequested();
 }
 
+/// Silently re-check the current portal context.
+///
+/// Used when the application returns to the foreground. An already active shell
+/// remains mounted while the backend is checked, so an unchanged result does
+/// not discard page state, scroll position, or loaded feature data.
+final class SessionContextRevalidationRequested extends SessionEvent {
+  const SessionContextRevalidationRequested();
+}
+
 /// Authentication changed underneath us.
 ///
 /// Dispatched by [SessionBloc]'s own subscription rather than by a widget, so
