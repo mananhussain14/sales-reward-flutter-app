@@ -118,10 +118,18 @@ abstract final class SalesStaffNavigation {
     ),
   ];
 
+  /// Declared here, in this role's own file, and nowhere else.
+  ///
+  /// The caption reads **"Sales Staff Portal"**, not "Retailer Portal". A seller
+  /// signs in on a shared shop-floor device and needs the header to say which
+  /// portal is open; "Retailer Portal" is the Retailer Owner's and Manager's
+  /// caption and reads, on this shell, as though the wrong account is signed in.
+  /// The app bar's *title* is still the organization name the backend supplied —
+  /// only this caption names the portal.
   static const RoleNavigation model = RoleNavigation(
     role: PortalKind.salesStaff,
     routePrefix: prefix,
-    portalName: 'Retailer Portal',
+    portalName: 'Sales Staff Portal',
     landingPath: submit,
     chrome: RoleShellChrome.bottomBar,
     destinations: destinations,

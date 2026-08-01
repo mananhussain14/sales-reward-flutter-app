@@ -215,6 +215,48 @@ void main() {
     });
   });
 
+  group('portal names identify the shell that is open', () {
+    // The caption under the app bar title is the only place a signed-in person
+    // is told which portal they are in. A seller reading "Retailer Portal" on a
+    // shared shop-floor device has no way to tell the wrong account is not
+    // signed in, so each role states its own name in its own file.
+    const Map<PortalKind, String> expected = <PortalKind, String>{
+      PortalKind.vendorSuperAdmin: 'Vendor Admin',
+      PortalKind.retailerOwner: 'Retailer Portal',
+      PortalKind.retailerManager: 'Retailer Portal',
+      PortalKind.salesStaff: 'Sales Staff Portal',
+    };
+
+    test('each role declares the documented portal name', () {
+      for (final MapEntry<PortalKind, String> entry in expected.entries) {
+        expect(
+          RoleNavigationRegistry.forRole(entry.key)!.portalName,
+          entry.value,
+          reason: entry.key.name,
+        );
+      }
+    });
+
+    test('Sales Staff is named for its own role, not the Retailer portal', () {
+      expect(SalesStaffNavigation.model.portalName, 'Sales Staff Portal');
+      expect(
+        SalesStaffNavigation.model.portalName,
+        isNot(RetailerOwnerNavigation.model.portalName),
+      );
+    });
+
+    test('the Retailer Owner keeps the Retailer Portal name', () {
+      expect(RetailerOwnerNavigation.model.portalName, 'Retailer Portal');
+      expect(RetailerManagerNavigation.model.portalName, 'Retailer Portal');
+    });
+
+    test('no role is left without a portal name', () {
+      for (final RoleNavigation model in RoleNavigationRegistry.ordered) {
+        expect(model.portalName.trim(), isNotEmpty, reason: model.role.name);
+      }
+    });
+  });
+
   group('chrome matches the destination count', () {
     test('only the Vendor uses a drawer', () {
       for (final RoleNavigation model in RoleNavigationRegistry.ordered) {
