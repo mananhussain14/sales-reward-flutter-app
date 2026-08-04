@@ -31,10 +31,19 @@ class ReceiptReviewConfirmedCard extends StatelessWidget {
     super.key,
     required this.state,
     required this.onBackToHistory,
+    this.showBackAction = true,
   });
 
   final ReceiptReviewState state;
   final VoidCallback onBackToHistory;
+
+  /// Whether this card carries the way off the screen.
+  ///
+  /// False when a submitted-proposal or legacy section follows it: the two
+  /// belong to one finished receipt, and a back button wedged between them
+  /// would read as the end of the page when it is not. The section below
+  /// carries the navigation instead.
+  final bool showBackAction;
 
   @override
   Widget build(BuildContext context) {
@@ -139,19 +148,21 @@ class ReceiptReviewConfirmedCard extends StatelessWidget {
               style: SrTypography.caption.copyWith(color: sr.textSecondary),
             ),
           ],
-          const SizedBox(height: SrSpacing.xl),
-          Semantics(
-            button: true,
-            label: 'Back to my submitted receipts',
-            child: SrButton(
-              label: 'Back to my submissions',
-              icon: Icons.arrow_back_rounded,
-              variant: SrButtonVariant.outline,
-              size: SrButtonSize.lg,
-              fullWidth: true,
-              onPressed: onBackToHistory,
+          if (showBackAction) ...<Widget>[
+            const SizedBox(height: SrSpacing.xl),
+            Semantics(
+              button: true,
+              label: 'Back to my submitted receipts',
+              child: SrButton(
+                label: 'Back to my submissions',
+                icon: Icons.arrow_back_rounded,
+                variant: SrButtonVariant.outline,
+                size: SrButtonSize.lg,
+                fullWidth: true,
+                onPressed: onBackToHistory,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

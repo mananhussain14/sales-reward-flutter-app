@@ -17,6 +17,11 @@ import '../../../domain/entities/receipt_extraction_request_outcome.dart';
 import '../../../domain/entities/receipt_extraction_request_result.dart';
 import '../../../domain/entities/receipt_extraction_status.dart';
 import '../../../domain/entities/receipt_image_preview.dart';
+import '../../../domain/entities/receipt_product_proposal_line.dart';
+import '../../../domain/entities/receipt_product_proposal_snapshot.dart';
+import '../../../domain/entities/receipt_product_selection.dart';
+import '../../../domain/entities/receipt_with_products_outcome.dart';
+import '../../../domain/entities/receipt_with_products_result.dart';
 import '../../../domain/repositories/receipt_extraction_repository.dart';
 import '../../../domain/repositories/receipt_extraction_result.dart';
 import '../widgets/receipt_minor_units.dart';
@@ -91,6 +96,7 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
     required String submissionId,
     this.pollInterval = const Duration(seconds: 3),
     this.maxPolls = 40,
+    this.slowNoticeDelay = slowConfirmationNotice,
     Future<void> Function(Duration duration) delay = _wait,
   }) : _repository = repository,
        _delay = delay,
@@ -109,6 +115,11 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
   /// The most polls one open attempt may cost.
   final int maxPolls;
 
+  /// How long the atomic confirmation may run before the person is told it is
+  /// merely slow. Injectable so a test can reach the notice without waiting;
+  /// it changes **presentation only**, at any value.
+  final Duration slowNoticeDelay;
+
   bool _started = false;
   bool _polling = false;
   bool _appActive = true;
@@ -116,6 +127,27 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
   bool _amountsSeeded = false;
   int _pollsUsed = 0;
   ReceiptReviewPhase _phaseBeforeConfirm = ReceiptReviewPhase.succeeded;
+
+  /// Bumped by every act that starts or ends an atomic product confirmation, so
+  /// a reply belonging to a request the screen has moved past is dropped before
+  /// it can reach the state.
+  int _productWriteGeneration = 0;
+
+  /// The slow-notice timer, and the only timer in this cubit.
+  ///
+  /// Cancelled — not merely ignored — on an authoritative outcome, on an
+  /// uncertain one, and on [close]. A notice that fired after the answer had
+  /// arrived would be telling somebody to keep waiting for something that had
+  /// already finished.
+  Timer? _slowTimer;
+
+  /// Bumped by every manual status check, for the same reason and independently
+  /// of the write: the two are separate acts with separate guards.
+  int _statusCheckGeneration = 0;
+
+  /// Bumped by every read of the stored proposal, so a reply belonging to an
+  /// abandoned read can never overwrite a newer answer.
+  int _proposalGeneration = 0;
 
   /// Bumped by every lookup and by every act that abandons one.
   ///
@@ -316,7 +348,15 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
 
     if (state.phase == ReceiptReviewPhase.confirmed ||
         (extraction?.confirmationExists ?? false)) {
-      await _loadConfirmation();
+      // CONCURRENTLY, because neither read depends on the other and a person
+      // opening a finished receipt should not wait for two round trips in
+      // series. Together they resolve which finished receipt this is: a
+      // confirmation with a proposal, or the header-only shape that predates
+      // Phase 1D-B.
+      await Future.wait<void>(<Future<void>>[
+        _loadConfirmation(),
+        _loadStoredProposal(source: ReceiptProposalSource.initialLoad),
+      ]);
       return;
     }
 
@@ -459,6 +499,124 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
     }
   }
 
+  // ---- The stored, immutable proposal --------------------------------------
+
+  /// Re-reads the stored proposal after an explicit tap.
+  ///
+  /// Offered only when a confirmation is known to exist and a previous read did
+  /// not deliver. A **pure read**, which is the whole reason it may be offered
+  /// as a retry at all — and it is offered by hand, never on a timer and never
+  /// as a loop.
+  Future<void> reloadStoredProposal() async {
+    if (!state.canReloadStoredProposal) {
+      return;
+    }
+    await _loadStoredProposal(
+      source: state.storedProposal.source,
+      // Whatever the write said still stands: a re-read that comes back empty
+      // must not turn a confirmed proposal into a header-only receipt.
+      expectedLines: state.productSubmission.result?.lineCount ?? 0,
+    );
+  }
+
+  /// Reads `get_my_receipt_product_proposal` once.
+  ///
+  /// ## The database is the authority, and the local selection is not
+  ///
+  /// Nothing here reconstructs the display from the editable selection a person
+  /// built. That list is a proposal; these rows are the record, and they carry
+  /// the frozen `*_at_proposal` snapshots the database copied for itself. A
+  /// screen that rendered the local list instead would show today's catalogue
+  /// text over yesterday's assertion.
+  ///
+  /// ## Zero rows is answered by context, never by guessing
+  ///
+  /// The function returns zero rows for "no proposal", "not yours" and "does
+  /// not exist" alike. Every caller already knows a confirmation exists — that
+  /// is the only condition under which this runs — so zero rows ordinarily
+  /// means the header-only shape, and is recorded as exactly that.
+  ///
+  /// [expectedLines] is the one exception, and it matters. When a write has
+  /// just answered `CONFIRMED` or `ALREADY_CONFIRMED` it also said how many
+  /// lines the stored confirmation carries. If that number is positive and the
+  /// read comes back empty, the two disagree — and the write is the more
+  /// recent, more specific answer. Calling that receipt "confirmed without
+  /// products" would tell somebody their proposal had vanished seconds after
+  /// the database said it was written. It is recorded as *unreadable* instead:
+  /// the confirmation stays authoritative, the screen stays read-only, and the
+  /// person is offered the read again.
+  Future<void> _loadStoredProposal({
+    ReceiptProposalSource? source,
+    int expectedLines = 0,
+  }) async {
+    if (state.storedProposal.isLoading) {
+      // One read at a time. This, plus `start()`'s own guard, is what stops a
+      // rebuild turning a screen into a request-per-frame.
+      return;
+    }
+
+    final int generation = ++_proposalGeneration;
+    emit(
+      state.copyWith(
+        storedProposal: state.storedProposal.copyWith(
+          phase: ReceiptProposalPhase.loading,
+          source: source,
+          clearProblem: true,
+        ),
+      ),
+    );
+
+    final ReceiptExtractionResult<List<ReceiptProductProposalLine>> result =
+        await _repository.productProposal(state.submissionId);
+    if (isClosed || generation != _proposalGeneration) {
+      return;
+    }
+
+    switch (result) {
+      case ReceiptExtractionFailed<List<ReceiptProductProposalLine>>(
+        :final ReceiptExtractionProblem problem,
+      ):
+        // NOT "there is no proposal". The two are different facts and only one
+        // of them may change what this screen offers.
+        emit(
+          state.copyWith(
+            storedProposal: state.storedProposal.copyWith(
+              phase: ReceiptProposalPhase.unreadable,
+              problem: problem,
+            ),
+          ),
+        );
+
+      case ReceiptExtractionSuccess<List<ReceiptProductProposalLine>>(
+        :final List<ReceiptProductProposalLine> value,
+      ):
+        final ReceiptProposalPhase phase;
+        if (value.isNotEmpty) {
+          phase = ReceiptProposalPhase.loaded;
+        } else if (expectedLines > 0) {
+          // The write said this confirmation carries lines and the read found
+          // none. Not a legacy receipt — a disagreement, and one that must not
+          // be resolved by telling somebody their products are not there.
+          phase = ReceiptProposalPhase.unreadable;
+        } else {
+          phase = ReceiptProposalPhase.legacyHeaderOnly;
+        }
+
+        emit(
+          state.copyWith(
+            storedProposal: state.storedProposal.copyWith(
+              phase: phase,
+              lines: value,
+              problem: phase == ReceiptProposalPhase.unreadable
+                  ? const ExtractionMalformedResponseProblem()
+                  : null,
+              clearProblem: phase != ReceiptProposalPhase.unreadable,
+            ),
+          ),
+        );
+    }
+  }
+
   // ---- Polling -------------------------------------------------------------
 
   void _startPolling() {
@@ -533,7 +691,7 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
   /// exactly as typed, and it is for them to decide where the decimal point
   /// belongs under the new currency.
   void setCurrencyCode(String value) {
-    if (!state.canEdit) {
+    if (!state.canEditTransaction) {
       return;
     }
     _editDraft(
@@ -567,7 +725,11 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
       _editDraft(state.draft.copyWith(taxText: value), ReceiptReviewField.tax);
 
   void _editDraft(ReceiptReviewDraft draft, ReceiptReviewField field) {
-    if (!state.canEdit) {
+    // NOT `canEdit`. This is the state-level half of the submission freeze, and
+    // it is the half that matters: a widget that is disabled can still deliver
+    // a callback queued before the frame that disabled it, and the header a
+    // request is carrying must not move underneath it.
+    if (!state.canEditTransaction) {
       return;
     }
     final Map<ReceiptReviewField, ReceiptReviewFieldProblem> problems =
@@ -918,6 +1080,503 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  // ---- The atomic header-and-products confirmation --------------------------
+
+  /// Writes the transaction header **and** the product proposal, in one call.
+  ///
+  /// This is the whole of the new-receipt confirmation path, and it is the only
+  /// thing on this screen that may write one. [confirm] — the header-only
+  /// `confirm_receipt_extraction` — is deliberately left in place for the
+  /// historical rows and the tests that describe them, and is deliberately no
+  /// longer reachable from the screen: a header written on its own can never
+  /// acquire products afterwards, because the combined RPC answers `CONFLICT`
+  /// to every attempt to top one up. Calling it first would manufacture exactly
+  /// the state the person was trying to avoid.
+  ///
+  /// ## The selection arrives as a value, and is read exactly once
+  ///
+  /// [snapshot] is a frozen reading taken by the page at the instant of the
+  /// tap. This cubit never holds the selection cubit and never asks it for the
+  /// list again, so nothing that happens in the widgets above — a stray
+  /// callback, a rebuild, a late gesture — can change what is being written
+  /// after it has started travelling.
+  ///
+  /// ## Never retried, and never sent twice
+  ///
+  /// One deliberate act, one call. A second [confirmWithProducts] while one is
+  /// pending returns without touching the repository, and no failure branch
+  /// below resends. A resend after a lost reply cannot duplicate anything —
+  /// the database answers `ALREADY_CONFIRMED` — but it remains the person's
+  /// explicit act, never this layer's.
+  Future<void> confirmWithProducts(
+    ReceiptProductProposalSnapshot snapshot,
+  ) async {
+    final ReceiptProductSubmission submission = state.productSubmission;
+    // The structural half of the duplicate-submission guard. `isEditable` is
+    // false for pending, settled, conflict and uncertain alike, so every state
+    // a started write can reach refuses a second one — not merely the pending
+    // one a button's `loading` flag would cover.
+    if (!submission.isEditable || submission.isCheckingStatus) {
+      return;
+    }
+    if (!state.canEdit || state.isBusy) {
+      return;
+    }
+
+    final String code = state.normalizedCurrencyCode;
+    final int? digits = state.currency.minorUnitFor(code);
+
+    // BOTH halves are validated before either is acted on. Reporting the
+    // transaction's faults and then stopping would leave somebody to fix the
+    // date, press confirm again, and only then be told about the products.
+    final Map<ReceiptReviewField, ReceiptReviewFieldProblem> problems =
+        validateDraft(state.draft, digits);
+    final ReceiptProductSelectionProblem? productProblem = snapshot.validate();
+
+    if (problems.isNotEmpty || productProblem != null) {
+      // ZERO repository calls, and nothing is thrown away: every typed value
+      // stays in the draft, every chosen product stays in the selection cubit,
+      // and the screen stays editable. A locally detected fault is a *definite*
+      // failure — the request never left the device — so it is safe to hand the
+      // form straight back.
+      emit(
+        state.copyWith(
+          fieldProblems: problems,
+          productSubmission: submission.copyWith(
+            selectionProblem: productProblem,
+            clearSelectionProblem: productProblem == null,
+            clearProblem: true,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Sound, but the currency's width is not established. Nothing is sent and
+    // nothing is marked wrong; the currency line under the field is already
+    // saying whether it is being checked, could not be, or is not accepted.
+    if (digits == null) {
+      return;
+    }
+
+    final ReceiptConfirmationInput? input = _inputFrom(
+      state.draft,
+      code,
+      digits,
+    );
+    if (input == null) {
+      return;
+    }
+
+    final ReceiptProductSelection selection = snapshot.selection;
+    final int generation = ++_productWriteGeneration;
+
+    emit(
+      state.copyWith(
+        fieldProblems: const <ReceiptReviewField, ReceiptReviewFieldProblem>{},
+        clearProblem: true,
+        confirmBlockedByExtraction: false,
+        // A whole new submission rather than a copyWith: the pending state
+        // carries the two snapshots and nothing left over from an earlier
+        // refusal.
+        productSubmission: ReceiptProductSubmission(
+          status: ReceiptProductSubmissionStatus.pending,
+          submitted: selection,
+          submittedInput: input,
+        ),
+      ),
+    );
+    _scheduleSlowNotice(generation);
+
+    final ReceiptExtractionResult<ReceiptWithProductsResult> result =
+        await _repository.confirmWithProducts(input, selection);
+    if (isClosed || generation != _productWriteGeneration) {
+      return;
+    }
+    // The answer has arrived, whatever it says. A "this is taking longer than
+    // expected" landing after it would be telling somebody to keep waiting for
+    // something that has already finished.
+    _cancelSlowNotice();
+    _productWriteGeneration++;
+
+    switch (result) {
+      case ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        :final ReceiptExtractionProblem problem,
+      ):
+        _applyProductWriteProblem(problem, code);
+
+      case ReceiptExtractionSuccess<ReceiptWithProductsResult>(
+        :final ReceiptWithProductsResult value,
+      ):
+        await _applyProductWriteResult(value);
+    }
+  }
+
+  /// Shows the slow notice, if the request that asked for it is still the one
+  /// in flight.
+  ///
+  /// **Presentation only.** It sends nothing, retries nothing, polls nothing,
+  /// cancels no request, fails nothing and re-enables no control: the single
+  /// `emit` below is the entire body of the callback.
+  void _scheduleSlowNotice(int generation) {
+    _slowTimer?.cancel();
+    _slowTimer = Timer(slowNoticeDelay, () {
+      _slowTimer = null;
+      if (isClosed || generation != _productWriteGeneration) {
+        return;
+      }
+      if (!state.productSubmission.isPending) {
+        return;
+      }
+      emit(
+        state.copyWith(
+          productSubmission: state.productSubmission.copyWith(isSlow: true),
+        ),
+      );
+    });
+  }
+
+  void _cancelSlowNotice() {
+    _slowTimer?.cancel();
+    _slowTimer = null;
+  }
+
+  /// Maps the three deployed outcomes, and refuses to map a fourth.
+  Future<void> _applyProductWriteResult(
+    ReceiptWithProductsResult result,
+  ) async {
+    final ReceiptProductSubmission submission = state.productSubmission;
+
+    switch (result.outcome) {
+      // Both are authoritative success, and the difference between them is
+      // `changed` — which the copy reads, so that nobody is told a record was
+      // created when the answer was that it already existed.
+      case ReceiptWithProductsOutcome.confirmed:
+      case ReceiptWithProductsOutcome.alreadyConfirmed:
+        emit(
+          state.copyWith(
+            productSubmission: submission.copyWith(
+              status: ReceiptProductSubmissionStatus.settled,
+              isSlow: false,
+              result: result,
+              clearProblem: true,
+              clearSelectionProblem: true,
+            ),
+          ),
+        );
+        // The write said what happened; this says what is STORED. The submitted
+        // display is built from these rows and never from the editable
+        // selection, so what a person is shown as final is what a Claim
+        // Reviewer will see — frozen snapshots and the database's own order.
+        //
+        // A failure here does not undo anything: the confirmation stays
+        // authoritative, the screen stays read-only, and the person is offered
+        // the read again rather than the write.
+        await _loadStoredProposal(
+          source: result.outcome == ReceiptWithProductsOutcome.confirmed
+              ? ReceiptProposalSource.newConfirmation
+              : ReceiptProposalSource.alreadyConfirmed,
+          // The database's own count, so an empty read can be told apart from
+          // a receipt that genuinely has no proposal.
+          expectedLines: result.lineCount,
+        );
+
+      // Something is stored that is not what was sent. Nothing was written by
+      // this call and nothing was overwritten, and a proposal is immutable, so
+      // there is no correction path and nothing here offers one.
+      case ReceiptWithProductsOutcome.conflict:
+        emit(
+          state.copyWith(
+            productSubmission: submission.copyWith(
+              status: ReceiptProductSubmissionStatus.conflict,
+              isSlow: false,
+              result: result,
+              clearProblem: true,
+            ),
+          ),
+        );
+
+      // A token this build does not know. NEVER read as confirmed and never as
+      // an ordinary failure: the write may well have committed, and the only
+      // honest next step is the read the person can ask for by hand.
+      case ReceiptWithProductsOutcome.unknown:
+        emit(
+          state.copyWith(
+            productSubmission: submission.copyWith(
+              status: ReceiptProductSubmissionStatus.uncertain,
+              isSlow: false,
+              result: result,
+              problem: const ExtractionMalformedResponseProblem(),
+            ),
+          ),
+        );
+    }
+  }
+
+  /// Splits a failed call into "the database refused" and "nobody knows".
+  void _applyProductWriteProblem(
+    ReceiptExtractionProblem problem,
+    String code,
+  ) {
+    final ReceiptProductSubmission submission = state.productSubmission;
+
+    if (_isUncertainWriteProblem(problem)) {
+      // The write MAY have committed. Not success, not failure, not retried and
+      // not polled — and the submitted snapshots are kept, because the person
+      // must be able to see what they sent while they find out whether it
+      // landed.
+      emit(
+        state.copyWith(
+          productSubmission: submission.copyWith(
+            status: ReceiptProductSubmissionStatus.uncertain,
+            isSlow: false,
+            problem: problem,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // A definite refusal: the database answered, and an exception raised inside
+    // the function rolled the whole transaction back — the confirmation, every
+    // proposal line and the Audit Log together. Nothing is stored, so the form
+    // may safely be handed back.
+    //
+    // `22023` gets the same treatment it gets on the header-only path: the
+    // width is evicted and put back to unresolved, which closes the confirm
+    // control until it has been established again. Nothing is resent.
+    final bool scaleMismatch =
+        problem is ExtractionCurrencyScaleMismatchProblem;
+    if (scaleMismatch) {
+      _resolvedWidths.remove(code);
+      _staleWidths.add(code);
+      _currencyGeneration++;
+    }
+
+    emit(
+      state.copyWith(
+        phase: _isTerminal(problem) ? ReceiptReviewPhase.blocked : state.phase,
+        problem: problem,
+        currency: scaleMismatch
+            ? ReceiptCurrencyResolution(requestedCode: code)
+            : null,
+        productSubmission: submission.copyWith(
+          status: ReceiptProductSubmissionStatus.idle,
+          isSlow: false,
+          problem: problem,
+          clearSubmitted: true,
+        ),
+      ),
+    );
+  }
+
+  /// Whether a failed atomic write leaves the outcome genuinely unknown.
+  ///
+  /// Written as an exhaustive switch over the sealed problem union rather than
+  /// a chain of `is` tests, so a problem added later cannot default into
+  /// "definitely failed" — which is the direction that loses money, because it
+  /// hands somebody an editable form for a receipt that may already be
+  /// immutably confirmed.
+  static bool _isUncertainWriteProblem(ReceiptExtractionProblem problem) =>
+      switch (problem) {
+        // The server decided, and said so. A refusal raised inside the function
+        // rolls back the whole transaction, so nothing is stored.
+        ExtractionUnauthenticatedProblem() ||
+        ExtractionForbiddenProblem() ||
+        ExtractionNotFoundProblem() ||
+        ExtractionInvalidRequestProblem() ||
+        ExtractionCurrencyScaleMismatchProblem() => false,
+        // No decision reached this device. A dropped socket, an unexpected
+        // throw, or a `200` this build could not parse — in the last case the
+        // write has almost certainly committed.
+        ExtractionServiceUnavailableProblem() ||
+        ExtractionNetworkProblem() ||
+        ExtractionMalformedResponseProblem() ||
+        ExtractionUnknownProblem() => true,
+      };
+
+  // ---- The manual status check ---------------------------------------------
+
+  /// Reads what is actually stored, after an explicit tap.
+  ///
+  /// **Two reads and no write.** It never calls `confirm_receipt_with_products`
+  /// and never calls `confirm_receipt_extraction`; there is no path from here
+  /// to either, which is why it is safe to offer as an affordance at all.
+  ///
+  /// It is guarded by [ReceiptProductSubmission.canCheckStatus], which is a
+  /// *separate* guard from the write's: a double tap here must be stopped by
+  /// its own flag rather than by borrowing one that a settled write would also
+  /// have set.
+  ///
+  /// ## The order of the two reads, and why the second one is conditional
+  ///
+  /// `get_my_receipt_product_proposal` answers first, because a non-empty
+  /// proposal settles everything in one round trip. An **empty** proposal is
+  /// ambiguous by design — it means "no proposal", "not yours" and "does not
+  /// exist" alike — so `get_my_receipt_confirmation` is asked next to tell a
+  /// header-only receipt from one with nothing stored at all. Neither read
+  /// distinguishes an unreadable receipt from an unwritten one, and nothing
+  /// here tries to: that collapse is what stops this screen confirming somebody
+  /// else's receipt exists.
+  Future<void> checkReceiptStatus() async {
+    final ReceiptProductSubmission submission = state.productSubmission;
+    if (!submission.canCheckStatus) {
+      return;
+    }
+
+    final int generation = ++_statusCheckGeneration;
+    emit(
+      state.copyWith(
+        productSubmission: submission.copyWith(
+          isCheckingStatus: true,
+          clearStatusCheck: true,
+        ),
+      ),
+    );
+
+    final ReceiptExtractionResult<List<ReceiptProductProposalLine>> proposal =
+        await _repository.productProposal(state.submissionId);
+    if (isClosed || generation != _statusCheckGeneration) {
+      return;
+    }
+
+    switch (proposal) {
+      case ReceiptExtractionFailed<List<ReceiptProductProposalLine>>(
+        :final ReceiptExtractionProblem problem,
+      ):
+        _settleStatusCheck(
+          ReceiptProductStatusCheckOutcome.unreadable,
+          problem: problem,
+        );
+        return;
+
+      case ReceiptExtractionSuccess<List<ReceiptProductProposalLine>>(
+        :final List<ReceiptProductProposalLine> value,
+      ):
+        if (value.isNotEmpty) {
+          // A stored proposal is the end of the question. Whether this call
+          // wrote it or an earlier one did is not something the person needs to
+          // act on: either way the receipt and its products are recorded and
+          // nothing further may be sent.
+          //
+          // The rows this read already returned ARE the display — asking for
+          // them a second time would be a round trip for an answer in hand.
+          _settleStatusCheck(
+            ReceiptProductStatusCheckOutcome.storedWithProposal,
+            lines: value,
+          );
+          return;
+        }
+    }
+
+    final ReceiptExtractionResult<ReceiptConfirmation?> confirmation =
+        await _repository.confirmation(state.submissionId);
+    if (isClosed || generation != _statusCheckGeneration) {
+      return;
+    }
+
+    switch (confirmation) {
+      case ReceiptExtractionFailed<ReceiptConfirmation?>(
+        :final ReceiptExtractionProblem problem,
+      ):
+        _settleStatusCheck(
+          ReceiptProductStatusCheckOutcome.unreadable,
+          problem: problem,
+        );
+
+      case ReceiptExtractionSuccess<ReceiptConfirmation?>(
+        :final ReceiptConfirmation? value,
+      ):
+        _settleStatusCheck(
+          value == null
+              ? ReceiptProductStatusCheckOutcome.nothingStored
+              : ReceiptProductStatusCheckOutcome.legacyHeaderOnly,
+          confirmation: value,
+        );
+    }
+  }
+
+  void _settleStatusCheck(
+    ReceiptProductStatusCheckOutcome outcome, {
+    ReceiptExtractionProblem? problem,
+    ReceiptConfirmation? confirmation,
+    List<ReceiptProductProposalLine>? lines,
+  }) {
+    final ReceiptProductSubmission submission = state.productSubmission;
+
+    switch (outcome) {
+      case ReceiptProductStatusCheckOutcome.storedWithProposal:
+        emit(
+          state.copyWith(
+            productSubmission: submission.copyWith(
+              status: ReceiptProductSubmissionStatus.settled,
+              isCheckingStatus: false,
+              isSlow: false,
+              statusCheck: outcome,
+              clearProblem: true,
+            ),
+            // The rows the check just read become the submitted display, so
+            // discovering a proposal and confirming one land on exactly the
+            // same screen, built from exactly the same frozen values.
+            storedProposal: ReceiptStoredProposal(
+              phase: ReceiptProposalPhase.loaded,
+              lines: lines ?? const <ReceiptProductProposalLine>[],
+              source: ReceiptProposalSource.statusCheck,
+            ),
+          ),
+        );
+
+      case ReceiptProductStatusCheckOutcome.legacyHeaderOnly:
+        // A confirmation with no proposal. NOTHING is appended to it and
+        // nothing is submitted again — the combined RPC answers `CONFLICT` to
+        // any attempt to top one up, and a proposal is immutable regardless.
+        // Recorded, frozen, and left for the unit that presents it.
+        emit(
+          state.copyWith(
+            confirmation: confirmation,
+            productSubmission: submission.copyWith(
+              status: ReceiptProductSubmissionStatus.conflict,
+              isCheckingStatus: false,
+              isSlow: false,
+              statusCheck: outcome,
+              clearProblem: true,
+            ),
+            storedProposal: const ReceiptStoredProposal(
+              phase: ReceiptProposalPhase.legacyHeaderOnly,
+              source: ReceiptProposalSource.statusCheck,
+            ),
+          ),
+        );
+
+      case ReceiptProductStatusCheckOutcome.nothingStored:
+        // The ONE outcome that reopens the form, and only because both reads
+        // answered: no proposal and no confirmation. The draft is untouched and
+        // the selection cubit is never cleared, so every typed value and every
+        // chosen product is exactly where it was left.
+        emit(
+          state.copyWith(
+            productSubmission: ReceiptProductSubmission(statusCheck: outcome),
+            // Nothing is stored, so nothing is claimed about a proposal either.
+            storedProposal: const ReceiptStoredProposal(),
+          ),
+        );
+
+      case ReceiptProductStatusCheckOutcome.unreadable:
+        // Nothing is concluded. The screen stays exactly as uncertain as it
+        // was, no retry is scheduled and no loop is started; the person may ask
+        // again by hand.
+        emit(
+          state.copyWith(
+            productSubmission: submission.copyWith(
+              isCheckingStatus: false,
+              statusCheck: outcome,
+              problem: problem,
+            ),
+          ),
+        );
+    }
+  }
+
   // ---- The preview ---------------------------------------------------------
 
   /// Mints a fresh capability for the receipt image.
@@ -995,6 +1654,13 @@ class ReceiptReviewCubit extends Cubit<ReceiptReviewState> {
     // closing is what ends it. Nothing else needs cancelling: there is no
     // timer, no subscription and no controller here.
     _appActive = false;
+    // The one timer, cancelled rather than left to fire into a closed cubit.
+    _cancelSlowNotice();
+    // A reply still in flight is dropped by these as well as by `isClosed`, so
+    // nothing that lands after the screen has gone can reach an emit.
+    _productWriteGeneration++;
+    _statusCheckGeneration++;
+    _proposalGeneration++;
     return super.close();
   }
 

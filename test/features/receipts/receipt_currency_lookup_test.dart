@@ -42,6 +42,8 @@ void main() {
           return rpcResult;
         },
         confirm: (Map<String, Object?> params) async => rpcResult,
+        confirmWithProducts: (Map<String, Object?> params) async => rpcResult,
+        productProposal: (String id) async => rpcResult,
       ),
     );
   }

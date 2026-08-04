@@ -8,7 +8,13 @@ import '../../../../../core/widgets/widgets.dart';
 import '../../../../auth/domain/entities/portal_kind.dart';
 import '../../../domain/entities/receipt_extraction.dart';
 import '../../../domain/entities/receipt_extraction_problem.dart';
+import '../cubit/receipt_product_selection_cubit.dart';
 import '../cubit/receipt_review_cubit.dart';
+import '../widgets/receipt_final_confirmation_section.dart';
+import '../widgets/receipt_legacy_confirmation_section.dart';
+import '../widgets/receipt_submitted_proposal_section.dart';
+import '../widgets/receipt_product_catalogue_section.dart';
+import '../widgets/receipt_selected_products_section.dart';
 import '../widgets/receipt_review_confirmed_card.dart';
 import '../widgets/receipt_review_copy.dart';
 import '../widgets/receipt_review_form.dart';
@@ -91,9 +97,39 @@ class _SalesStaffReceiptReviewPageState
 
   void _backToHistory() => context.go(SalesStaffNavigation.history);
 
+  /// Takes ONE frozen reading of the proposal and hands it to the cubit that
+  /// owns the write.
+  ///
+  /// This is the whole of the coordination between the two cubits, and it runs
+  /// in one direction only: the page reads the selection, the review cubit
+  /// receives a value. Neither cubit holds the other, so there is no path by
+  /// which the write could re-read the list halfway through, and no second door
+  /// to the RPC.
+  void _confirmWithProducts() {
+    _cubit.confirmWithProducts(
+      context.read<ReceiptProductSelectionCubit>().state.snapshot,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ReceiptReviewCubit, ReceiptReviewState>(
+    return BlocConsumer<ReceiptReviewCubit, ReceiptReviewState>(
+      // The one capability the submission owns and the selection obeys. It is
+      // pushed rather than pulled so the selection cubit stays ignorant of the
+      // write: it knows only whether it may currently be edited.
+      //
+      // `isEditable` is false for pending, settled, conflict and uncertain
+      // alike, and true again only after a status check has authoritatively
+      // proved that nothing is stored — at which point the list, which was
+      // never cleared, becomes editable exactly as it was left.
+      listenWhen: (ReceiptReviewState previous, ReceiptReviewState current) =>
+          previous.productSubmission.isEditable !=
+          current.productSubmission.isEditable,
+      listener: (BuildContext context, ReceiptReviewState state) {
+        context.read<ReceiptProductSelectionCubit>().setReadOnly(
+          readOnly: !state.productSubmission.isEditable,
+        );
+      },
       builder: (BuildContext context, ReceiptReviewState state) {
         final ReceiptReviewCubit cubit = context.read<ReceiptReviewCubit>();
 
@@ -147,12 +183,20 @@ class _SalesStaffReceiptReviewPageState
       ];
     }
 
+    // A finished receipt, opened as one: the confirmation is stored and the
+    // only thing left is to show what it says. The stored proposal decides
+    // which finished receipt this is — one with products, or the header-only
+    // shape that predates Phase 1D-B.
     if (state.phase == ReceiptReviewPhase.confirmed) {
       return <Widget>[
         ReceiptReviewConfirmedCard(
           state: state,
           onBackToHistory: _backToHistory,
+          // The section below carries the way off the screen instead.
+          showBackAction: false,
         ),
+        const SizedBox(height: SrSpacing.xl),
+        ..._finishedProposal(state, cubit),
       ];
     }
 
@@ -213,7 +257,6 @@ class _SalesStaffReceiptReviewPageState
           // downstream substitutes a width for it.
           minorDigits: state.resolvedMinorUnit,
           cubit: cubit,
-          onConfirm: cubit.confirm,
         )
       else
         SrEmptyState(
@@ -224,6 +267,32 @@ class _SalesStaffReceiptReviewPageState
                     'the reading finishes.'
               : 'This receipt cannot be confirmed from here just now.',
         ),
+
+      // Phase 1D-B. The product proposal, built AFTER the transaction details
+      // it will be submitted with — the order the final review reads in, and
+      // the order the atomic confirmation sends. Rendered only while the form
+      // is open, for the same reason the form is: a receipt that cannot be
+      // confirmed cannot receive products either.
+      //
+      // The final confirmation control lives at the foot of these sections,
+      // because it sends the header and the products in one call.
+      // Editable only while the receipt is genuinely unfinished. The moment a
+      // confirmation exists — written just now, or discovered by a status
+      // check — the catalogue and the selected-products editor are REMOVED
+      // rather than disabled, and the immutable record takes their place.
+      if (state.canEdit && !state.isReceiptFinished) ...<Widget>[
+        const SizedBox(height: SrSpacing.xl),
+        _ProductProposalSections(
+          review: state,
+          onConfirm: _confirmWithProducts,
+          onCheckStatus: cubit.checkReceiptStatus,
+        ),
+      ],
+
+      if (state.isReceiptFinished) ...<Widget>[
+        const SizedBox(height: SrSpacing.xl),
+        ..._finishedProposal(state, cubit),
+      ],
 
       if (state.lineItems.isNotEmpty) ...<Widget>[
         const SizedBox(height: SrSpacing.xl),
@@ -242,5 +311,151 @@ class _SalesStaffReceiptReviewPageState
         ),
       ],
     ];
+  }
+
+  /// What a finished receipt shows in place of the editable proposal.
+  ///
+  /// Three outcomes and no fourth: the stored lines, the explicit header-only
+  /// state, or an honest "we could not load them" that offers another read.
+  /// None of the three carries a control that could write anything — the
+  /// catalogue, the selected-products editor and the confirm button are not
+  /// disabled here, they are absent.
+  List<Widget> _finishedProposal(
+    ReceiptReviewState state,
+    ReceiptReviewCubit cubit,
+  ) {
+    // What THIS session's write did, when it was this session that wrote. It
+    // carries the one distinction the stored lines cannot: whether the record
+    // was created just now or already existed. Absent on an initial load, and
+    // suppressed for the legacy state, which says it better in its own words.
+    final ReceiptReviewNotice? outcome = state.storedProposal.isLegacyHeaderOnly
+        ? null
+        : ReceiptReviewCopy.productSubmissionNotice(state.productSubmission);
+
+    return <Widget>[
+      if (outcome != null) ...<Widget>[
+        Semantics(
+          liveRegion: true,
+          container: true,
+          child: SrAlert(
+            tone: outcome.tone,
+            title: outcome.title,
+            message: outcome.message,
+          ),
+        ),
+        const SizedBox(height: SrSpacing.xl),
+      ],
+
+      if (state.storedProposal.isLegacyHeaderOnly)
+        const ReceiptLegacyConfirmationSection()
+      else
+        ReceiptSubmittedProposalSection(
+          proposal: state.storedProposal,
+          onReload: cubit.reloadStoredProposal,
+        ),
+      const SizedBox(height: SrSpacing.xl),
+      Semantics(
+        button: true,
+        label: 'Back to my submitted receipts',
+        child: SrButton(
+          label: 'Back to my submissions',
+          icon: Icons.arrow_back_rounded,
+          variant: SrButtonVariant.outline,
+          size: SrButtonSize.lg,
+          fullWidth: true,
+          onPressed: _backToHistory,
+        ),
+      ),
+    ];
+  }
+}
+
+/// The product sections and the one final confirmation control.
+///
+/// Split into its own widget so only these cards rebuild when a quantity
+/// changes — the review page above them, which owns the image preview and the
+/// transaction form, is untouched by a stepper tap.
+///
+/// The confirmation control is here, at the foot, rather than under the
+/// transaction form: it sends the header and the products in one immutable
+/// call, so it belongs after everything it will send.
+class _ProductProposalSections extends StatefulWidget {
+  const _ProductProposalSections({
+    required this.review,
+    required this.onConfirm,
+    required this.onCheckStatus,
+  });
+
+  /// The review state, for the capabilities the submission owns — whether the
+  /// control may fire, and whether the list may still change.
+  final ReceiptReviewState review;
+  final VoidCallback onConfirm;
+  final VoidCallback onCheckStatus;
+
+  @override
+  State<_ProductProposalSections> createState() =>
+      _ProductProposalSectionsState();
+}
+
+class _ProductProposalSectionsState extends State<_ProductProposalSections> {
+  @override
+  void initState() {
+    super.initState();
+    // One catalogue read for the life of this route. Guarded inside the cubit,
+    // so a rebuilt element cannot issue a second one.
+    context.read<ReceiptProductSelectionCubit>().loadCatalogue();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<
+      ReceiptProductSelectionCubit,
+      ReceiptProductSelectionState
+    >(
+      builder: (BuildContext context, ReceiptProductSelectionState state) {
+        final ReceiptProductSelectionCubit cubit = context
+            .read<ReceiptProductSelectionCubit>();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            ReceiptProductCatalogueSection(
+              products: state.visibleCatalogue,
+              query: state.query,
+              onQueryChanged: cubit.search,
+              onSelect: cubit.select,
+              isSelected: state.isSelected,
+              lineNumberOf: state.lineNumberOf,
+              isLoading: state.isLoading,
+              failure: state.failure,
+              onRetry: cubit.retryCatalogue,
+              isReadOnly: state.isReadOnly,
+              isFull: state.isFull,
+            ),
+            const SizedBox(height: SrSpacing.xl),
+            ReceiptSelectedProductsSection(
+              products: state.selectedProducts,
+              onIncrement: cubit.increment,
+              onDecrement: cubit.decrement,
+              onRemove: cubit.remove,
+              notice: state.notice,
+              noticeProductId: state.noticeProductId,
+              isReadOnly: state.isReadOnly,
+            ),
+            const SizedBox(height: SrSpacing.xl),
+            ReceiptFinalConfirmationSection(
+              state: widget.review,
+              // Read from the selection state so the summary and the request
+              // describe the same list — the snapshot the tap takes is built
+              // from this very state object.
+              lineCount: state.selectedCount,
+              totalQuantity: state.totalQuantity,
+              onConfirm: widget.onConfirm,
+              onCheckStatus: widget.onCheckStatus,
+            ),
+          ],
+        );
+      },
+    );
   }
 }

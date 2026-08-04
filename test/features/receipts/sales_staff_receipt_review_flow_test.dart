@@ -7,7 +7,8 @@ import 'package:sale_reward/app/shells/sales_staff/sales_staff_navigation.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/receipts/domain/entities/extracted_value.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmation_input.dart';
-import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmation_result.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_outcome.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_result.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_line_item.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_currency_minor_unit.dart';
@@ -21,7 +22,7 @@ import 'package:sale_reward/features/receipts/domain/repositories/receipt_extrac
 import 'package:sale_reward/features/receipts/domain/repositories/receipt_result.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_receipt_review_page.dart';
-import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_review_confirmed_card.dart';
+import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_review_copy.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_review_form.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_review_line_items.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_review_preview.dart';
@@ -48,6 +49,21 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+}
+
+/// Chooses the first catalogue product.
+///
+/// Every confirmation below needs one, and that is the point rather than an
+/// inconvenience: since Phase 1D-B the transaction header and the product
+/// proposal are one immutable assertion written by one RPC, and a receipt
+/// cannot be confirmed without its products at all.
+Future<void> chooseFirstProduct(WidgetTester tester) async {
+  await tapVisible(tester, find.text('Add').first);
+}
+
+/// Presses the ONE control on this screen that writes anything.
+Future<void> confirmReceiptAndProducts(WidgetTester tester) async {
+  await tapVisible(tester, find.text(ReceiptReviewCopy.confirmAction));
 }
 
 void main() {
@@ -320,52 +336,70 @@ void main() {
   });
 
   group('confirming', () {
+    FakeReceiptExtractionRepository confirming({
+      ReceiptWithProductsOutcome outcome = ReceiptWithProductsOutcome.confirmed,
+    }) {
+      return FakeReceiptExtractionRepository(
+        confirmWithProductsResults:
+            <ReceiptExtractionResult<ReceiptWithProductsResult>>[
+              withProductsResult(outcome: outcome),
+            ],
+      );
+    }
+
     testWidgets('a confirmation settles the screen and cannot be repeated', (
       tester,
     ) async {
-      final FakeReceiptExtractionRepository extraction =
-          FakeReceiptExtractionRepository();
+      final FakeReceiptExtractionRepository extraction = confirming();
       await openReview(tester, extraction: extraction);
 
-      await tapVisible(tester, find.text('Confirm receipt'));
+      await chooseFirstProduct(tester);
+      await confirmReceiptAndProducts(tester);
 
-      expect(find.byType(ReceiptReviewConfirmedCard), findsOneWidget);
-      expect(find.text('Receipt confirmed'), findsOneWidget);
-      expect(find.byType(ReceiptReviewForm), findsNothing);
-      expect(extraction.confirmInputs, hasLength(1));
-      // The entry mode is the backend's word, rendered as a sentence.
-      expect(find.text('As read from the receipt'), findsOneWidget);
+      // ONE call, to the atomic RPC, carrying both halves.
+      expect(extraction.confirmWithProductsCalls, hasLength(1));
+      // And NEVER the header-only write. A confirmation written on its own
+      // could never acquire products afterwards.
+      expect(extraction.confirmInputs, isEmpty);
+
+      expect(find.text('Receipt and products recorded'), findsOneWidget);
+      // No second confirmation control of any kind: the proposal is immutable.
+      expect(find.text(ReceiptReviewCopy.confirmAction), findsNothing);
     });
 
     testWidgets('a validation failure marks the field and sends nothing', (
       tester,
     ) async {
-      final FakeReceiptExtractionRepository extraction =
-          FakeReceiptExtractionRepository();
+      final FakeReceiptExtractionRepository extraction = confirming();
       await openReview(tester, extraction: extraction);
+      await chooseFirstProduct(tester);
 
       final Finder total = find.byType(TextField).at(1);
       await tester.enterText(total, '');
       await tester.pumpAndSettle();
-      await tapVisible(tester, find.text('Confirm receipt'));
+      await confirmReceiptAndProducts(tester);
 
       expect(find.text('Enter the total on the receipt.'), findsOneWidget);
+      expect(extraction.confirmWithProductsCalls, isEmpty);
       expect(extraction.confirmInputs, isEmpty);
+      // The chosen product survives the refusal — nothing was removed for
+      // somebody who mistyped a total.
+      expect(find.textContaining('1 product line'), findsOneWidget);
     });
 
     testWidgets('a corrected total is sent as integer minor units', (
       tester,
     ) async {
-      final FakeReceiptExtractionRepository extraction =
-          FakeReceiptExtractionRepository();
+      final FakeReceiptExtractionRepository extraction = confirming();
       await openReview(tester, extraction: extraction);
+      await chooseFirstProduct(tester);
 
       final Finder total = find.byType(TextField).at(1);
       await tester.enterText(total, '19.99');
       await tester.pumpAndSettle();
-      await tapVisible(tester, find.text('Confirm receipt'));
+      await confirmReceiptAndProducts(tester);
 
-      expect(extraction.confirmInputs.single.totalMinor, 1999);
+      expect(extraction.confirmWithProductsCalls.single.input.totalMinor, 1999);
     });
 
     testWidgets('leaving the screen drops the image capability', (
@@ -588,10 +622,12 @@ void main() {
         find.byType(ReceiptReviewForm),
       );
       expect(form.state.canConfirm, isFalse);
+      expect(form.state.canSubmitProposal, isFalse);
       expect(form.minorDigits, isNull);
 
       // Nothing was sent, and the button cannot send it.
-      await tapVisible(tester, find.text('Confirm receipt'));
+      await confirmReceiptAndProducts(tester);
+      expect(repository.confirmWithProductsCalls, isEmpty);
       expect(repository.confirmInputs, isEmpty);
     });
 
@@ -623,16 +659,17 @@ void main() {
     ) async {
       final FakeReceiptExtractionRepository repository =
           FakeReceiptExtractionRepository(
-            confirmResults:
-                <ReceiptExtractionResult<ReceiptConfirmationResult>>[
-                  const ReceiptExtractionFailed<ReceiptConfirmationResult>(
+            confirmWithProductsResults:
+                <ReceiptExtractionResult<ReceiptWithProductsResult>>[
+                  const ReceiptExtractionFailed<ReceiptWithProductsResult>(
                     ExtractionCurrencyScaleMismatchProblem(),
                   ),
                 ],
           );
       await openWith(tester, repository);
+      await chooseFirstProduct(tester);
 
-      await tapVisible(tester, find.text('Confirm receipt'));
+      await confirmReceiptAndProducts(tester);
 
       expect(
         find.textContaining(
@@ -646,7 +683,9 @@ void main() {
         'iso_currency_codes',
         'get_receipt_currency_minor_unit',
         'confirm_receipt_extraction',
+        'confirm_receipt_with_products',
         'p_currency_minor_unit',
+        'p_lines',
         'invalid_parameter_value',
       ]) {
         expect(find.textContaining(forbidden), findsNothing, reason: forbidden);
@@ -871,10 +910,12 @@ void main() {
         // Still the reading's own currency, right up to the moment of sending.
         expect(lineText('AED 12.50'), findsOneWidget);
 
-        await tapVisible(tester, find.text('Confirm receipt'));
+        await chooseFirstProduct(tester);
+        await confirmReceiptAndProducts(tester);
 
-        expect(repository.confirmInputs, hasLength(1));
-        final ReceiptConfirmationInput sent = repository.confirmInputs.single;
+        expect(repository.confirmWithProductsCalls, hasLength(1));
+        final ReceiptConfirmationInput sent =
+            repository.confirmWithProductsCalls.single.input;
         expect(sent.currencyCode, 'JPY');
         expect(sent.currencyMinorUnit, 0);
         // 1250 yen, and not 125000. The line item beside it never entered this.
@@ -927,9 +968,13 @@ void main() {
       expect(find.byType(ReceiptReviewLineItems), findsNothing);
       // Nothing else is affected: no alarm, and the receipt still confirms.
       expect(find.byType(ReceiptReviewForm), findsOneWidget);
-      await tapVisible(tester, find.text('Confirm receipt'));
-      expect(repository.confirmInputs, hasLength(1));
-      expect(repository.confirmInputs.single.currencyMinorUnit, 2);
+      await chooseFirstProduct(tester);
+      await confirmReceiptAndProducts(tester);
+      expect(repository.confirmWithProductsCalls, hasLength(1));
+      expect(
+        repository.confirmWithProductsCalls.single.input.currencyMinorUnit,
+        2,
+      );
     });
   });
 }

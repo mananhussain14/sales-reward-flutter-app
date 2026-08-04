@@ -23,6 +23,8 @@ import '../../features/products/presentation/vendor/pages/vendor_product_edit_pa
 import '../../features/products/presentation/vendor/pages/vendor_products_page.dart';
 import '../../features/profile/presentation/vendor/pages/vendor_company_profile_page.dart';
 import '../../features/receipts/domain/repositories/receipt_extraction_repository.dart';
+import '../../features/receipts/domain/repositories/receipt_repository.dart';
+import '../../features/receipts/presentation/sales_staff/cubit/receipt_product_selection_cubit.dart';
 import '../../features/receipts/presentation/sales_staff/cubit/receipt_review_cubit.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_receipt_review_page.dart';
@@ -637,12 +639,27 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
             builder: (BuildContext context, GoRouterState state) {
               final String submissionId =
                   state.pathParameters['submissionId'] ?? '';
-              return BlocProvider<ReceiptReviewCubit>(
-                create: (BuildContext providerContext) => ReceiptReviewCubit(
-                  repository: providerContext
-                      .read<ReceiptExtractionRepository>(),
-                  submissionId: submissionId,
-                ),
+              // Two cubits, both bounded to this route. The product-selection
+              // cubit is separate on purpose: it owns one catalogue read and a
+              // local list, performs no write, and can be proven on its own
+              // before the atomic confirmation is wired through it.
+              return MultiBlocProvider(
+                providers: <BlocProvider<dynamic>>[
+                  BlocProvider<ReceiptReviewCubit>(
+                    create: (BuildContext providerContext) =>
+                        ReceiptReviewCubit(
+                          repository: providerContext
+                              .read<ReceiptExtractionRepository>(),
+                          submissionId: submissionId,
+                        ),
+                  ),
+                  BlocProvider<ReceiptProductSelectionCubit>(
+                    create: (BuildContext providerContext) =>
+                        ReceiptProductSelectionCubit(
+                          providerContext.read<ReceiptRepository>(),
+                        ),
+                  ),
+                ],
                 child: SalesStaffReceiptReviewPage(submissionId: submissionId),
               );
             },
