@@ -23,6 +23,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String listMyReceiptExtractionLineItemsRpc =
     'list_my_receipt_extraction_line_items';
 const String confirmReceiptExtractionRpc = 'confirm_receipt_extraction';
+
+/// Phase 1D-B. The atomic header-and-products confirmation, and the read of the
+/// immutable proposal it creates.
+///
+/// `confirm_receipt_with_products` is a **distinct function**, never an overload
+/// of the one above: two same-named functions previously broke
+/// `regprocedure`-pinned assertions on the backend, and a client that could
+/// resolve to either would be choosing which contract it meant by accident.
+const String confirmReceiptWithProductsRpc = 'confirm_receipt_with_products';
+const String getMyReceiptProductProposalRpc = 'get_my_receipt_product_proposal';
 const String getMyReceiptConfirmationRpc = 'get_my_receipt_confirmation';
 
 /// The authoritative currency-width lookup.
@@ -111,6 +121,25 @@ ReceiptConfirmationInvoker supabaseConfirmReceiptExtractionInvoker(
       client.rpc<Object?>(confirmReceiptExtractionRpc, params: params);
 }
 
+/// The eleven values an atomic header-and-products confirmation is.
+ReceiptConfirmationInvoker supabaseConfirmReceiptWithProductsInvoker(
+  SupabaseClient client,
+) {
+  return (Map<String, Object?> params) =>
+      client.rpc<Object?>(confirmReceiptWithProductsRpc, params: params);
+}
+
+/// One submission id. The acting staff member and their Retailer are derived
+/// from `auth.uid()`, so no identity travels beside it.
+ReceiptExtractionReadInvoker supabaseReceiptProductProposalInvoker(
+  SupabaseClient client,
+) {
+  return (String submissionId) => client.rpc<Object?>(
+    getMyReceiptProductProposalRpc,
+    params: <String, Object?>{extractionSubmissionIdParameter: submissionId},
+  );
+}
+
 /// Reads and writes the extraction data an authorized Sales Staff member is
 /// entitled to, for their own receipts.
 ///
@@ -134,10 +163,14 @@ final class ReceiptExtractionRpcDataSource {
     required ReceiptExtractionReadInvoker confirmation,
     required ReceiptCurrencyMinorUnitInvoker currencyMinorUnit,
     required ReceiptConfirmationInvoker confirm,
+    required ReceiptConfirmationInvoker confirmWithProducts,
+    required ReceiptExtractionReadInvoker productProposal,
   }) : _lineItems = lineItems,
        _confirmation = confirmation,
        _currencyMinorUnit = currencyMinorUnit,
-       _confirm = confirm;
+       _confirm = confirm,
+       _confirmWithProducts = confirmWithProducts,
+       _productProposal = productProposal;
 
   /// Builds the data source against a live client.
   factory ReceiptExtractionRpcDataSource.forClient(SupabaseClient client) {
@@ -146,6 +179,8 @@ final class ReceiptExtractionRpcDataSource {
       confirmation: supabaseReceiptConfirmationInvoker(client),
       currencyMinorUnit: supabaseReceiptCurrencyMinorUnitInvoker(client),
       confirm: supabaseConfirmReceiptExtractionInvoker(client),
+      confirmWithProducts: supabaseConfirmReceiptWithProductsInvoker(client),
+      productProposal: supabaseReceiptProductProposalInvoker(client),
     );
   }
 
@@ -153,6 +188,8 @@ final class ReceiptExtractionRpcDataSource {
   final ReceiptExtractionReadInvoker _confirmation;
   final ReceiptCurrencyMinorUnitInvoker _currencyMinorUnit;
   final ReceiptConfirmationInvoker _confirm;
+  final ReceiptConfirmationInvoker _confirmWithProducts;
+  final ReceiptExtractionReadInvoker _productProposal;
 
   Future<Object?> fetchLineItems(String submissionId) =>
       _lineItems(submissionId);
@@ -167,4 +204,16 @@ final class ReceiptExtractionRpcDataSource {
   /// One confirmation, in one round trip. Never called twice for one submission
   /// of the form.
   Future<Object?> confirm(Map<String, Object?> params) => _confirm(params);
+
+  /// One header-and-products confirmation, in one round trip.
+  ///
+  /// The Phase 1D-B path. It is never preceded by a call to [confirm]: the
+  /// header and the proposal are a single immutable assertion, and writing the
+  /// header first would leave a receipt that can never acquire products.
+  Future<Object?> confirmWithProducts(Map<String, Object?> params) =>
+      _confirmWithProducts(params);
+
+  /// The immutable product proposal for one of the caller's own receipts.
+  Future<Object?> fetchProductProposal(String submissionId) =>
+      _productProposal(submissionId);
 }

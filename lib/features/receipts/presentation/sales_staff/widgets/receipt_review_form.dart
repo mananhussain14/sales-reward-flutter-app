@@ -50,7 +50,6 @@ class ReceiptReviewForm extends StatefulWidget {
     required this.state,
     required this.minorDigits,
     required this.cubit,
-    required this.onConfirm,
   });
 
   final ReceiptReviewState state;
@@ -58,7 +57,6 @@ class ReceiptReviewForm extends StatefulWidget {
   /// The authoritative decimal width, or null while it is not established.
   final int? minorDigits;
   final ReceiptReviewCubit cubit;
-  final VoidCallback onConfirm;
 
   @override
   State<ReceiptReviewForm> createState() => _ReceiptReviewFormState();
@@ -132,7 +130,11 @@ class _ReceiptReviewFormState extends State<ReceiptReviewForm> {
   Widget build(BuildContext context) {
     final ReceiptReviewState state = widget.state;
     final ReceiptExtraction? extraction = state.extraction;
-    final bool enabled = state.canEdit;
+    // NOT `canEdit`. The moment the atomic write starts, the header is as
+    // frozen as the products it was sent with — and it stays frozen for every
+    // state that write can reach. Disabling here is structural: each control
+    // receives `enabled: false` rather than being dimmed and left tappable.
+    final bool enabled = state.canEditTransaction;
 
     return SrSectionCard(
       title: 'Receipt details',
@@ -244,27 +246,15 @@ class _ReceiptReviewFormState extends State<ReceiptReviewForm> {
             onChanged: widget.cubit.setDocumentNumber,
           ),
           _Source(value: extraction?.documentNumber, what: 'receipt number'),
-          const SizedBox(height: SrSpacing.xxl),
-
-          Semantics(
-            button: true,
-            label: 'Confirm this receipt',
-            child: SrButton(
-              label: 'Confirm receipt',
-              icon: Icons.check_rounded,
-              size: SrButtonSize.lg,
-              fullWidth: true,
-              loading: state.phase == ReceiptReviewPhase.confirming,
-              loadingLabel: 'Confirming…',
-              // Null while a confirmation is in flight — the visible half of
-              // the duplicate-submission guard. The cubit refuses a second call
-              // regardless, so a stale frame cannot get past it either.
-              onPressed: state.canConfirm ? widget.onConfirm : null,
-            ),
-          ),
           const SizedBox(height: SrSpacing.sm),
+
+          // NO submit control here, deliberately. These details and the product
+          // proposal below are written by one RPC as one immutable assertion,
+          // so there is one control on this screen that sends anything and it
+          // lives at the foot of the page, after the products it will be sent
+          // with. See `ReceiptFinalConfirmationSection`.
           Text(
-            'Once confirmed, these details cannot be changed.',
+            'These details are confirmed together with the products below.',
             textAlign: TextAlign.center,
             style: SrTypography.caption.copyWith(
               color: context.sr.textSecondary,

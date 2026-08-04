@@ -5,6 +5,8 @@ import '../../../domain/entities/receipt_confirmation_field.dart';
 import '../../../domain/entities/receipt_extraction_failure_code.dart';
 import '../../../domain/entities/receipt_extraction_problem.dart';
 import '../../../domain/entities/receipt_extraction_warning_code.dart';
+import '../../../domain/entities/receipt_product_selection.dart';
+import '../../../domain/entities/selected_receipt_product.dart';
 import '../cubit/receipt_review_cubit.dart';
 
 /// One piece of user-facing feedback: a tone, a headline and a sentence.
@@ -270,6 +272,233 @@ abstract final class ReceiptReviewCopy {
         'That date is too far in the past to be a receipt date.',
     };
   }
+
+  // ---- The atomic header-and-products confirmation -------------------------
+
+  /// The label on the one final confirmation control.
+  static const String confirmAction = 'Confirm receipt and products';
+
+  /// What is said while the immutable write is in flight.
+  ///
+  /// It names **both** halves on purpose: one call writes the transaction and
+  /// the product proposal together, and a sentence that mentioned only the
+  /// receipt would understate what is about to become unchangeable.
+  static const String confirmPending = 'Confirming receipt and products…';
+
+  /// Shown once the request has outlived [slowConfirmationNotice].
+  ///
+  /// The second sentence is the whole point of the first. A slow immutable
+  /// write is the moment somebody reaches for the button again, and this is the
+  /// only thing standing between them and a second deliberate act.
+  static const String confirmSlow =
+      'This is taking longer than expected. Do not submit again.';
+
+  /// Shown when the result is genuinely unknown.
+  ///
+  /// Neither "it worked" nor "it failed", because neither is known. No SQLSTATE,
+  /// no provider message, no hint and no stack trace: none of them reaches this
+  /// layer to be shown.
+  static const String confirmUnverified =
+      'The confirmation result could not be verified. Do not submit again.';
+
+  /// The one manual recovery affordance. A read, never a resend.
+  static const String statusCheckAction = 'Check receipt status';
+
+  /// Why a proposal was refused before anything was sent.
+  ///
+  /// Every one of these is a *local* pre-check, so the sentence says what to do
+  /// rather than what a server thought. None of them removed, merged, clamped
+  /// or reordered anything — and each says so, because a person who chose fifty
+  /// products needs to know their list is intact.
+  static String productError(ReceiptProductSelectionProblem problem) =>
+      switch (problem) {
+        ReceiptProductSelectionProblem.noProductsSelected =>
+          'Add at least one product before confirming. A receipt cannot be '
+              'submitted without its products.',
+        ReceiptProductSelectionProblem.tooManyProducts =>
+          'A receipt can carry at most $maxReceiptProductLines products. '
+              'Remove some before confirming — nothing was removed for you.',
+        ReceiptProductSelectionProblem.invalidQuantity =>
+          'Every quantity must be a whole number between '
+              '$minReceiptProductQuantity and $maxReceiptProductQuantity. '
+              'Nothing was changed for you.',
+        ReceiptProductSelectionProblem.duplicateProduct =>
+          'A product is listed twice. Remove the extra line — the quantities '
+              'were not merged for you.',
+        ReceiptProductSelectionProblem.notInCatalogue =>
+          'A chosen product is no longer in your product list. Remove it and '
+              'choose again.',
+      };
+
+  /// The panel above the final confirmation control, or null while the proposal
+  /// is simply being built.
+  ///
+  /// One notice at a time, in the order that matters: what was refused before
+  /// sending, then what is happening now, then what was answered.
+  static ReceiptReviewNotice? productSubmissionNotice(
+    ReceiptProductSubmission submission,
+  ) {
+    final ReceiptProductSelectionProblem? refused = submission.selectionProblem;
+    if (refused != null) {
+      return ReceiptReviewNotice(
+        tone: SrAlertTone.warning,
+        title: 'Check the products on this receipt',
+        message: productError(refused),
+      );
+    }
+
+    return switch (submission.status) {
+      ReceiptProductSubmissionStatus.idle =>
+        submission.statusCheck == ReceiptProductStatusCheckOutcome.nothingStored
+            ? const ReceiptReviewNotice(
+                tone: SrAlertTone.info,
+                title: 'Nothing was stored for this receipt',
+                message:
+                    'We found no confirmation and no products for it. Your '
+                    'details and your chosen products are exactly as you left '
+                    'them, and you can confirm when you are ready.',
+              )
+            : null,
+
+      ReceiptProductSubmissionStatus.pending => ReceiptReviewNotice(
+        tone: SrAlertTone.info,
+        title: confirmPending,
+        message: submission.isSlow
+            ? confirmSlow
+            : 'The receipt details and the products are being recorded '
+                  'together. This cannot be undone once it finishes.',
+      ),
+
+      ReceiptProductSubmissionStatus.settled => _settledNotice(submission),
+
+      // Says what is known and nothing more. It does NOT say the receipt is
+      // unconfirmed, does not name whoever confirmed it, does not describe what
+      // differs, and offers no resend: a proposal is immutable and there is no
+      // correction path to offer.
+      ReceiptProductSubmissionStatus.conflict =>
+        submission.statusCheck ==
+                ReceiptProductStatusCheckOutcome.legacyHeaderOnly
+            ? const ReceiptReviewNotice(
+                tone: SrAlertTone.warning,
+                title: 'This receipt was confirmed without products',
+                message:
+                    'Its details are already recorded and cannot be changed, '
+                    'and products cannot be added to it now. Nothing you '
+                    'entered was sent again.',
+              )
+            : const ReceiptReviewNotice(
+                tone: SrAlertTone.warning,
+                title: 'This receipt already has a different confirmation',
+                message:
+                    'Nothing was recorded by this attempt and nothing was '
+                    'overwritten. Check what is stored for this receipt before '
+                    'doing anything else.',
+              ),
+
+      ReceiptProductSubmissionStatus.uncertain => ReceiptReviewNotice(
+        tone: SrAlertTone.warning,
+        title: 'We could not confirm what happened',
+        message:
+            submission.statusCheck ==
+                ReceiptProductStatusCheckOutcome.unreadable
+            ? '$confirmUnverified We could not read the stored state either — '
+                  'you can check again in a moment.'
+            : confirmUnverified,
+      ),
+    };
+  }
+
+  /// The success sentence, which is careful about two separate things.
+  ///
+  /// It never claims a record was created when the answer was that one already
+  /// existed, and it states plainly that nothing downstream happened: no
+  /// campaign was matched, no reward was granted and no coins were issued.
+  /// Phase 1D-B writes an assertion about what was bought and nothing else, and
+  /// a staff member who assumed otherwise would be told a reward was coming
+  /// that is not.
+  static ReceiptReviewNotice _settledNotice(
+    ReceiptProductSubmission submission,
+  ) {
+    // `changed` is the backend's own word, and the only thing that separates
+    // "this call wrote it" from "it was already there".
+    final bool created = submission.result?.changed ?? false;
+
+    const String finality =
+        'This proposal is final and cannot be changed. '
+        'No campaign, reward or coins were created by it.';
+    final String what = created
+        ? 'The receipt details and the products you chose are now recorded '
+              'together.'
+        : 'The same details and the same products were already stored, so '
+              'nothing was duplicated.';
+
+    return ReceiptReviewNotice(
+      tone: SrAlertTone.success,
+      title: created
+          ? 'Receipt and products recorded'
+          : 'This receipt was already recorded',
+      message: '$what $finality',
+    );
+  }
+
+  // ---- The stored, immutable proposal --------------------------------------
+
+  /// The heading over the submitted proposal. A word, never a colour alone.
+  static const String submittedTitle = 'Products submitted';
+
+  static const String submittedStatusBadge = 'Submitted';
+
+  /// The four things a staff member must understand about what they just did.
+  ///
+  /// Each is a separate sentence because each is a separate fact, and running
+  /// them together is how the important one gets skimmed past. The second is
+  /// the one that changes behaviour: a Claim Reviewer accepts or rejects the
+  /// **whole** list, so a single wrong line costs the entire proposal.
+  static const String submittedFinality =
+      'This product list is final. It cannot be edited, removed, reordered or '
+      'submitted again.';
+
+  static const String submittedWholeListReview =
+      'A Claim Reviewer will accept or reject the complete list. If one line is '
+      'wrong, the whole list can be rejected.';
+
+  static const String submittedReceiptSeparate =
+      'Checking the receipt photo itself is a separate decision, made on its '
+      'own.';
+
+  static const String submittedNoRewards =
+      'No campaign was evaluated, and no reward or coins were created.';
+
+  /// Shown while the stored proposal is being read.
+  static const String submittedLoading = 'Loading the submitted products…';
+
+  /// Shown when the read did not deliver.
+  ///
+  /// It is careful to say the *lines* could not be loaded, not that there are
+  /// none: the confirmation is authoritative and stays so, and this sentence
+  /// must never read as "your products were lost".
+  static const String submittedUnreadable =
+      'Your receipt and products are recorded. We could not load the submitted '
+      'lines just now — nothing was lost, and nothing was sent again.';
+
+  /// The heading for a receipt confirmed before Phase 1D-B existed.
+  static const String legacyTitle =
+      'This receipt was confirmed without products';
+
+  /// What a header-only confirmation means, in four plain facts.
+  ///
+  /// Deliberately not phrased as an error and deliberately offering no remedy:
+  /// it is a legal historical state, the confirmation is immutable, and there
+  /// is no path in this flow that could add products to it. An affordance here
+  /// could only ever fail.
+  static const String legacyExplanation =
+      'Its transaction details were recorded through the earlier flow, before '
+      'products were part of a receipt. No product list was submitted with it, '
+      'and products cannot be added to it now.';
+
+  static const String legacyConsequence =
+      'This receipt cannot go forward for product-based campaign qualification. '
+      'No campaign, reward or coins were created.';
 
   // ---- Problems ------------------------------------------------------------
 

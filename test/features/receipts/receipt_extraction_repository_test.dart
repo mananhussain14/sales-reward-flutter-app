@@ -38,6 +38,8 @@ void main() {
   late List<String> confirmationIds;
   late List<String> currencyCodes;
   late List<Map<String, Object?>> confirmParams;
+  late List<Map<String, Object?>> confirmWithProductsParams;
+  late List<String> productProposalIds;
 
   late int functionStatus;
   late Object? functionBody;
@@ -78,6 +80,16 @@ void main() {
           if (rpcThrows != null) throw rpcThrows!;
           return rpcResult;
         },
+        confirmWithProducts: (Map<String, Object?> params) async {
+          confirmWithProductsParams.add(params);
+          if (rpcThrows != null) throw rpcThrows!;
+          return rpcResult;
+        },
+        productProposal: (String id) async {
+          productProposalIds.add(id);
+          if (rpcThrows != null) throw rpcThrows!;
+          return rpcResult;
+        },
       ),
     );
   }
@@ -96,6 +108,8 @@ void main() {
     confirmationIds = <String>[];
     currencyCodes = <String>[];
     confirmParams = <Map<String, Object?>>[];
+    confirmWithProductsParams = <Map<String, Object?>>[];
+    productProposalIds = <String>[];
     functionStatus = 200;
     functionBody = getExtractionBody();
     functionThrows = null;

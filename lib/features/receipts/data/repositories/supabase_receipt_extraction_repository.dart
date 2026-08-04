@@ -1,3 +1,9 @@
+import '../../domain/entities/receipt_product_proposal_line.dart';
+import '../../domain/entities/receipt_product_selection.dart';
+import '../../domain/entities/receipt_with_products_outcome.dart';
+import '../../domain/entities/receipt_with_products_result.dart';
+import '../models/receipt_product_proposal_parsers.dart';
+import '../models/receipt_with_products_request_body.dart';
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -282,6 +288,82 @@ final class SupabaseReceiptExtractionRepository
     } on ReceiptFormatException {
       return ReceiptExtractionFailed<T>(
         const ExtractionMalformedResponseProblem(),
+      );
+    }
+  }
+
+  @override
+  Future<ReceiptExtractionResult<ReceiptWithProductsResult>>
+  confirmWithProducts(
+    ReceiptConfirmationInput input,
+    ReceiptProductSelection selection,
+  ) async {
+    // Two backstops, both refused before anything leaves the device, and both
+    // enforced again in SQL. Stopping here only means an obviously impossible
+    // request never becomes a round trip.
+    if (input.validate() != null || selection.validate() != null) {
+      return const ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        ExtractionInvalidRequestProblem(ExtractionInvalidReason.unknown),
+      );
+    }
+
+    final Object? raw;
+    try {
+      raw = await _rpc.confirmWithProducts(
+        buildReceiptWithProductsParams(input, selection),
+      );
+    } on Object catch (error) {
+      // NOT retried, and not reported as "nothing happened". The write may have
+      // committed before the transport failed; only a re-read can say.
+      return ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        _rpcProblem(error, inConfirmation: true),
+      );
+    }
+
+    final ReceiptWithProductsResult parsed;
+    try {
+      parsed = ReceiptWithProductsResultParser.parse(raw);
+    } on ReceiptFormatException {
+      return const ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        ExtractionMalformedResponseProblem(),
+      );
+    }
+
+    // Zero rows is the access predicate answering false, and the parser turned
+    // it into `unknown` rather than a success. Reported as not-found, which is
+    // byte-identical to every other unreadable receipt.
+    if (parsed.outcome == ReceiptWithProductsOutcome.unknown &&
+        parsed.confirmationId == null &&
+        parsed.lineCount == 0 &&
+        !parsed.changed) {
+      return const ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        ExtractionNotFoundProblem(),
+      );
+    }
+    return ReceiptExtractionSuccess<ReceiptWithProductsResult>(parsed);
+  }
+
+  @override
+  Future<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>
+  productProposal(String submissionId) async {
+    final Object? raw;
+    try {
+      raw = await _rpc.fetchProductProposal(submissionId);
+    } on Object catch (error) {
+      return ReceiptExtractionFailed<List<ReceiptProductProposalLine>>(
+        _rpcProblem(error),
+      );
+    }
+
+    try {
+      // An empty list is a legitimate answer and is NOT an error: it means
+      // "no proposal", "not yours" and "does not exist" alike.
+      return ReceiptExtractionSuccess<List<ReceiptProductProposalLine>>(
+        ReceiptProductProposalParser.parseList(raw),
+      );
+    } on ReceiptFormatException {
+      return const ReceiptExtractionFailed<List<ReceiptProductProposalLine>>(
+        ExtractionMalformedResponseProblem(),
       );
     }
   }

@@ -1,3 +1,7 @@
+import 'package:sale_reward/features/receipts/domain/entities/receipt_product_proposal_line.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_product_selection.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_outcome.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_result.dart';
 import 'dart:async';
 
 import 'package:sale_reward/features/receipts/domain/entities/extracted_value.dart';
@@ -215,6 +219,44 @@ ReceiptConfirmation storedConfirmation({
   );
 }
 
+/// One answer from `confirm_receipt_with_products`.
+///
+/// Defaults to the ordinary `CONFIRMED`, so a test that wants
+/// `ALREADY_CONFIRMED`, `CONFLICT` or a token this build cannot read says so
+/// rather than assembling four fields to get back to the common case.
+ReceiptExtractionResult<ReceiptWithProductsResult> withProductsResult({
+  ReceiptWithProductsOutcome outcome = ReceiptWithProductsOutcome.confirmed,
+  int lineCount = 1,
+  bool changed = true,
+  String? confirmationId = reviewConfirmationId,
+}) {
+  return ReceiptExtractionSuccess<ReceiptWithProductsResult>(
+    ReceiptWithProductsResult(
+      outcome: outcome,
+      // Null on the conflict branch, which is the branch that deliberately
+      // identifies nothing — mirrored here so a test cannot accidentally prove
+      // the screen hides an id the RPC never sent.
+      confirmationId: outcome == ReceiptWithProductsOutcome.conflict
+          ? null
+          : confirmationId,
+      lineCount: lineCount,
+      changed: changed,
+    ),
+  );
+}
+
+/// A stored proposal, as `get_my_receipt_product_proposal` returns one.
+const List<ReceiptProductProposalLine> storedProposalLines =
+    <ReceiptProductProposalLine>[
+      ReceiptProductProposalLine(
+        lineNumber: 1,
+        quantity: 2,
+        productCode: 'SKU-A',
+        productName: 'Product A',
+        productStatus: 'ACTIVE',
+      ),
+    ];
+
 /// The four widths the seeded list actually contains, as the lookup returns
 /// them. There is no map here: these are fixtures for a fake, and the real
 /// client asks the backend for every one of them.
@@ -281,6 +323,8 @@ class FakeReceiptExtractionRepository implements ReceiptExtractionRepository {
     this.confirmationResults,
     this.previewResults,
     this.lineItemResults,
+    this.confirmWithProductsResults,
+    this.productProposalResults,
   });
 
   /// Answers for successive `requestExtraction` calls. The last one repeats.
@@ -294,6 +338,32 @@ class FakeReceiptExtractionRepository implements ReceiptExtractionRepository {
   List<ReceiptExtractionResult<ReceiptImagePreview>>? previewResults;
   List<ReceiptExtractionResult<List<ReceiptExtractionLineItem>>>?
   lineItemResults;
+
+  /// Phase 1D-B. Answers for successive atomic header-and-products
+  /// confirmations, and for successive proposal reads. The last one repeats.
+  List<ReceiptExtractionResult<ReceiptWithProductsResult>>?
+  confirmWithProductsResults;
+  List<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>?
+  productProposalResults;
+
+  /// Every atomic confirmation this fake was asked to perform.
+  ///
+  /// A list, not a counter, so a test can assert BOTH that a double tap
+  /// produced exactly one call and that the one call carried the right lines.
+  final List<
+    ({ReceiptConfirmationInput input, ReceiptProductSelection selection})
+  >
+  confirmWithProductsCalls =
+      <({ReceiptConfirmationInput input, ReceiptProductSelection selection})>[];
+
+  final List<String> productProposalCalls = <String>[];
+
+  /// A gate a test may hold open so the atomic write stays genuinely in flight.
+  ///
+  /// The only way to observe "a second act while the first is still
+  /// travelling", and the pending and slow states, without a sleep-and-hope.
+  Completer<ReceiptExtractionResult<ReceiptWithProductsResult>>?
+  confirmWithProductsGate;
 
   /// Answers for successive currency lookups, keyed by normalized code. A code
   /// with no entry answers `null`, which is the backend's "unsupported".
@@ -441,6 +511,42 @@ class FakeReceiptExtractionRepository implements ReceiptExtractionRepository {
       ReceiptExtractionSuccess<ReceiptConfirmation?>(storedConfirmation()),
     );
   }
+
+  @override
+  Future<ReceiptExtractionResult<ReceiptWithProductsResult>>
+  confirmWithProducts(
+    ReceiptConfirmationInput input,
+    ReceiptProductSelection selection,
+  ) async {
+    confirmWithProductsCalls.add((input: input, selection: selection));
+    final Completer<ReceiptExtractionResult<ReceiptWithProductsResult>>? gate =
+        confirmWithProductsGate;
+    if (gate != null) {
+      return gate.future;
+    }
+    final List<ReceiptExtractionResult<ReceiptWithProductsResult>>? queue =
+        confirmWithProductsResults;
+    if (queue == null || queue.isEmpty) {
+      return const ReceiptExtractionFailed<ReceiptWithProductsResult>(
+        ExtractionNetworkProblem(),
+      );
+    }
+    return queue.length == 1 ? queue.first : queue.removeAt(0);
+  }
+
+  @override
+  Future<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>
+  productProposal(String submissionId) async {
+    productProposalCalls.add(submissionId);
+    final List<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>?
+    queue = productProposalResults;
+    if (queue == null || queue.isEmpty) {
+      return const ReceiptExtractionSuccess<List<ReceiptProductProposalLine>>(
+        <ReceiptProductProposalLine>[],
+      );
+    }
+    return queue.length == 1 ? queue.first : queue.removeAt(0);
+  }
 }
 
 /// A repository whose every call refuses with one problem.
@@ -484,4 +590,20 @@ class RefusingReceiptExtractionRepository
   Future<ReceiptExtractionResult<ReceiptConfirmation?>> confirmation(
     String submissionId,
   ) async => ReceiptExtractionFailed<ReceiptConfirmation?>(problem);
+
+  @override
+  Future<ReceiptExtractionResult<ReceiptWithProductsResult>>
+  confirmWithProducts(
+    ReceiptConfirmationInput input,
+    ReceiptProductSelection selection,
+  ) async => const ReceiptExtractionFailed<ReceiptWithProductsResult>(
+    ExtractionNetworkProblem(),
+  );
+
+  @override
+  Future<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>
+  productProposal(String submissionId) async =>
+      const ReceiptExtractionFailed<List<ReceiptProductProposalLine>>(
+        ExtractionNetworkProblem(),
+      );
 }

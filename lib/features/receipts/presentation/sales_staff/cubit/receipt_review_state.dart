@@ -292,6 +292,317 @@ final class ReceiptReviewDraft extends Equatable {
 /// refresh. The revision is a plain counter — no secret, no id, nothing derived
 /// from the URL — and it changes on every successful mint, which is what makes
 /// the rebuild happen without the credential participating in equality.
+
+/// Where the atomic header-and-products confirmation has reached.
+///
+/// Deliberately separate from [ReceiptReviewPhase]: a phase describes the
+/// extraction lifecycle, and conflating "the write may or may not have
+/// committed" with "the reading failed" is how a client ends up resending an
+/// immutable financial write.
+enum ReceiptProductSubmissionStatus {
+  /// Nothing has been sent.
+  idle,
+
+  /// `confirm_receipt_with_products` is in flight. **Immutable, and never
+  /// retried automatically.**
+  pending,
+
+  /// The database answered `CONFIRMED` or `ALREADY_CONFIRMED`. Terminal.
+  settled,
+
+  /// The database answered `CONFLICT`. Nothing was written by this call, and
+  /// nothing was overwritten — but what is stored is not what was sent, so the
+  /// only honest next step is to read the stored state.
+  conflict,
+
+  /// The result is genuinely unknown: a transport fault, an unreadable answer,
+  /// or an outcome token this build does not recognise. The write may have
+  /// committed. Never rendered as success, never as failure.
+  uncertain,
+}
+
+/// What one manual "Check receipt status" read established.
+///
+/// Four answers and no fifth. Note especially what [nothingStored] is **not**:
+/// it is not "the receipt does not exist" and not "the receipt is not yours".
+/// `get_my_receipt_product_proposal` and `get_my_receipt_confirmation` both
+/// return zero rows for an unreadable receipt and for an unwritten one alike,
+/// and that collapse is deliberate — a client that split the two would rebuild
+/// the existence oracle SQL is careful to deny.
+enum ReceiptProductStatusCheckOutcome {
+  /// A confirmation **and** a product proposal are stored. Authoritative, and
+  /// the flow is finished whoever wrote them.
+  storedWithProposal,
+
+  /// A confirmation is stored with no product proposal — the header-only shape
+  /// created before Phase 1D-B. Nothing may be appended to it: the RPC answers
+  /// `CONFLICT` to any attempt to top one up. Its own presentation is a later
+  /// unit.
+  legacyHeaderOnly,
+
+  /// Neither is stored. The only outcome that may return the screen to
+  /// editable, and only because both reads answered.
+  nothingStored,
+
+  /// A read did not deliver an answer. Nothing is concluded; the check may be
+  /// asked for again, by hand.
+  unreadable,
+}
+
+/// Where the read of the **stored** product proposal has reached.
+///
+/// Deliberately separate from [ReceiptProductSubmissionStatus]: one describes a
+/// write that may or may not have committed, this one describes what the
+/// database says is recorded. Conflating them is how a screen ends up rendering
+/// a client's own editable list as though it were the immutable record.
+enum ReceiptProposalPhase {
+  /// Nothing has been read, and nothing is claimed.
+  initial,
+
+  /// `get_my_receipt_product_proposal` is in flight. A pure read.
+  loading,
+
+  /// Rows came back. These are the frozen proposal-time values and they are the
+  /// only thing the submitted display may render.
+  loaded,
+
+  /// Zero rows, with a confirmation known to exist: the header-only shape
+  /// created before Phase 1D-B. A legal historical state, not an error, and one
+  /// that can never be topped up through this flow.
+  legacyHeaderOnly,
+
+  /// The read produced no answer. **Not** "there is no proposal": the two are
+  /// different facts and only one of them may reopen anything.
+  unreadable,
+}
+
+/// How the stored proposal came to be read. Presentation and diagnosis only —
+/// no behaviour branches on it, because a stored proposal is the same immutable
+/// record however it was discovered.
+enum ReceiptProposalSource {
+  /// The screen opened on a receipt that was already confirmed.
+  initialLoad,
+
+  /// This session's own `confirm_receipt_with_products` answered `CONFIRMED`.
+  newConfirmation,
+
+  /// It answered `ALREADY_CONFIRMED`.
+  alreadyConfirmed,
+
+  /// A person pressed "Check receipt status".
+  statusCheck,
+}
+
+/// The immutable product proposal exactly as the database holds it.
+///
+/// ## Every value here is frozen at proposal time
+///
+/// The lines are `product_*_at_proposal` snapshots the database copied out of
+/// `vendor_products` when the proposal was written. A later rename, rebrand,
+/// barcode reassignment, deactivation or un-assignment does not change them,
+/// and nothing on this screen looks the current catalogue up to "improve" them:
+/// what was proposed is the whole point, and a display that drifted to today's
+/// catalogue would be describing a different assertion from the one a Claim
+/// Reviewer will judge.
+///
+/// ## It is authoritative over the local selection
+///
+/// The editable selection a person built is a proposal; this is the record. If
+/// the two ever disagree, this one is right and the difference is not an error
+/// to report — it simply means the stored proposal was written by an earlier
+/// act.
+final class ReceiptStoredProposal extends Equatable {
+  const ReceiptStoredProposal({
+    this.phase = ReceiptProposalPhase.initial,
+    this.lines = const <ReceiptProductProposalLine>[],
+    this.source,
+    this.problem,
+  });
+
+  final ReceiptProposalPhase phase;
+
+  /// The stored lines, in the database's own `line_number` order.
+  final List<ReceiptProductProposalLine> lines;
+
+  final ReceiptProposalSource? source;
+
+  /// Why the read produced no answer. A typed discriminant, never backend text.
+  final ReceiptExtractionProblem? problem;
+
+  bool get isLoading => phase == ReceiptProposalPhase.loading;
+
+  bool get isLoaded => phase == ReceiptProposalPhase.loaded;
+
+  bool get isLegacyHeaderOnly => phase == ReceiptProposalPhase.legacyHeaderOnly;
+
+  bool get isUnreadable => phase == ReceiptProposalPhase.unreadable;
+
+  /// Whether the database has answered definitively, one way or the other.
+  bool get isResolved => isLoaded || isLegacyHeaderOnly;
+
+  /// The authoritative number of stored lines. Counted from the rows, never
+  /// from the client's own selection.
+  int get lineCount => lines.length;
+
+  int get totalQuantity => lines.fold<int>(
+    0,
+    (int sum, ReceiptProductProposalLine line) => sum + line.quantity,
+  );
+
+  ReceiptStoredProposal copyWith({
+    ReceiptProposalPhase? phase,
+    List<ReceiptProductProposalLine>? lines,
+    ReceiptProposalSource? source,
+    ReceiptExtractionProblem? problem,
+    bool clearProblem = false,
+  }) {
+    return ReceiptStoredProposal(
+      phase: phase ?? this.phase,
+      lines: lines ?? this.lines,
+      source: source ?? this.source,
+      problem: clearProblem ? null : (problem ?? this.problem),
+    );
+  }
+
+  @override
+  List<Object?> get props => <Object?>[phase, lines, source, problem];
+}
+
+/// The atomic product-proposal submission, and what is known about it.
+final class ReceiptProductSubmission extends Equatable {
+  const ReceiptProductSubmission({
+    this.status = ReceiptProductSubmissionStatus.idle,
+    this.isSlow = false,
+    this.result,
+    this.submitted,
+    this.submittedInput,
+    this.problem,
+    this.selectionProblem,
+    this.isCheckingStatus = false,
+    this.statusCheck,
+  });
+
+  final ReceiptProductSubmissionStatus status;
+
+  /// True once the request has been in flight longer than
+  /// [slowConfirmationNotice]. Presentation only: it cancels nothing, retries
+  /// nothing and claims nothing.
+  final bool isSlow;
+
+  /// The authoritative answer, when there is one.
+  final ReceiptWithProductsResult? result;
+
+  /// The exact ordered selection that was sent.
+  ///
+  /// Retained through conflict and uncertainty on purpose: the person must be
+  /// able to see what they submitted while they find out whether it landed.
+  final ReceiptProductSelection? submitted;
+
+  /// The exact transaction header that was sent, beside the products it was
+  /// sent with. Retained for the same reason, and never re-derived from the
+  /// draft — the draft is what a form holds, this is what a request carried.
+  final ReceiptConfirmationInput? submittedInput;
+
+  /// Why the call produced no authoritative answer. A typed discriminant, never
+  /// backend text.
+  final ReceiptExtractionProblem? problem;
+
+  /// Why the proposal was refused **before** anything was sent. A definite
+  /// client-side failure: zero repository calls happened, and the screen goes
+  /// back to editable with every typed value and every chosen product intact.
+  final ReceiptProductSelectionProblem? selectionProblem;
+
+  /// True while the manual status check is reading. Guarded independently of
+  /// the write, so a status check can never become a second submission.
+  final bool isCheckingStatus;
+
+  /// What the last manual status check established, or null when none has run.
+  final ReceiptProductStatusCheckOutcome? statusCheck;
+
+  /// A status check found a confirmation with no product proposal.
+  bool get foundLegacyHeaderOnly =>
+      statusCheck == ReceiptProductStatusCheckOutcome.legacyHeaderOnly;
+
+  bool get isPending => status == ReceiptProductSubmissionStatus.pending;
+
+  bool get isSettled => status == ReceiptProductSubmissionStatus.settled;
+
+  bool get isConflict => status == ReceiptProductSubmissionStatus.conflict;
+
+  bool get isUncertain => status == ReceiptProductSubmissionStatus.uncertain;
+
+  /// Whether the outcome is unresolved in a way only the database can answer.
+  bool get needsStatusCheck =>
+      status == ReceiptProductSubmissionStatus.conflict ||
+      status == ReceiptProductSubmissionStatus.uncertain;
+
+  /// Whether the manual status check may be started now.
+  ///
+  /// Guarded **independently** of the write guard: a status check is a pure
+  /// read and its own double-tap protection must not borrow the write's.
+  bool get canCheckStatus => needsStatusCheck && !isCheckingStatus;
+
+  /// Whether the proposal may still be edited.
+  ///
+  /// False from the moment a write starts and, once it has settled, forever.
+  /// A conflict or an uncertain result also freezes it — the write may have
+  /// landed, and editing a proposal that might already be immutable would be
+  /// editing a record that cannot change.
+  bool get isEditable => status == ReceiptProductSubmissionStatus.idle;
+
+  ReceiptProductSubmission copyWith({
+    ReceiptProductSubmissionStatus? status,
+    bool? isSlow,
+    ReceiptWithProductsResult? result,
+    bool clearResult = false,
+    ReceiptProductSelection? submitted,
+    bool clearSubmitted = false,
+    ReceiptConfirmationInput? submittedInput,
+    ReceiptExtractionProblem? problem,
+    bool clearProblem = false,
+    ReceiptProductSelectionProblem? selectionProblem,
+    bool clearSelectionProblem = false,
+    bool? isCheckingStatus,
+    ReceiptProductStatusCheckOutcome? statusCheck,
+    bool clearStatusCheck = false,
+  }) {
+    return ReceiptProductSubmission(
+      status: status ?? this.status,
+      isSlow: isSlow ?? this.isSlow,
+      result: clearResult ? null : (result ?? this.result),
+      submitted: clearSubmitted ? null : (submitted ?? this.submitted),
+      submittedInput: clearSubmitted
+          ? null
+          : (submittedInput ?? this.submittedInput),
+      problem: clearProblem ? null : (problem ?? this.problem),
+      selectionProblem: clearSelectionProblem
+          ? null
+          : (selectionProblem ?? this.selectionProblem),
+      isCheckingStatus: isCheckingStatus ?? this.isCheckingStatus,
+      statusCheck: clearStatusCheck ? null : (statusCheck ?? this.statusCheck),
+    );
+  }
+
+  @override
+  List<Object?> get props => <Object?>[
+    status,
+    isSlow,
+    result,
+    submitted,
+    submittedInput,
+    problem,
+    selectionProblem,
+    isCheckingStatus,
+    statusCheck,
+  ];
+}
+
+/// How long a confirmation may run before the person is told it is merely slow.
+///
+/// Presentation only. Mirrors the Web milestone's own notice delay so both
+/// clients say the same thing at the same moment.
+const Duration slowConfirmationNotice = Duration(seconds: 4);
+
 final class ReceiptReviewState extends Equatable {
   const ReceiptReviewState({
     required this.submissionId,
@@ -316,6 +627,8 @@ final class ReceiptReviewState extends Equatable {
     this.fieldProblems =
         const <ReceiptReviewField, ReceiptReviewFieldProblem>{},
     this.pollBudgetSpent = false,
+    this.productSubmission = const ReceiptProductSubmission(),
+    this.storedProposal = const ReceiptStoredProposal(),
   });
 
   /// The receipt under review. The only handle this screen holds.
@@ -378,6 +691,12 @@ final class ReceiptReviewState extends Equatable {
   /// True once the bounded poll budget was spent with the attempt still open.
   /// The screen then offers an explicit "check again" instead of polling on.
   final bool pollBudgetSpent;
+
+  /// The atomic product-proposal submission for this receipt.
+  final ReceiptProductSubmission productSubmission;
+
+  /// The immutable proposal the database holds, once it has been read.
+  final ReceiptStoredProposal storedProposal;
 
   /// Whether an attempt is genuinely in flight, which is the only condition
   /// under which polling may run.
@@ -470,6 +789,51 @@ final class ReceiptReviewState extends Equatable {
   /// could only send a guess.
   bool get canConfirm => canEdit && !isBusy && isCurrencyResolved;
 
+  /// Whether the transaction fields may be typed into.
+  ///
+  /// [canEdit] is the extraction's answer — is manual confirmation open at all.
+  /// This narrows it by the *submission's* answer: from the instant the atomic
+  /// write starts, and for every state it can reach afterwards, the header is
+  /// as frozen as the products it was sent with. The two are one immutable
+  /// assertion and neither half may move once it is on its way.
+  bool get canEditTransaction => canEdit && productSubmission.isEditable;
+
+  /// Whether the one final confirmation control may fire.
+  ///
+  /// Deliberately **not** a statement about the products: whether a proposal is
+  /// well formed is answered by the snapshot the page hands over, at the moment
+  /// it hands it over, and a control that consulted a second copy of that rule
+  /// here could disagree with the one that actually runs. The empty case is the
+  /// exception — a submit with nothing chosen is refused by the control itself,
+  /// because a person must not be invited to press it.
+  bool get canSubmitProposal =>
+      canConfirm && productSubmission.isEditable && !isProductSubmissionBusy;
+
+  /// Whether the atomic write or its status check is occupying the screen.
+  bool get isProductSubmissionBusy =>
+      productSubmission.isPending || productSubmission.isCheckingStatus;
+
+  /// Whether this receipt is finished: an immutable confirmation exists — or
+  /// has just been written — and the screen presents stored state only.
+  ///
+  /// Three independent ways to be here, because a person can arrive at a
+  /// finished receipt three ways: opening one that was already confirmed,
+  /// confirming one just now, and discovering through a status check that one
+  /// was confirmed after all. All three end in the same read-only screen, and
+  /// none of them offers a way back.
+  bool get isReceiptFinished =>
+      phase == ReceiptReviewPhase.confirmed ||
+      productSubmission.isSettled ||
+      storedProposal.isResolved;
+
+  /// Whether re-reading the stored proposal is worth offering.
+  ///
+  /// Only when a confirmation is known to exist and the read did not deliver.
+  /// A pure read, which is the whole reason it may be offered as a retry at
+  /// all — and it is offered by hand, never on a timer.
+  bool get canReloadStoredProposal =>
+      isReceiptFinished && storedProposal.isUnreadable;
+
   /// Whether a further attempt may be asked for.
   ///
   /// [retryAllowed] alone. Never `attemptsRemaining > 0`, which would offer a
@@ -503,6 +867,8 @@ final class ReceiptReviewState extends Equatable {
     ReceiptCurrencyResolution? currency,
     Map<ReceiptReviewField, ReceiptReviewFieldProblem>? fieldProblems,
     bool? pollBudgetSpent,
+    ReceiptProductSubmission? productSubmission,
+    ReceiptStoredProposal? storedProposal,
   }) {
     return ReceiptReviewState(
       submissionId: submissionId,
@@ -530,6 +896,8 @@ final class ReceiptReviewState extends Equatable {
       currency: currency ?? this.currency,
       fieldProblems: fieldProblems ?? this.fieldProblems,
       pollBudgetSpent: pollBudgetSpent ?? this.pollBudgetSpent,
+      productSubmission: productSubmission ?? this.productSubmission,
+      storedProposal: storedProposal ?? this.storedProposal,
     );
   }
 
@@ -558,5 +926,7 @@ final class ReceiptReviewState extends Equatable {
     currency,
     fieldProblems,
     pollBudgetSpent,
+    productSubmission,
+    storedProposal,
   ];
 }

@@ -379,16 +379,22 @@ void main() {
   });
 
   group('the RPC contract', () {
-    test('exactly four RPCs are named, and they are authenticated ones', () {
+    test('exactly six RPCs are named, and they are authenticated ones', () {
       final List<String> names =
           RegExp(r"^const String \w+Rpc =\s*'([^']+)'", multiLine: true)
               .allMatches(rpcDataSource.replaceAll('\n    ', ' '))
               .map((RegExpMatch m) => m.group(1)!)
               .toList();
 
+      // Phase 1D-B added two by approval: the atomic header-and-products
+      // confirmation and the read of the immutable proposal it creates. The
+      // list is still pinned EXACTLY, so a seventh RPC still fails here and
+      // names itself.
       expect(names, <String>[
         'list_my_receipt_extraction_line_items',
         'confirm_receipt_extraction',
+        'confirm_receipt_with_products',
+        'get_my_receipt_product_proposal',
         'get_my_receipt_confirmation',
         'get_receipt_currency_minor_unit',
       ]);
@@ -467,6 +473,142 @@ void main() {
           reason: 'the extraction RPCs must pass no $forbidden argument',
         );
       }
+    });
+  });
+
+  /// Phase 1D-B. The atomic header-and-products confirmation is the one write
+  /// on this screen, it can never be revised, and a client that resent it, or
+  /// polled for it, or sent a field the database means to own, would be doing
+  /// permanent damage rather than a recoverable one.
+  group('the atomic product confirmation', () {
+    late String linesBody;
+    late String reviewCubit;
+    late List<File> presentationSources;
+
+    setUpAll(() {
+      linesBody = read('receipt_product_lines_body.dart');
+      reviewCubit = read('receipt_review_cubit.dart');
+      presentationSources = sources
+          .where(
+            (File f) =>
+                f.path.contains('/features/receipts/presentation/') &&
+                (f.path.contains('/widgets/') || f.path.contains('/pages/')),
+          )
+          .toList();
+    });
+
+    test('a product line declares exactly two keys, and no third', () {
+      final List<String> declared =
+          RegExp(
+                r"^const String productLine\w+Key =\s*'([^']+)'",
+                multiLine: true,
+              )
+              .allMatches(linesBody.replaceAll('\n    ', ' '))
+              .map((RegExpMatch m) => m.group(1)!)
+              .toList();
+
+      expect(declared, <String>['product_id', 'quantity']);
+    });
+
+    test('no snapshot, identity or reward field can be named in a line', () {
+      // The database copies every snapshot out of `vendor_products` itself and
+      // refuses a row whose snapshot does not match, so a client-supplied one
+      // could not survive — but the absence of a NAME is what makes one
+      // impossible to express in the first place.
+      for (final String forbidden in <String>[
+        'product_name',
+        'product_code',
+        'barcode',
+        'brand',
+        'product_status',
+        'line_number',
+        'vendor_id',
+        'retailer_id',
+        'shop_id',
+        'staff_id',
+        'actor_id',
+        'campaign_id',
+        'reward_id',
+        'coins',
+      ]) {
+        expect(
+          code(
+            sources.firstWhere(
+              (File f) => f.path.endsWith('receipt_product_lines_body.dart'),
+            ),
+          ).contains("'$forbidden'"),
+          isFalse,
+          reason: 'a product line must not be able to carry $forbidden',
+        );
+      }
+    });
+
+    test('the combined request adds exactly one parameter to the ten', () {
+      final String body = read('receipt_with_products_request_body.dart');
+      final List<String> declared =
+          RegExp(
+                r"^const String confirmation\w+Parameter =\s*'([^']+)'",
+                multiLine: true,
+              )
+              .allMatches(body.replaceAll('\n    ', ' '))
+              .map((RegExpMatch m) => m.group(1)!)
+              .toList();
+
+      expect(declared, <String>['p_lines']);
+    });
+
+    test('no presentation source reaches a client, a table or an RPC', () {
+      // The widgets and pages receive typed values and callbacks. A Supabase
+      // symbol here would be a second door to the write, bypassing the one
+      // cubit that guards it.
+      _expectAbsent(presentationSources, <String>[
+        '.from(',
+        '.rpc(',
+        'Supabase',
+        'PostgrestException',
+        'supabase_flutter',
+      ], allowInComments: true);
+    });
+
+    test('the review cubit schedules no retry, no poll and no resend', () {
+      // The extraction poll loop is bounded and lives in this file; what must
+      // not exist is a *second* loop around the immutable write. `Timer.
+      // periodic` is the shape that would express one, and the slow notice
+      // deliberately uses a one-shot `Timer` instead.
+      expect(
+        reviewCubit.contains('Timer.periodic'),
+        isFalse,
+        reason: 'nothing about an immutable write may repeat on a timer',
+      );
+
+      // Exactly one call site for each, and both are the deliberate act of a
+      // person pressing a control.
+      expect(
+        RegExp(r'_repository\.confirmWithProducts\(').allMatches(reviewCubit),
+        hasLength(1),
+      );
+      // TWO read sites, and the count is pinned so a third has to be argued
+      // for: the authoritative load that builds the submitted display, and the
+      // manual status check. Both are pure reads of
+      // `get_my_receipt_product_proposal`; neither loops, and neither is
+      // scheduled.
+      expect(
+        RegExp(r'_repository\.productProposal\(').allMatches(reviewCubit),
+        hasLength(2),
+      );
+    });
+
+    test('the status check reaches no write method', () {
+      // The body of `checkReceiptStatus` through to the end of the file: it may
+      // read, and there must be no path from it to either confirmation write.
+      final int start = reviewCubit.indexOf(
+        'Future<void> checkReceiptStatus()',
+      );
+      expect(start, greaterThan(-1));
+      final String body = reviewCubit.substring(start);
+
+      expect(body.contains('_repository.confirmWithProducts'), isFalse);
+      expect(body.contains('_repository.confirm('), isFalse);
     });
   });
 

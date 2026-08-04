@@ -1,5 +1,8 @@
 import '../entities/receipt_confirmation.dart';
 import '../entities/receipt_confirmation_input.dart';
+import '../entities/receipt_product_proposal_line.dart';
+import '../entities/receipt_product_selection.dart';
+import '../entities/receipt_with_products_result.dart';
 import '../entities/receipt_confirmation_result.dart';
 import '../entities/receipt_currency_minor_unit.dart';
 import '../entities/receipt_extraction.dart';
@@ -142,4 +145,30 @@ abstract interface class ReceiptExtractionRepository {
   Future<ReceiptExtractionResult<ReceiptConfirmation?>> confirmation(
     String submissionId,
   );
+
+  /// Confirms the transaction header **and** the product proposal in one
+  /// atomic database operation.
+  ///
+  /// **Mutating, immutable and never retried automatically.** The confirmation,
+  /// every proposal line and the Audit Log are written in one transaction, and
+  /// any bad line rolls all of it back. A transport fault therefore leaves the
+  /// result genuinely unknown: this returns a problem, and the caller must
+  /// re-read state with [productProposal] rather than send the write again.
+  ///
+  /// This is never preceded by [confirm]. Writing the header first would create
+  /// a receipt that can never acquire products — the backend answers `CONFLICT`
+  /// to any later attempt to top one up.
+  Future<ReceiptExtractionResult<ReceiptWithProductsResult>>
+  confirmWithProducts(
+    ReceiptConfirmationInput input,
+    ReceiptProductSelection selection,
+  );
+
+  /// The caller's own immutable product proposal for one receipt.
+  ///
+  /// An empty list means "no proposal" **and** "not yours or does not exist" —
+  /// the backend makes the three indistinguishable, and no caller may read more
+  /// into it than that.
+  Future<ReceiptExtractionResult<List<ReceiptProductProposalLine>>>
+  productProposal(String submissionId);
 }
