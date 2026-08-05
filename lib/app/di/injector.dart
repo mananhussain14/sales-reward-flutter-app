@@ -47,6 +47,9 @@ import '../../features/receipts/domain/repositories/receipt_extraction_repositor
 import '../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_capability_rpc_data_source.dart';
+import '../../features/rewards/data/datasources/staff_earnings_rpc_data_source.dart';
+import '../../features/rewards/data/repositories/supabase_staff_earnings_repository.dart';
+import '../../features/rewards/domain/repositories/staff_earnings_repository.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_lifecycle_rpc_data_source.dart';
 import '../../features/retailers/data/datasources/vendor_retailer_rpc_data_source.dart';
 import '../../features/retailers/data/repositories/supabase_vendor_retailer_lifecycle_repository.dart';
@@ -363,6 +366,32 @@ Future<void> configureDependencies() async {
     ),
   );
 
+  // The Sales Staff **earnings** reads: three RPCs on STAFF_EARNINGS_VIEW.
+  //
+  // Registered behind its own interface rather than folded into the campaign
+  // repository above, because the backend deliberately kept the two on two
+  // permissions — "a future role that should see one without the other must be
+  // expressible without a code change" — and one repository behind both would
+  // make widening either widen the other.
+  //
+  // **No table access at all.** `campaign_rewards`,
+  // `campaign_subject_accumulators`, `campaign_sale_evaluations`,
+  // `campaign_sale_item_qualifications`, `verified_sales` and the organization
+  // membership tables are every one of them default-deny for the browser roles
+  // with no privilege for `authenticated`, so a client that queried them would
+  // render an empty earnings screen and look entirely plausible doing it.
+  //
+  // **No service-role key is registered here or exists anywhere in this
+  // application.** All three calls travel on the caller's own session, which is
+  // the only reason `auth.uid()` means anything inside
+  // `sales_staff_earnings_profile()` — a service-role connection has no
+  // identity for it to resolve and could only ever read nothing.
+  getIt.registerLazySingleton<StaffEarningsRepository>(
+    () => SupabaseStaffEarningsRepository(
+      rpc: StaffEarningsRpcDataSource.forClient(client),
+    ),
+  );
+
   // The Retailer staff **invitation** contracts: one zero-argument read for the
   // shop picker, and one Edge Function call to send.
   //
@@ -558,6 +587,7 @@ void registerTestDependencies({
   RetailerProductRepository? retailerProductRepository,
   RetailerCampaignRepository? retailerCampaignRepository,
   StaffCampaignRepository? staffCampaignRepository,
+  StaffEarningsRepository? staffEarningsRepository,
 }) {
   getIt.registerLazySingleton<AuthRepository>(() => authRepository);
   getIt.registerLazySingleton<PortalContextRepository>(
@@ -664,6 +694,11 @@ void registerTestDependencies({
   if (staffCampaignRepository != null) {
     getIt.registerLazySingleton<StaffCampaignRepository>(
       () => staffCampaignRepository,
+    );
+  }
+  if (staffEarningsRepository != null) {
+    getIt.registerLazySingleton<StaffEarningsRepository>(
+      () => staffEarningsRepository,
     );
   }
 }

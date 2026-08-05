@@ -90,6 +90,21 @@ abstract final class RpcRow {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// A `boolean` column that is `NOT NULL` in the contract.
+  ///
+  /// Refused rather than coerced. `null`, `0`, `1`, `'t'` and `'true'` are all
+  /// values a boolean column could conceivably arrive as if the response were
+  /// not this shape, and every one of them would have to be *interpreted* — on
+  /// this surface the booleans decide whether a reader is told a target was
+  /// reached and whether a bonus was theirs, so a guess is a confident claim
+  /// about money.
+  static bool requiredBool(Object? raw, String what) {
+    if (raw is! bool) {
+      throw RpcFormatException('$what is missing or not a boolean');
+    }
+    return raw;
+  }
+
   /// A `timestamptz` column that is `NOT NULL` in the contract.
   ///
   /// Parsed to **UTC**, so nothing downstream depends on the device's zone for

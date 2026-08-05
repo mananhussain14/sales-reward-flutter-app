@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/design/design.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../auth/domain/entities/portal_kind.dart';
+import '../../../rewards/domain/entities/campaign_target_progress.dart';
 import 'campaign_copy.dart';
 import 'campaign_list_body.dart';
 import 'campaign_list_cubit.dart';
@@ -36,6 +37,9 @@ class CampaignListPage<C extends CampaignListCubitBase> extends StatefulWidget {
     super.key,
     required this.role,
     required this.detailPath,
+    this.progressFor,
+    this.progressUnavailable = false,
+    this.alsoRefresh,
   });
 
   /// Which shell this page is rendered in. Presentation only — it supplies the
@@ -47,6 +51,25 @@ class CampaignListPage<C extends CampaignListCubitBase> extends StatefulWidget {
   /// Supplied by the caller rather than derived here, so this shared widget
   /// names no role's routes and cannot send one role into another's subtree.
   final String Function(String campaignId) detailPath;
+
+  /// One campaign's target progress, or null when it has none.
+  ///
+  /// Supplied by the Sales Staff binding, which reads a **second** contract on a
+  /// **second** permission. A Retailer Owner has neither and passes nothing, so
+  /// no bar renders on that screen and no branch here decides that.
+  final CampaignTargetProgress? Function(String campaignId)? progressFor;
+
+  /// The campaigns loaded but their progress did not. Renders a banner; never
+  /// suppresses the list.
+  final bool progressUnavailable;
+
+  /// A second read to re-issue alongside the campaign list.
+  ///
+  /// Refresh, pull-to-refresh and the failure retry all run both, so the
+  /// campaigns and their progress cannot end up describing two different
+  /// moments — which is exactly what would happen if the two had separate
+  /// controls.
+  final Future<void> Function()? alsoRefresh;
 
   @override
   State<CampaignListPage<C>> createState() => _CampaignListPageState<C>();
@@ -77,7 +100,7 @@ class _CampaignListPageState<C extends CampaignListCubitBase>
         }
 
         return RefreshIndicator(
-          onRefresh: cubit.refresh,
+          onRefresh: () => _refresh(cubit),
           child: SrPageBody(
             // Always scrollable, so pull-to-refresh works on an empty list and
             // on a short one rather than only when the content overflows.
@@ -97,7 +120,9 @@ class _CampaignListPageState<C extends CampaignListCubitBase>
                       icon: Icons.refresh_rounded,
                       loading: state.isRefreshing,
                       loadingLabel: CampaignCopy.refreshing,
-                      onPressed: state.isRefreshing ? null : cubit.refresh,
+                      onPressed: state.isRefreshing
+                          ? null
+                          : () => _refresh(cubit),
                     ),
                   ),
                 ],
@@ -105,15 +130,42 @@ class _CampaignListPageState<C extends CampaignListCubitBase>
               const SizedBox(height: SrSpacing.xxl),
               CampaignListBody(
                 state: state,
-                onRetry: cubit.load,
+                onRetry: () => _retry(cubit),
                 onOpen: (String campaignId) =>
                     _open(context, cubit, campaignId),
+                progressFor: widget.progressFor,
+                progressUnavailable: widget.progressUnavailable,
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  /// Re-reads the campaigns and, where there is one, the second contract beside
+  /// them.
+  ///
+  /// Awaited together rather than in sequence: they are independent reads and
+  /// one round trip of latency is enough for a screen that shows both. Neither
+  /// can fail the other — each cubit holds its own problem — so there is no
+  /// error handling here to write.
+  Future<void> _refresh(C cubit) async {
+    final Future<void> Function()? also = widget.alsoRefresh;
+    await Future.wait<void>(<Future<void>>[
+      cubit.refresh(),
+      if (also != null) also(),
+    ]);
+  }
+
+  /// The retry offered after an outright campaign failure. Re-reads both, for
+  /// the same reason.
+  Future<void> _retry(C cubit) async {
+    final Future<void> Function()? also = widget.alsoRefresh;
+    await Future.wait<void>(<Future<void>>[
+      cubit.load(),
+      if (also != null) also(),
+    ]);
   }
 
   /// Opens a campaign, and re-reads the list on the way back.
@@ -134,6 +186,6 @@ class _CampaignListPageState<C extends CampaignListCubitBase>
     if (!mounted || cubit.isClosed) {
       return;
     }
-    await cubit.refresh();
+    await _refresh(cubit);
   }
 }

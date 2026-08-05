@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/design/design.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../rewards/domain/entities/campaign_target_progress.dart';
+import '../../../rewards/presentation/widgets/campaign_target_progress_view.dart';
 import 'campaign_card.dart';
 import 'campaign_copy.dart';
 import 'campaign_list_cubit.dart';
@@ -29,9 +31,33 @@ class CampaignListBody extends StatelessWidget {
     required this.state,
     required this.onRetry,
     required this.onOpen,
+    this.progressFor,
+    this.progressUnavailable = false,
   });
 
   final CampaignListState state;
+
+  /// One campaign's target progress, or null when it has none.
+  ///
+  /// Supplied only by the Sales Staff screen: `get_my_campaign_target_progress()`
+  /// is on `STAFF_EARNINGS_VIEW`, which is mapped to `SALES_STAFF` alone, so a
+  /// Retailer Owner has no such contract to read and passes nothing. Null here
+  /// therefore means one of two things and both render identically — this role
+  /// has no progress contract, or this campaign has no target — because in
+  /// neither case is there a goal to draw.
+  ///
+  /// The lookup is a **function of the campaign id**, never of the name: two
+  /// campaigns may share a name, and only the id is the key both contracts
+  /// return.
+  final CampaignTargetProgress? Function(String campaignId)? progressFor;
+
+  /// The campaigns loaded but their progress did not.
+  ///
+  /// Renders a banner above a list that is otherwise complete and correct. The
+  /// two reads are separate contracts behind separate cubits, so one failing
+  /// cannot empty the other — this flag is how the screen *says* that rather
+  /// than leaving a reader to wonder where the bars went.
+  final bool progressUnavailable;
 
   /// Re-issues the read after an outright failure.
   final VoidCallback onRetry;
@@ -65,6 +91,17 @@ class CampaignListBody extends StatelessWidget {
           const SizedBox(height: SrSpacing.xxl),
         ],
 
+        // The partial-failure banner. Above the list, and never instead of it:
+        // the campaigns came from a different contract and are still true.
+        if (progressUnavailable) ...<Widget>[
+          const SrAlert(
+            tone: SrAlertTone.warning,
+            title: CampaignCopy.progressUnavailableTitle,
+            message: CampaignCopy.progressUnavailableBody,
+          ),
+          const SizedBox(height: SrSpacing.xxl),
+        ],
+
         _Note(text: CampaignCopy.readOnlyNote(state.audience)),
         const SizedBox(height: SrSpacing.xl),
 
@@ -87,9 +124,12 @@ class CampaignListBody extends StatelessWidget {
               threeUpThreshold: 1280,
               children: <Widget>[
                 for (final CampaignPresentation campaign in section.campaigns)
-                  CampaignCard(
+                  _CampaignGridItem(
                     campaign: campaign,
-                    onTap: () => onOpen(campaign.offer.campaignId),
+                    onOpen: onOpen,
+                    // Joined on the campaign id, exactly as the two contracts
+                    // are documented to join. Never on the name.
+                    progress: progressFor?.call(campaign.offer.campaignId),
                   ),
               ],
             ),
@@ -98,7 +138,53 @@ class CampaignListBody extends StatelessWidget {
 
           // Closes the list rather than the card, because it qualifies every
           // reward above it rather than any one of them.
-          const SrAlert(message: CampaignCopy.engineNotice),
+          SrAlert(message: CampaignCopy.resultsNotice(state.audience)),
+        ],
+      ],
+    );
+  }
+}
+
+/// One campaign card, and its target progress when there is any.
+///
+/// The progress sits **beside** the card rather than inside it, and that is
+/// deliberate: [CampaignCard] declares itself a single semantics node with
+/// `excludeSemantics: true`, so a bar nested within it would be silent to a
+/// screen reader. As a sibling it keeps its own announcement — the label, the
+/// current value, the target and the state — which is what the indicator has to
+/// carry to mean anything.
+class _CampaignGridItem extends StatelessWidget {
+  const _CampaignGridItem({
+    required this.campaign,
+    required this.onOpen,
+    required this.progress,
+  });
+
+  final CampaignPresentation campaign;
+  final void Function(String campaignId) onOpen;
+
+  /// Null for a `PER_UNIT_COINS` campaign — which has no threshold to progress
+  /// towards, so no bar is drawn — and for every campaign when the reading role
+  /// has no progress contract at all.
+  final CampaignTargetProgress? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final CampaignTargetProgress? row = progress;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        CampaignCard(
+          campaign: campaign,
+          onTap: () => onOpen(campaign.offer.campaignId),
+        ),
+        if (row != null) ...<Widget>[
+          const SizedBox(height: SrSpacing.sm),
+          CampaignTargetProgressView(
+            progress: row,
+            density: CampaignProgressDensity.compact,
+          ),
         ],
       ],
     );

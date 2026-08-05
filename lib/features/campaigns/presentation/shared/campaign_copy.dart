@@ -94,6 +94,36 @@ abstract final class CampaignCopy {
       'Campaign results and coin calculation will appear when the calculation '
       'engine is connected.';
 
+  /// The Sales Staff counterpart, and the reason [engineNotice] is no longer
+  /// the only answer.
+  ///
+  /// For a seller the engine **is** connected: `get_my_campaign_rewards()` and
+  /// `get_my_campaign_earnings_summary()` return what they have actually been
+  /// awarded, and a target campaign shows real progress on the card above this
+  /// line. Repeating "results will appear when the engine is connected" beside a
+  /// live progress bar would be a sentence the screen itself contradicts.
+  ///
+  /// The Retailer Owner keeps [engineNotice] unchanged: there is no Owner
+  /// earnings contract, no Owner reward read, and nothing on that screen that
+  /// could show a result.
+  static const String staffResultsNotice =
+      'Rewards you have already earned from these campaigns are listed under '
+      'My campaign earnings.';
+
+  static String resultsNotice(CampaignAudience audience) => switch (audience) {
+    CampaignAudience.retailerOwner => engineNotice,
+    CampaignAudience.salesStaff => staffResultsNotice,
+  };
+
+  /// Shown when the campaign list loaded but its target progress did not.
+  ///
+  /// The campaigns are a different contract behind a different cubit, and they
+  /// are still true — so this is a banner above a rendered list rather than a
+  /// replacement for it. It names no table, no function and no error.
+  static const String progressUnavailableTitle = 'Target progress is missing';
+  static const String progressUnavailableBody =
+      'Campaign information could not be loaded. Try again.';
+
   // -- Empty and failure states --------------------------------------------
 
   static const String emptyTitle = 'No campaigns yet';
@@ -101,9 +131,12 @@ abstract final class CampaignCopy {
   static const String retailerEmptyBody =
       'Campaigns appear here when a Vendor assigns one to your organization.';
 
+  /// Worded as the milestone specified. It names the seller's own shop rather
+  /// than the Retailer, because that is where somebody standing behind a counter
+  /// experiences a campaign — the *targeting* is still the Retailer's, which
+  /// [staffReadOnlyNote] says a line above.
   static const String staffEmptyBody =
-      'Campaigns appear here when one is running or about to start for your '
-      'Retailer.';
+      'No active or upcoming campaigns are available for your shop.';
 
   static String emptyBody(CampaignAudience audience) => switch (audience) {
     CampaignAudience.retailerOwner => retailerEmptyBody,
@@ -306,6 +339,40 @@ abstract final class CampaignCopy {
               'Later assignment changes affect later sales, not earlier sales.',
       };
 
+  /// The heading above the product list, naming **when** eligibility was
+  /// decided.
+  ///
+  /// Switched on the resolution rather than the scope, because the resolution is
+  /// the fact it states. The two are paired by
+  /// `campaign_versions_resolution_matches_scope` at the table, so either would
+  /// select the same sentence — the resolution is chosen so the heading and the
+  /// column it describes cannot drift apart.
+  static String eligibilityHeading(
+    CampaignProductEligibilityResolution resolution,
+  ) => switch (resolution) {
+    CampaignProductEligibilityResolution.snapshot =>
+      'Published campaign product selection',
+    CampaignProductEligibilityResolution.liveTemporal =>
+      'Eligibility checked at sale time',
+  };
+
+  /// What that heading means for a sale a seller is about to make.
+  ///
+  /// The `LIVE_TEMPORAL` sentence deliberately says *when the sale is verified*
+  /// rather than "now": the backend resolves eligibility from the assignment
+  /// **timeline**, so a product's state at the moment of the sale is what counts
+  /// and not its state at the moment somebody happens to read this screen.
+  static String eligibilityExplanation(
+    CampaignProductEligibilityResolution resolution,
+  ) => switch (resolution) {
+    CampaignProductEligibilityResolution.snapshot =>
+      'This campaign uses the product selection captured when it was '
+          'published.',
+    CampaignProductEligibilityResolution.liveTemporal =>
+      'Final qualification depends on the product and Retailer assignment '
+          'state when the sale is verified.',
+  };
+
   /// The short form, for a card.
   static String productScopeLabel(CampaignProductScope scope) =>
       switch (scope) {
@@ -353,8 +420,46 @@ abstract final class CampaignCopy {
   static const String noProductsCardNote =
       'No eligible products are assigned to your Retailer for this campaign.';
 
-  static const String productsEmptyDetail =
+  static const String retailerProductsEmptyDetail =
       'No products are listed for this campaign for your Retailer.';
+
+  /// The seller's wording, as the milestone specified it.
+  static const String staffProductsEmptyDetail =
+      'No product list is available for this campaign.';
+
+  static String productsEmptyDetail(CampaignAudience audience) =>
+      switch (audience) {
+        CampaignAudience.retailerOwner => retailerProductsEmptyDetail,
+        CampaignAudience.salesStaff => staffProductsEmptyDetail,
+      };
+
+  // -- Recipient scope ------------------------------------------------------
+
+  static const String recipientSectionTitle = 'Who the reward goes to';
+
+  /// `campaign_versions.reward_recipient_scope`, in words.
+  ///
+  /// The deployed constraint admits `CONTRIBUTING_STAFF` alone, so this reads as
+  /// a single sentence today. It is written as a switch rather than a constant
+  /// because a second member added to the contract must stop this compiling
+  /// rather than silently keep describing the campaign as though nothing had
+  /// changed.
+  static String recipientSentence(
+    CampaignRewardRecipientScope scope,
+    CampaignAudience audience,
+  ) => switch ((scope, audience)) {
+    (
+      CampaignRewardRecipientScope.contributingStaff,
+      CampaignAudience.salesStaff,
+    ) =>
+      'Rewards go to the Sales Staff member whose verified sale qualified.',
+    (
+      CampaignRewardRecipientScope.contributingStaff,
+      CampaignAudience.retailerOwner,
+    ) =>
+      'Rewards go to the Sales Staff member whose verified sale qualified, not '
+          'to the organization.',
+  };
 
   // -- Stacking -------------------------------------------------------------
 

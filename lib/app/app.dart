@@ -9,6 +9,7 @@ import '../features/auth/domain/repositories/portal_context_repository.dart';
 import '../features/auth/presentation/bloc/session_bloc.dart';
 import '../features/campaigns/domain/repositories/retailer_campaign_repository.dart';
 import '../features/campaigns/domain/repositories/staff_campaign_repository.dart';
+import '../features/rewards/domain/repositories/staff_earnings_repository.dart';
 import '../features/dashboard/domain/repositories/retailer_owner_overview_repository.dart';
 import '../features/products/domain/repositories/retailer_product_repository.dart';
 import '../features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
@@ -74,6 +75,7 @@ class SaleRewardApp extends StatefulWidget {
     this.retailerProductRepository,
     this.retailerCampaignRepository,
     this.staffCampaignRepository,
+    this.staffEarningsRepository,
     this.initialThemeMode = ThemeMode.system,
   });
 
@@ -124,6 +126,17 @@ class SaleRewardApp extends StatefulWidget {
   /// The Sales Staff campaign reads, on `STAFF_CAMPAIGNS_VIEW`. Fewer columns,
   /// and only ACTIVE/SCHEDULED campaigns. Only the Sales Staff shell reads it.
   final StaffCampaignRepository? staffCampaignRepository;
+
+  /// The Sales Staff **earnings** reads, on `STAFF_EARNINGS_VIEW`.
+  ///
+  /// A third campaign-shaped repository and a third permission, kept apart from
+  /// the two above for the reason the migration records: *"Seeing which
+  /// campaigns are running is a different question from seeing what you
+  /// personally earned, and a future role that should see one without the other
+  /// must be expressible without a code change."* Only the Sales Staff shell
+  /// reads it.
+  final StaffEarningsRepository? staffEarningsRepository;
+
   final ThemeMode initialThemeMode;
 
   @override
@@ -154,6 +167,7 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
   late final RetailerProductRepository _retailerProductRepository;
   late final RetailerCampaignRepository _retailerCampaignRepository;
   late final StaffCampaignRepository _staffCampaignRepository;
+  late final StaffEarningsRepository _staffEarningsRepository;
   late final SessionBloc _sessionBloc;
   late final AppLifecycleListener _appLifecycleListener;
   late final ThemeCubit _themeCubit;
@@ -207,6 +221,8 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         getIt<RetailerCampaignRepository>();
     _staffCampaignRepository =
         widget.staffCampaignRepository ?? getIt<StaffCampaignRepository>();
+    _staffEarningsRepository =
+        widget.staffEarningsRepository ?? getIt<StaffEarningsRepository>();
 
     _sessionBloc = SessionBloc(
       authRepository: _authRepository,
@@ -365,6 +381,14 @@ class _SaleRewardAppState extends State<SaleRewardApp> {
         ),
         RepositoryProvider<StaffCampaignRepository>.value(
           value: _staffCampaignRepository,
+        ),
+        // The third, on the third permission. Read by the Sales Staff shell
+        // when it constructs its progress and earnings cubits, and by no other
+        // shell — `STAFF_EARNINGS_VIEW` is mapped to `SALES_STAFF` alone, and
+        // every one of its three functions would return nothing to anybody
+        // else.
+        RepositoryProvider<StaffEarningsRepository>.value(
+          value: _staffEarningsRepository,
         ),
       ],
       child: MultiBlocProvider(

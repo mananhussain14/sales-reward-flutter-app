@@ -51,3 +51,8 @@ app.*.map.json
 
 # Local Dart configuration
 dart_defines.json
+# Every other defines file too — `dart_defines.local.json` points a debug build
+# at the local Supabase stack for manual testing. Only the committed example,
+# which carries placeholders and no real values, is exempt.
+dart_defines.*.json
+!dart_defines.example.json

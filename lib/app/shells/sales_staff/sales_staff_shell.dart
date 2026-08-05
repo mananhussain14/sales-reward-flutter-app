@@ -11,12 +11,15 @@ import '../../../features/receipts/domain/repositories/receipt_repository.dart';
 import '../../../features/receipts/domain/services/receipt_image_source.dart';
 import '../../../features/receipts/presentation/sales_staff/cubit/receipt_history_cubit.dart';
 import '../../../features/receipts/presentation/sales_staff/cubit/receipt_submission_cubit.dart';
+import '../../../features/rewards/domain/repositories/staff_earnings_repository.dart';
+import '../../../features/rewards/presentation/bloc/campaign_earnings_cubit.dart';
+import '../../../features/rewards/presentation/bloc/campaign_target_progress_cubit.dart';
 import '../base/role_shell_scaffold.dart';
 import 'bloc/sales_staff_shell_bloc.dart';
 
 /// The Sales Staff application shell.
 ///
-/// The narrowest shell in the product: two destinations, bottom navigation, and
+/// The narrowest shell in the product: four destinations, bottom navigation, and
 /// nothing borrowed from any other role.
 ///
 /// ## Why the receipt cubits are provided here rather than per page
@@ -99,6 +102,32 @@ class SalesStaffShell extends StatelessWidget {
                         providerContext.read<StaffCampaignRepository>(),
                       ),
                 ),
+                // The two earnings cubits, on a SEPARATE repository behind a
+                // SEPARATE permission — STAFF_EARNINGS_VIEW rather than
+                // STAFF_CAMPAIGNS_VIEW. Neither can reach the campaign
+                // contract and neither campaign cubit can reach this one,
+                // because the field types do not permit it.
+                //
+                // Deliberately NOT loaded on creation, like the campaign
+                // cubits above: the Campaigns and Earnings tabs read
+                // themselves when a user actually opens them.
+                //
+                // The progress cubit is provided at the SHELL rather than on
+                // the Campaigns route, because both the campaign list and one
+                // campaign's detail read from it — one round trip serves both,
+                // and opening a detail issues no second request.
+                BlocProvider<SalesStaffCampaignProgressCubit>(
+                  create: (BuildContext providerContext) =>
+                      SalesStaffCampaignProgressCubit(
+                        providerContext.read<StaffEarningsRepository>(),
+                      ),
+                ),
+                BlocProvider<SalesStaffEarningsCubit>(
+                  create: (BuildContext providerContext) =>
+                      SalesStaffEarningsCubit(
+                        providerContext.read<StaffEarningsRepository>(),
+                      ),
+                ),
               ],
               child: _SessionIsolation(
                 child: RoleShellScaffold<SalesStaffShellBloc>(
@@ -144,16 +173,21 @@ class _SessionIsolation extends StatelessWidget {
             .read<SalesStaffCampaignListCubit>();
         final SalesStaffCampaignDetailCubit campaignDetail = context
             .read<SalesStaffCampaignDetailCubit>();
+        final SalesStaffCampaignProgressCubit campaignProgress = context
+            .read<SalesStaffCampaignProgressCubit>();
+        final SalesStaffEarningsCubit earnings = context
+            .read<SalesStaffEarningsCubit>();
 
         if (_isSalesStaff(state)) {
           // A new Sales Staff session. Everything is read again from the
           // backend under the new caller's own identity.
           submission.load();
           history.load();
-          // The campaign cubits are deliberately NOT reloaded here. They return
-          // to `initial`, and the Campaigns tab reads itself through `loadOnce`
-          // if the new session actually opens it — eagerly refetching a screen
-          // nobody is looking at would issue a request for nothing.
+          // The campaign, progress and earnings cubits are deliberately NOT
+          // reloaded here. They return to `initial`, and each tab reads itself
+          // through `loadOnce` if the new session actually opens it — eagerly
+          // refetching a screen nobody is looking at would issue a request for
+          // nothing.
           return;
         }
 
@@ -166,6 +200,14 @@ class _SessionIsolation extends StatelessWidget {
         // for the previous identity is dropped on arrival.
         campaigns.clear();
         campaignDetail.clear();
+        // And the earnings go with them — the most private thing this
+        // application holds. What somebody has been paid, how far their team
+        // has got towards a target and which receipts produced a reward must
+        // not survive into another person's session for even one frame.
+        // `clear()` advances a request token in both, so a read already in
+        // flight for the previous identity is dropped on arrival.
+        campaignProgress.clear();
+        earnings.clear();
       },
       child: child,
     );

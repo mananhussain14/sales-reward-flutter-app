@@ -29,6 +29,7 @@ import '../../features/receipts/presentation/sales_staff/cubit/receipt_review_cu
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_receipt_review_page.dart';
 import '../../features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
+import '../../features/rewards/presentation/pages/sales_staff_earnings_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailer_detail_page.dart';
 import '../../features/retailers/presentation/vendor/pages/vendor_retailers_page.dart';
 import '../../features/roles/presentation/vendor/pages/vendor_role_detail_page.dart';
@@ -693,6 +694,22 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
                 ),
           ),
         ],
+      ),
+      // SS-08. Backed by get_my_campaign_earnings_summary() and
+      // get_my_campaign_rewards(), which resolve the caller through
+      // sales_staff_earnings_profile() — a SEPARATE permission from the
+      // campaign reads, STAFF_EARNINGS_VIEW, mapped to SALES_STAFF alone.
+      //
+      // No nested route, and none to add: the reward contract returns no
+      // verified sale id, and there is no authorized Sales Staff route that
+      // opens a receipt from a reward.
+      //
+      // READ-ONLY. There is no claim, redeem, withdraw, transfer or payout
+      // screen here, because no such contract exists in the deployed schema.
+      GoRoute(
+        path: SalesStaffNavigation.earnings,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SalesStaffEarningsPage(),
       ),
     ],
   );

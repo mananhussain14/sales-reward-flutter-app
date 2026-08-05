@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/design/design.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../rewards/domain/entities/campaign_target_progress.dart';
 import 'campaign_copy.dart';
 import 'campaign_detail_cubit.dart';
 import 'campaign_detail_view.dart';
@@ -37,6 +38,7 @@ class CampaignDetailPage<C extends CampaignDetailCubitBase>
     super.key,
     required this.campaignId,
     required this.listPath,
+    this.progress,
   });
 
   /// The `:campaignId` segment, verbatim.
@@ -49,6 +51,12 @@ class CampaignDetailPage<C extends CampaignDetailCubitBase>
   /// This role's campaign list route, for the deep-link case where there is
   /// nothing underneath to pop back to.
   final String listPath;
+
+  /// This campaign's target progress, or null when it has none.
+  ///
+  /// Supplied by the Sales Staff binding, which reads a second contract on a
+  /// second permission. A Retailer Owner has neither and passes nothing.
+  final CampaignTargetProgress? progress;
 
   @override
   State<CampaignDetailPage<C>> createState() => _CampaignDetailPageState<C>();
@@ -181,6 +189,7 @@ class _CampaignDetailPageState<C extends CampaignDetailCubitBase>
           CampaignDetailView(
             campaign: state.campaign!,
             products: state.products,
+            progress: widget.progress,
           ),
         ];
     }
