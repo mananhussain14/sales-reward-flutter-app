@@ -14,6 +14,7 @@ import 'package:sale_reward/features/retailers/domain/repositories/vendor_retail
 import 'package:sale_reward/features/dashboard/domain/repositories/vendor_dashboard_repository.dart';
 import 'package:sale_reward/features/products/domain/repositories/vendor_product_repository.dart';
 import 'package:sale_reward/features/profile/domain/repositories/vendor_profile_repository.dart';
+import 'package:sale_reward/features/rewards/domain/repositories/staff_earnings_repository.dart';
 import 'package:sale_reward/features/roles/domain/repositories/vendor_role_repository.dart';
 import 'package:sale_reward/features/shops/domain/repositories/retailer_shop_repository.dart';
 import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_invitation_repository.dart';
@@ -23,6 +24,7 @@ import 'package:sale_reward/features/staff/domain/repositories/retailer_staff_sh
 import 'package:sale_reward/features/users/domain/repositories/vendor_user_repository.dart';
 
 import 'campaign_fakes.dart';
+import 'earnings_fakes.dart';
 import 'fakes.dart';
 import 'lifecycle_access_fakes.dart';
 import 'receipt_fakes.dart';
@@ -87,6 +89,7 @@ typedef PumpedApp = ({
   FakeRetailerProductRepository retailerProducts,
   FakeRetailerCampaignRepository retailerCampaigns,
   FakeStaffCampaignRepository staffCampaigns,
+  FakeStaffEarningsRepository staffEarnings,
 });
 
 /// Pumps the real application over supplied fakes, never Supabase.
@@ -144,6 +147,8 @@ Future<PumpedApp> pumpApp(
   RetailerCampaignRepository? retailerCampaignRepository,
   FakeStaffCampaignRepository? staffCampaigns,
   StaffCampaignRepository? staffCampaignRepository,
+  FakeStaffEarningsRepository? staffEarnings,
+  StaffEarningsRepository? staffEarningsRepository,
 }) async {
   final FakeAuthRepository auth = FakeAuthRepository(initialUser: initialUser);
   final FakePortalContextRepository portal = FakePortalContextRepository(
@@ -236,6 +241,15 @@ Future<PumpedApp> pumpApp(
       staffCampaigns ?? FakeStaffCampaignRepository();
   final StaffCampaignRepository providedStaffCampaigns =
       staffCampaignRepository ?? staffCampaignFake;
+  // Always supplied, like the campaign fakes above: the Sales Staff shell
+  // constructs its progress and earnings cubits from this repository the moment
+  // it builds, so a test that never opens either tab would otherwise fall
+  // through to the service locator — exactly the accident the injected graph
+  // exists to prevent.
+  final FakeStaffEarningsRepository staffEarningsFake =
+      staffEarnings ?? FakeStaffEarningsRepository();
+  final StaffEarningsRepository providedStaffEarnings =
+      staffEarningsRepository ?? staffEarningsFake;
   addTearDown(auth.dispose);
 
   useSurface(tester, surface);
@@ -264,6 +278,7 @@ Future<PumpedApp> pumpApp(
       retailerProductRepository: providedRetailerProducts,
       retailerCampaignRepository: providedRetailerCampaigns,
       staffCampaignRepository: providedStaffCampaigns,
+      staffEarningsRepository: providedStaffEarnings,
       initialThemeMode: themeMode,
     ),
   );
@@ -294,6 +309,7 @@ Future<PumpedApp> pumpApp(
     retailerProducts: productsRepository,
     retailerCampaigns: campaignRepository,
     staffCampaigns: staffCampaignFake,
+    staffEarnings: staffEarningsFake,
   );
 }
 
@@ -339,6 +355,8 @@ Future<PumpedApp> pumpAppInRole(
   RetailerCampaignRepository? retailerCampaignRepository,
   FakeStaffCampaignRepository? staffCampaigns,
   StaffCampaignRepository? staffCampaignRepository,
+  FakeStaffEarningsRepository? staffEarnings,
+  StaffEarningsRepository? staffEarningsRepository,
 }) {
   return pumpApp(
     tester,
@@ -383,6 +401,8 @@ Future<PumpedApp> pumpAppInRole(
     retailerCampaignRepository: retailerCampaignRepository,
     staffCampaigns: staffCampaigns,
     staffCampaignRepository: staffCampaignRepository,
+    staffEarnings: staffEarnings,
+    staffEarningsRepository: staffEarningsRepository,
   );
 }
 

@@ -11,7 +11,8 @@ import '../../navigation/role_destination.dart';
 /// shared shop-floor device — so it must not be able to inherit an entry from
 /// anywhere else.
 ///
-/// **Submit · History**, in a concise two-item bottom bar.
+/// **Submit · History · Campaigns · Earnings**, in a four-item bottom bar —
+/// still inside the two-to-five range [RoleShellChrome.bottomBar] is for.
 ///
 /// ## A recorded deviation from § 4.1 of the design handoff
 ///
@@ -91,6 +92,20 @@ abstract final class SalesStaffNavigation {
   /// been paused, returns zero rows.
   static String campaignDetail(String campaignId) => '$campaigns/$campaignId';
 
+  /// What this seller has actually earned from those campaigns.
+  ///
+  /// Backed by `get_my_campaign_earnings_summary()` and
+  /// `get_my_campaign_rewards()`, both of which resolve through
+  /// `sales_staff_earnings_profile()` — a **separate** permission from the
+  /// campaign reads, `STAFF_EARNINGS_VIEW`, mapped to `SALES_STAFF` alone.
+  /// *"Seeing which campaigns are running is a different question from seeing
+  /// what you personally earned."*
+  ///
+  /// No route beneath it, and none to add: the contract returns no verified sale
+  /// id, and there is no authorized Sales Staff route that opens a receipt from
+  /// a reward.
+  static const String earnings = '$prefix/earnings';
+
   static const List<RoleDestination> destinations = <RoleDestination>[
     RoleDestination(
       label: 'Submit',
@@ -105,8 +120,8 @@ abstract final class SalesStaffNavigation {
       selectedIcon: Icons.receipt_long_rounded,
       path: history,
     ),
-    // Third and last. Submit stays the landing tab, so the primary action is
-    // still one tap away — the reason this shell has a bottom bar at all.
+    // Third. Submit stays the landing tab, so the primary action is still one
+    // tap away — the reason this shell has a bottom bar at all.
     //
     // No `requiredCapability`: the portal context returns no campaign flag for
     // either role. See the equivalent note in `RetailerOwnerNavigation`.
@@ -115,6 +130,31 @@ abstract final class SalesStaffNavigation {
       icon: Icons.campaign_outlined,
       selectedIcon: Icons.campaign_rounded,
       path: campaigns,
+    ),
+    // Fourth and last, which is what a bottom bar carries comfortably.
+    //
+    // ## A recorded deviation on the LABEL, and only the label
+    //
+    // The milestone names this destination "My campaign earnings". A bottom-bar
+    // label is rendered under an icon in a quarter of a phone's width, at the
+    // reader's own text scale — three words there either ellipsise to
+    // "My camp…" or force every other tab to shrink with them, and both are
+    // worse than a shorter word that means the same thing.
+    //
+    // So the visible label is "Earnings" and the specified name is carried
+    // where it has room: the screen's own title, its header, and the accessible
+    // announcement of the page. Nothing about what the destination reaches
+    // changes.
+    //
+    // No `requiredCapability`, for the same reason as Campaigns: the portal
+    // context returns no earnings flag, and navigation is not authorization —
+    // `STAFF_EARNINGS_VIEW` is re-decided in SQL on every one of the three
+    // reads behind this screen.
+    RoleDestination(
+      label: 'Earnings',
+      icon: Icons.savings_outlined,
+      selectedIcon: Icons.savings_rounded,
+      path: earnings,
     ),
   ];
 

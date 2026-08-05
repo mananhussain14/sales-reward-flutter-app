@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/design/design.dart';
 import '../../../../core/utils/date_format.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../rewards/domain/entities/campaign_target_progress.dart';
+import '../../../rewards/presentation/widgets/campaign_target_progress_view.dart';
+import '../../../rewards/presentation/widgets/earnings_copy.dart';
 import '../../domain/entities/campaign_offer.dart';
 import '../../domain/entities/campaign_product.dart';
 import 'campaign_copy.dart';
@@ -30,19 +33,34 @@ import 'campaign_status_badge.dart';
 /// roles precisely because neither has an action: there is no branch here that
 /// could grow one for one role and not the other.
 ///
-/// ## And no progress
+/// ## Progress, only where the backend supplied it
 ///
-/// No bar, no percentage, no units sold, no coins earned, no claim. The contract
-/// returns the offer; [CampaignCopy.engineNotice] says the rest is not connected
-/// yet, which is the honest form of an absent number.
+/// A `TARGET_BONUS` campaign renders a progress block when
+/// `get_my_campaign_target_progress()` returned a row for it; a `PER_UNIT_COINS`
+/// campaign has no row and gets no bar, because there is no threshold to
+/// progress towards and drawing one would invent a goal the Vendor never set.
+///
+/// A Retailer Owner passes no progress at all — that contract is on
+/// `STAFF_EARNINGS_VIEW`, mapped to `SALES_STAFF` alone — so the Owner screen is
+/// unchanged and [CampaignCopy.engineNotice] still closes it.
+///
+/// **No coins earned appear here.** A coin total belongs on the earnings screen
+/// and nowhere else: under `RETAILER_TEAM` the accumulator's coin total is the
+/// whole team's and would be read as personal earnings, which is exactly why the
+/// contract withholds it.
 class CampaignDetailView extends StatelessWidget {
   const CampaignDetailView({
     super.key,
     required this.campaign,
     required this.products,
+    this.progress,
   });
 
   final CampaignPresentation campaign;
+
+  /// This campaign's target progress, or null when it has none — a per-unit
+  /// campaign, or a role with no progress contract.
+  final CampaignTargetProgress? progress;
 
   /// The products this campaign counts **for this Retailer**, from
   /// `list_my_*_campaign_products()`.
@@ -57,6 +75,7 @@ class CampaignDetailView extends StatelessWidget {
   Widget build(BuildContext context) {
     final SrColorScheme sr = context.sr;
     final CampaignOffer offer = campaign.offer;
+    final CampaignTargetProgress? progressRow = progress;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -120,22 +139,52 @@ class CampaignDetailView extends StatelessWidget {
           ),
         ),
 
-        // -- 6. Performance measurement --------------------------------------
+        // -- 6. Target progress ----------------------------------------------
+        //
+        // Directly under the reward, because it is the answer to the question
+        // the reward sentence has just raised: "how far along is that?".
+        // Rendered only when the backend returned a row for this campaign.
+        if (progressRow != null) ...<Widget>[
+          const SizedBox(height: SrSpacing.xxl),
+          SrSectionCard(
+            title: EarningsCopy.progressSectionTitle,
+            child: CampaignTargetProgressView(progress: progressRow),
+          ),
+        ],
+
+        // -- 7. Performance measurement --------------------------------------
         const SizedBox(height: SrSpacing.xxl),
         SrSectionCard(
           title: CampaignCopy.measurementSectionTitle,
-          child: _IconLine(
-            icon: offer.performanceScope.isTeam
-                ? Icons.groups_rounded
-                : Icons.person_rounded,
-            text: CampaignCopy.measurementSentence(
-              offer.performanceScope,
-              campaign.audience,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _IconLine(
+                icon: offer.performanceScope.isTeam
+                    ? Icons.groups_rounded
+                    : Icons.person_rounded,
+                text: CampaignCopy.measurementSentence(
+                  offer.performanceScope,
+                  campaign.audience,
+                ),
+              ),
+              // Who is measured and who is PAID are two different facts, and
+              // under a Retailer team target they are deliberately different:
+              // the team's units are counted, and a contributing Sales Staff
+              // member is the beneficiary.
+              const SizedBox(height: SrSpacing.md),
+              _IconLine(
+                icon: Icons.card_giftcard_outlined,
+                text: CampaignCopy.recipientSentence(
+                  offer.rewardRecipientScope,
+                  campaign.audience,
+                ),
+              ),
+            ],
           ),
         ),
 
-        // -- 7. Eligible products --------------------------------------------
+        // -- 8. Eligible products --------------------------------------------
         const SizedBox(height: SrSpacing.xxl),
         SrSectionCard(
           title: CampaignCopy.productsSectionTitle,
@@ -149,6 +198,24 @@ class CampaignDetailView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // WHEN eligibility was decided, as a heading and a sentence. A
+              // seller about to make a sale needs to know whether the list
+              // below is frozen or re-checked at verification, and the two
+              // answers lead to different behaviour on the shop floor.
+              Text(
+                CampaignCopy.eligibilityHeading(
+                  offer.productEligibility.resolution,
+                ),
+                style: SrTypography.label.copyWith(color: sr.foreground),
+              ),
+              const SizedBox(height: SrSpacing.xxs),
+              Text(
+                CampaignCopy.eligibilityExplanation(
+                  offer.productEligibility.resolution,
+                ),
+                style: SrTypography.body.copyWith(color: sr.textBody),
+              ),
+              const SizedBox(height: SrSpacing.lg),
               Text(
                 CampaignCopy.productCountLabel(
                   offer.productEligibility.eligibleProductCount,
@@ -158,7 +225,7 @@ class CampaignDetailView extends StatelessWidget {
               if (products.isEmpty) ...<Widget>[
                 const SizedBox(height: SrSpacing.sm),
                 Text(
-                  CampaignCopy.productsEmptyDetail,
+                  CampaignCopy.productsEmptyDetail(campaign.audience),
                   style: SrTypography.body.copyWith(color: sr.textMuted),
                 ),
               ] else ...<Widget>[
@@ -170,7 +237,7 @@ class CampaignDetailView extends StatelessWidget {
           ),
         ),
 
-        // -- 8. Schedule -------------------------------------------------------
+        // -- 9. Schedule -------------------------------------------------------
         const SizedBox(height: SrSpacing.xxl),
         SrSectionCard(
           title: CampaignCopy.scheduleSectionTitle,
@@ -203,7 +270,7 @@ class CampaignDetailView extends StatelessWidget {
           ),
         ),
 
-        // -- 9. Stacking -------------------------------------------------------
+        // -- 10. Stacking ------------------------------------------------------
         const SizedBox(height: SrSpacing.xxl),
         SrSectionCard(
           title: CampaignCopy.stackingSectionTitle,
@@ -215,9 +282,9 @@ class CampaignDetailView extends StatelessWidget {
           ),
         ),
 
-        // -- 10. The calculation-engine notice ---------------------------------
+        // -- 11. Where the results are -----------------------------------------
         const SizedBox(height: SrSpacing.xxl),
-        const SrAlert(message: CampaignCopy.engineNotice),
+        SrAlert(message: CampaignCopy.resultsNotice(campaign.audience)),
       ],
     );
   }

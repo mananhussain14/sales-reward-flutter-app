@@ -141,19 +141,26 @@ void main() {
       );
     });
 
-    test('Sales Staff: Submit, History, Campaigns', () {
+    test('Sales Staff: Submit, History, Campaigns, Earnings', () {
       // Submit stays first, and stays the landing tab: the primary action is
       // still one tap away, which is the reason this shell has a bottom bar.
+      //
+      // Earnings is last, and its visible label is deliberately shorter than
+      // the milestone's "My campaign earnings" — three words under an icon in a
+      // quarter of a phone's width either ellipsise or shrink every other tab.
+      // The full name is carried by the screen's own title instead.
       expect(
         SalesStaffNavigation.model.destinations.map(
           (RoleDestination d) => d.label,
         ),
-        <String>['Submit', 'History', 'Campaigns'],
+        <String>['Submit', 'History', 'Campaigns', 'Earnings'],
       );
       expect(
         SalesStaffNavigation.model.landingPath,
         SalesStaffNavigation.submit,
       );
+      // Four entries is still inside the two-to-five range a bottom bar is for.
+      expect(SalesStaffNavigation.model.chrome, RoleShellChrome.bottomBar);
     });
 
     test('Campaigns never appears for the Retailer Manager', () {
