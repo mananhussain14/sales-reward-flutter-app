@@ -210,16 +210,57 @@ void main() {
     expect(url.startsWith('https://'), isTrue);
   });
 
-  test('dart_defines.json is not tracked by git', () {
+  test('no defines file but the example is tracked by git', () {
+    // `dart_defines.json` holds the hosted values; `dart_defines.local.json`
+    // points a debug build at the local Supabase stack for manual testing.
+    // Neither may ever be committed. The example carries placeholders only and
+    // is deliberately tracked.
     final ProcessResult result = Process.runSync('git', <String>[
       'ls-files',
-      'dart_defines.json',
+      'dart_defines*.json',
     ]);
 
+    final List<String> tracked = (result.stdout as String)
+        .split('\n')
+        .map((String line) => line.trim())
+        .where((String line) => line.isNotEmpty)
+        .toList();
+
     expect(
-      (result.stdout as String).trim(),
-      isEmpty,
-      reason: 'dart_defines.json holds environment values and must stay local',
+      tracked,
+      <String>['dart_defines.example.json'],
+      reason: 'a defines file holds environment values and must stay local',
+    );
+  });
+
+  test('the local defines file is ignored, not merely absent', () {
+    // `git ls-files` passes vacuously for a file nobody has created yet. This
+    // asserts the RULE — that creating one leaves it untracked — rather than
+    // the current state of one developer's working tree.
+    for (final String local in <String>[
+      'dart_defines.json',
+      'dart_defines.local.json',
+    ]) {
+      final ProcessResult result = Process.runSync('git', <String>[
+        'check-ignore',
+        local,
+      ]);
+      expect(
+        result.exitCode,
+        0,
+        reason: '$local must be covered by .gitignore',
+      );
+    }
+
+    // And the example must NOT be swept up by the same pattern.
+    final ProcessResult example = Process.runSync('git', <String>[
+      'check-ignore',
+      'dart_defines.example.json',
+    ]);
+    expect(
+      example.exitCode,
+      isNot(0),
+      reason: 'the placeholder example is meant to be committed',
     );
   });
 }

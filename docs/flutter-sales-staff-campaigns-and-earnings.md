@@ -421,39 +421,49 @@ seller. Copy the credentials from the terminal — never into a file.
 
 ### 3 · Point the Flutter debug build at local Supabase
 
-**`AppConfig.validateValues` requires `https`.** Local Supabase serves plain
-`http` on `127.0.0.1:54321`, so a debug build cannot be pointed straight at it —
-it would show the invalid-configuration screen. Put a TLS-terminating tunnel in
-front of it instead, which changes no source and no committed configuration:
+`AppConfig.validateValues` accepts a plain-`http` URL **only** when the build is
+debug *and* the host is exactly `localhost`, `127.0.0.1` or `::1`. Every other
+host still requires HTTPS, and a profile or release build requires it for every
+host including these three — `validate()` always passes `kDebugMode`, which the
+build mode fixes, so no input can reach the branch in a shipped binary. No tunnel
+is needed.
 
-```bash
-cloudflared tunnel --url http://127.0.0.1:54321      # prints an https URL
-```
-
-Then create a **separate, untracked** defines file — `dart_defines.json` is
-already git-ignored, and the hosted one must not be overwritten:
+Create a **separate, untracked** defines file. `dart_defines.local.json` is
+covered by `.gitignore`, and the hosted `dart_defines.json` is left alone:
 
 ```bash
 cd /Users/mananhussain/Projects/sale_reward
-cp dart_defines.json dart_defines.hosted.backup.json   # keep the hosted values
 cat > dart_defines.local.json <<'JSON'
 {
-  "SUPABASE_URL": "https://<the-tunnel-host>",
+  "SUPABASE_URL": "http://127.0.0.1:54321",
   "SUPABASE_PUBLISHABLE_KEY": "<local anon key from `npx supabase status`>"
 }
 JSON
 ```
 
 The local anon key is a development key printed by `supabase status`. It is not
-a secret and is not committed — `dart_defines.local.json` should be added to
-`.gitignore` locally if it is kept, and deleted otherwise. **No service-role key
-is used at any point**, and none exists anywhere in this application.
+a secret, it belongs to a throwaway local database, and it is never committed.
+**No service-role key is used at any point**, and none exists anywhere in this
+application.
 
 Run against it:
 
 ```bash
+flutter run -d chrome --dart-define-from-file=dart_defines.local.json
+```
+
+On **Android**, `127.0.0.1` means the handset, not the workstation. Forward the
+port first, which keeps the URL loopback and needs no change to the defines
+file:
+
+```bash
+adb reverse tcp:54321 tcp:54321
 flutter run -d <android-device> --dart-define-from-file=dart_defines.local.json
 ```
+
+`10.0.2.2` — the emulator's host alias — is deliberately **not** accepted: it is
+not a loopback address, and a build carrying it is one that cannot reach anything
+from a physical device.
 
 ### 4 · Sign in
 
@@ -506,14 +516,17 @@ node scripts/sales-staff-campaigns-earnings-manual-fixture.mjs --cleanup
 
 ### 7 · Restore hosted configuration
 
+`dart_defines.json` was never touched, so there is nothing to restore — only the
+local file to remove:
+
 ```bash
 cd /Users/mananhussain/Projects/sale_reward
 rm dart_defines.local.json
-mv dart_defines.hosted.backup.json dart_defines.json   # if it was moved at all
+adb reverse --remove tcp:54321          # if the port was forwarded
 flutter run --dart-define-from-file=dart_defines.json
 ```
 
-Stop the tunnel. Optionally `npx supabase stop` in the Web repository.
+Optionally `npx supabase stop` in the Web repository.
 
 No secret is printed to a file, committed, or written into a tracked
 configuration at any point in this procedure.
