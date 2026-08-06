@@ -45,9 +45,12 @@ class ReceiptSubmissionTile extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const SrIconDisc(
+              // Tinted by the row's own status, from the badge's single
+              // definition — so the left and the right of the row always agree
+              // about what state this receipt is in.
+              SrIconDisc(
                 icon: Icons.receipt_long_rounded,
-                tone: SrTone.indigo,
+                tone: ReceiptStatusBadge.toneFor(submission.status),
                 size: 40,
               ),
               const SizedBox(width: SrSpacing.md),

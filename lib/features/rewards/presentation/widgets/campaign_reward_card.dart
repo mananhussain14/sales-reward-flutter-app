@@ -42,6 +42,16 @@ class CampaignRewardCard extends StatelessWidget {
 
   final CampaignRewardRecord reward;
 
+  bool get _isTargetBonus =>
+      reward.ruleType == CampaignRewardRuleType.targetBonus;
+
+  /// The same accent the campaign screens give this rule type, so one rule
+  /// looks like itself wherever it appears.
+  SrTone get _ruleTone => _isTargetBonus ? SrTone.blue : SrTone.indigo;
+
+  IconData get _ruleIcon =>
+      _isTargetBonus ? Icons.flag_rounded : Icons.bolt_rounded;
+
   @override
   Widget build(BuildContext context) {
     final SrColorScheme sr = context.sr;
@@ -55,43 +65,75 @@ class CampaignRewardCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             // -- Campaign, and how it paid -----------------------------------
-            Text(
-              reward.campaignName,
-              style: SrTypography.cardTitle.copyWith(color: sr.foreground),
-              // A 150-character campaign name is legal in the schema. Two lines
-              // with an ellipsis keeps every card the same shape without the
-              // name overflowing its row at any text scale.
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: SrSpacing.sm),
-            Wrap(
-              spacing: SrSpacing.sm,
-              runSpacing: SrSpacing.sm,
+            //
+            // The rule disc leads, carrying the same glyph and tone the
+            // campaign screens use for that rule type — so a target bonus is
+            // recognisable as one before a word is read.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                SrBadge(
-                  label: EarningsCopy.ruleLabel(reward.ruleType),
-                  tone: reward.ruleType == CampaignRewardRuleType.targetBonus
-                      ? SrTone.emerald
-                      : SrTone.indigo,
-                  icon: reward.ruleType == CampaignRewardRuleType.targetBonus
-                      ? Icons.flag_outlined
-                      : Icons.bolt_outlined,
-                ),
-                SrBadge(
-                  label: EarningsCopy.rewardScopeLabel(reward.performanceScope),
-                  icon: reward.performanceScope.isTeam
-                      ? Icons.groups_rounded
-                      : Icons.person_rounded,
+                SrIconDisc(icon: _ruleIcon, tone: _ruleTone, size: 40),
+                const SizedBox(width: SrSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        reward.campaignName,
+                        style: SrTypography.cardTitle.copyWith(
+                          color: sr.foreground,
+                        ),
+                        // A 150-character campaign name is legal in the schema.
+                        // Two lines with an ellipsis keeps every card the same
+                        // shape without the name overflowing its row at any
+                        // text scale.
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: SrSpacing.sm),
+                      Wrap(
+                        spacing: SrSpacing.sm,
+                        runSpacing: SrSpacing.sm,
+                        children: <Widget>[
+                          SrBadge(
+                            label: EarningsCopy.ruleLabel(reward.ruleType),
+                            tone: _ruleTone,
+                            icon: _ruleIcon,
+                          ),
+                          SrBadge(
+                            label: EarningsCopy.rewardScopeLabel(
+                              reward.performanceScope,
+                            ),
+                            icon: reward.performanceScope.isTeam
+                                ? Icons.groups_rounded
+                                : Icons.person_rounded,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
 
             // -- What was earned ---------------------------------------------
+            //
+            // On its own recessed surface, because it is the reason the card
+            // exists and a figure among six labelled facts does not read as
+            // the answer to "what did I get?".
             const SizedBox(height: SrSpacing.lg),
-            _Amount(
-              label: EarningsCopy.finalRewardLabel,
-              value: EarningsCopy.coins(reward.rewardCoins),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(SrSpacing.md),
+              decoration: BoxDecoration(
+                color: sr.surfaceMuted,
+                borderRadius: BorderRadius.circular(SrRadii.control),
+                border: Border.all(color: sr.border),
+              ),
+              child: _Amount(
+                label: EarningsCopy.finalRewardLabel,
+                value: EarningsCopy.coins(reward.rewardCoins),
+              ),
             ),
 
             // -- The cap, when it bit -----------------------------------------

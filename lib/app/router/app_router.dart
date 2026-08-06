@@ -15,6 +15,7 @@ import '../../features/campaigns/presentation/retailer_owner/pages/retailer_owne
 import '../../features/campaigns/presentation/sales_staff/pages/sales_staff_campaign_detail_page.dart';
 import '../../features/campaigns/presentation/sales_staff/pages/sales_staff_campaigns_page.dart';
 import '../../features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
+import '../../features/home/presentation/sales_staff/pages/sales_staff_home_page.dart';
 import '../../features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
 import '../../features/products/presentation/retailer/pages/retailer_products_page.dart';
 import '../../features/products/presentation/vendor/pages/vendor_product_create_page.dart';
@@ -608,6 +609,19 @@ RouteBase _salesStaffRoutes(SessionBloc bloc) {
           child: child,
         ),
     routes: <RouteBase>[
+      // The landing screen, and the only surface in this application that
+      // composes more than one contract. It issues no read of its own: it
+      // starts the campaign, progress and earnings cubits the shell already
+      // provides, and renders what they hold.
+      //
+      // READ-ONLY. The one action on it is navigation — into the submit route
+      // below, into Campaigns, into Earnings, into History. There is no claim,
+      // redeem, withdraw or payout control, because no such contract exists.
+      GoRoute(
+        path: SalesStaffNavigation.home,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SalesStaffHomePage(),
+      ),
       GoRoute(
         path: SalesStaffNavigation.submit,
         builder: (BuildContext context, GoRouterState state) =>

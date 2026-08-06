@@ -12,7 +12,7 @@ import 'package:sale_reward/features/dashboard/domain/repositories/retailer_owne
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/widgets/retailer_owner_overview_copy.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/widgets/retailer_shop_count_card.dart';
-import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
+import 'package:sale_reward/features/home/presentation/sales_staff/pages/sales_staff_home_page.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 
 import '../../support/fakes.dart';
@@ -114,8 +114,8 @@ void main() {
     ) async {
       final PumpedApp app = await pumpAppInRole(tester, PortalKind.salesStaff);
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
-      expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
+      expect(find.byType(SalesStaffHomePage), findsOneWidget);
       expect(app.retailerOverview.callCount, 0);
     });
 
@@ -138,7 +138,7 @@ void main() {
 
       await goTo(tester, RetailerOwnerNavigation.overview);
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(app.retailerOverview.callCount, 0);
     });
 
@@ -548,7 +548,7 @@ void main() {
       app.auth.emitSignedIn(secondUser);
       await tester.pumpAndSettle();
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(find.byType(RetailerShopCountCard), findsNothing);
       expect(find.text('12'), findsNothing);
     });
@@ -602,7 +602,7 @@ void main() {
       repo.complete();
       await tester.pumpAndSettle();
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(find.text('Northwind Retail'), findsNothing);
       expect(find.byType(RetailerShopCountCard), findsNothing);
     });

@@ -39,6 +39,7 @@ class CampaignDetailPage<C extends CampaignDetailCubitBase>
     required this.campaignId,
     required this.listPath,
     this.progress,
+    this.onOpenEarnings,
   });
 
   /// The `:campaignId` segment, verbatim.
@@ -57,6 +58,17 @@ class CampaignDetailPage<C extends CampaignDetailCubitBase>
   /// Supplied by the Sales Staff binding, which reads a second contract on a
   /// second permission. A Retailer Owner has neither and passes nothing.
   final CampaignTargetProgress? progress;
+
+  /// Opens the reader's own campaign earnings.
+  ///
+  /// Supplied by the Sales Staff binding and null for a Retailer Owner, who has
+  /// no earnings contract to reach — `STAFF_EARNINGS_VIEW` is mapped to
+  /// `SALES_STAFF` alone. Null omits the control rather than disabling it: an
+  /// affordance that led nowhere would be worse than none.
+  ///
+  /// Passed in rather than resolved here, so this shared widget names no role's
+  /// routes and cannot send one role into another's subtree.
+  final VoidCallback? onOpenEarnings;
 
   @override
   State<CampaignDetailPage<C>> createState() => _CampaignDetailPageState<C>();
@@ -190,6 +202,7 @@ class _CampaignDetailPageState<C extends CampaignDetailCubitBase>
             campaign: state.campaign!,
             products: state.products,
             progress: widget.progress,
+            onOpenEarnings: widget.onOpenEarnings,
           ),
         ];
     }

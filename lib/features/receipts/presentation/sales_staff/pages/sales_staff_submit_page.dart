@@ -14,6 +14,7 @@ import '../widgets/receipt_file_field.dart';
 import '../widgets/receipt_products_section.dart';
 import '../widgets/receipt_progress_panel.dart';
 import '../widgets/receipt_shop_selector.dart';
+import '../widgets/receipt_steps_strip.dart';
 import '../widgets/receipt_submission_tile.dart';
 import '../widgets/receipt_success_card.dart';
 
@@ -58,12 +59,22 @@ class SalesStaffSubmitPage extends StatelessWidget {
         return SrPageBody(
           maxWidth: SrSpacing.formMaxWidth,
           children: <Widget>[
-            SrPageHeader(
-              eyebrow: PortalKind.salesStaff.displayName,
-              title: 'Submit a receipt',
-              description: ReceiptCopy.submitPageDescription,
+            SrEnter(
+              child: SrPageHeader(
+                eyebrow: PortalKind.salesStaff.displayName,
+                title: 'Submit a receipt',
+                description: ReceiptCopy.submitPageDescription,
+              ),
             ),
-            const SizedBox(height: SrSpacing.xxl),
+            const SizedBox(height: SrSpacing.xl),
+
+            if (state.phase != ReceiptSubmissionPhase.loadFailed) ...<Widget>[
+              SrEnter(
+                index: 1,
+                child: ReceiptStepsStrip(current: _stepFor(state)),
+              ),
+              const SizedBox(height: SrSpacing.xl),
+            ],
 
             if (state.phase == ReceiptSubmissionPhase.loadFailed)
               SrFailureView(failure: state.loadFailure!, onRetry: cubit.load)
@@ -83,21 +94,50 @@ class SalesStaffSubmitPage extends StatelessWidget {
                         ),
                 )
               else
-                _SubmitForm(state: state, cubit: cubit),
+                SrEnter(
+                  index: 2,
+                  child: _SubmitForm(state: state, cubit: cubit),
+                ),
 
               const SizedBox(height: SrSpacing.xxl),
-              ReceiptProductsSection(
-                products: state.products,
-                failure: state.productsFailure,
-                onRetry: cubit.load,
+              SrEnter(
+                index: 3,
+                child: ReceiptProductsSection(
+                  products: state.products,
+                  failure: state.productsFailure,
+                  onRetry: cubit.load,
+                ),
               ),
               const SizedBox(height: SrSpacing.xxl),
-              const _RecentSubmissions(),
+              const SrEnter(index: 4, child: _RecentSubmissions()),
             ],
           ],
         );
       },
     );
+  }
+
+  /// Which of the four steps the current phase is at.
+  ///
+  /// Derived, never stored. The submission cubit holds one phase and this
+  /// reads it — a second counter kept alongside would be one more thing that
+  /// could disagree with the state that actually performs the write.
+  ///
+  /// A settled failure — rejected, retryable, unconfirmed, duplicate, denied —
+  /// leaves the strip wherever the person actually is: they still have a file
+  /// chosen, so they are on "Review image", which is exactly the step the
+  /// notice above the form is asking them to act on.
+  ReceiptStep _stepFor(ReceiptSubmissionState state) {
+    if (state.phase == ReceiptSubmissionPhase.success) {
+      return ReceiptStep.reviewDetails;
+    }
+    if (state.phase == ReceiptSubmissionPhase.submitting ||
+        state.phase == ReceiptSubmissionPhase.validating) {
+      return ReceiptStep.submitSecurely;
+    }
+    return state.file == null
+        ? ReceiptStep.chooseReceipt
+        : ReceiptStep.reviewImage;
   }
 }
 

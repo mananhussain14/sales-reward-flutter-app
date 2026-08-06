@@ -76,32 +76,47 @@ class _EmptyTarget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SrEmptyState(
-      icon: Icons.add_a_photo_outlined,
+      // The illustration is the product's own icon treatment, drawn from the
+      // bundled icon font. There is no image asset here and there is none to
+      // add: this application ships no artwork directory, and a remote
+      // illustration would be a network dependency on a screen that has to work
+      // on a shop floor.
+      icon: Icons.receipt_long_rounded,
       tone: SrTone.indigo,
       title: 'Add the receipt',
       description: supportsCamera
-          ? 'Take a photo of the receipt, or choose one you already have.'
-          : 'Choose a photo of the receipt from this device.',
+          ? 'Take a photo of the receipt, or choose one you already have. '
+                'JPEG, PNG or WebP, up to 10 MB.'
+          : 'Choose a photo of the receipt from this device. JPEG, PNG or '
+                'WebP, up to 10 MB.',
       action: Wrap(
         spacing: SrSpacing.sm,
         runSpacing: SrSpacing.sm,
         alignment: WrapAlignment.center,
         children: <Widget>[
           if (supportsCamera)
-            SrButton(
-              label: 'Take photo',
-              icon: Icons.photo_camera_rounded,
+            SrPressScale(
+              enabled: enabled,
+              child: SrButton(
+                label: 'Take photo',
+                icon: Icons.photo_camera_rounded,
+                size: SrButtonSize.lg,
+                onPressed: enabled
+                    ? () => onChoose(ReceiptImageOrigin.camera)
+                    : null,
+              ),
+            ),
+          SrPressScale(
+            enabled: enabled,
+            child: SrButton(
+              label: 'Choose image',
+              variant: SrButtonVariant.outline,
+              size: SrButtonSize.lg,
+              icon: Icons.image_outlined,
               onPressed: enabled
-                  ? () => onChoose(ReceiptImageOrigin.camera)
+                  ? () => onChoose(ReceiptImageOrigin.gallery)
                   : null,
             ),
-          SrButton(
-            label: 'Choose image',
-            variant: SrButtonVariant.outline,
-            icon: Icons.image_outlined,
-            onPressed: enabled
-                ? () => onChoose(ReceiptImageOrigin.gallery)
-                : null,
           ),
         ],
       ),

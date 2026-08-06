@@ -11,8 +11,28 @@ import '../../navigation/role_destination.dart';
 /// shared shop-floor device — so it must not be able to inherit an entry from
 /// anywhere else.
 ///
-/// **Submit · History · Campaigns · Earnings**, in a four-item bottom bar —
-/// still inside the two-to-five range [RoleShellChrome.bottomBar] is for.
+/// **Home · Submit · History · Campaigns · Earnings**, in a five-item bottom bar
+/// — the upper end of the two-to-five range [RoleShellChrome.bottomBar] is for.
+///
+/// ## Why a Home destination was added, and why it landed first
+///
+/// Until the experience redesign this shell landed directly on the submission
+/// form, and that was the right call while the form was the only thing a seller
+/// could do. It is no longer: `get_my_campaign_earnings_summary()`,
+/// `list_my_staff_campaigns()` and `get_my_campaign_target_progress()` now say
+/// what a seller has earned, what is running and how far along a target is —
+/// and none of that has anywhere to live on a screen whose whole job is
+/// choosing a file.
+///
+/// The redesign asks for a landing screen that answers "what should I do next?"
+/// **and** a prominent action that *opens* the submission flow. Those are two
+/// screens by definition: a call to action cannot open the screen it is on. So
+/// [home] is the landing and [submit] keeps its route, its cubits, its tests and
+/// its place in the bar — nothing was moved, one destination was added in front.
+///
+/// This is a recorded deviation from the previous milestone's "Submit is the
+/// landing tab" decision. The primary action is still one tap away: it is a tab
+/// **and** the sticky call to action on the landing screen.
 ///
 /// ## A recorded deviation from § 4.1 of the design handoff
 ///
@@ -42,6 +62,18 @@ import '../../navigation/role_destination.dart';
 abstract final class SalesStaffNavigation {
   /// Every Sales Staff route lives under this prefix and no other role's does.
   static const String prefix = '/sales-staff';
+
+  /// The seller's own landing screen, and the only surface in this application
+  /// that composes more than one contract.
+  ///
+  /// It reads four things this shell already holds — the earnings summary, the
+  /// campaign list, the target progress and the recent submissions — and issues
+  /// no request of its own. There is no home RPC, no dashboard contract and no
+  /// aggregate: every figure on it comes from a read that already had a screen.
+  ///
+  /// It has no Web counterpart. There is no Sales Staff surface on the Web at
+  /// all.
+  static const String home = '$prefix/home';
 
   /// Web route `/retailer/receipts`, upper half.
   static const String submit = '$prefix/submit';
@@ -107,6 +139,15 @@ abstract final class SalesStaffNavigation {
   static const String earnings = '$prefix/earnings';
 
   static const List<RoleDestination> destinations = <RoleDestination>[
+    // First, and the landing. No `requiredCapability`: this screen is a
+    // composition of reads that each carry their own refusal, and hiding it
+    // would leave a seller with no way back to the rest of the shell.
+    RoleDestination(
+      label: 'Home',
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      path: home,
+    ),
     RoleDestination(
       label: 'Submit',
       icon: Icons.photo_camera_outlined,
@@ -120,8 +161,8 @@ abstract final class SalesStaffNavigation {
       selectedIcon: Icons.receipt_long_rounded,
       path: history,
     ),
-    // Third. Submit stays the landing tab, so the primary action is still one
-    // tap away — the reason this shell has a bottom bar at all.
+    // Fourth. Submit is no longer the landing tab, but it is still one tap
+    // away — and it is also the sticky call to action on the landing screen.
     //
     // No `requiredCapability`: the portal context returns no campaign flag for
     // either role. See the equivalent note in `RetailerOwnerNavigation`.
@@ -131,7 +172,7 @@ abstract final class SalesStaffNavigation {
       selectedIcon: Icons.campaign_rounded,
       path: campaigns,
     ),
-    // Fourth and last, which is what a bottom bar carries comfortably.
+    // Fifth and last, which is the most a bottom bar carries.
     //
     // ## A recorded deviation on the LABEL, and only the label
     //
@@ -170,7 +211,7 @@ abstract final class SalesStaffNavigation {
     role: PortalKind.salesStaff,
     routePrefix: prefix,
     portalName: 'Sales Staff Portal',
-    landingPath: submit,
+    landingPath: home,
     chrome: RoleShellChrome.bottomBar,
     destinations: destinations,
   );

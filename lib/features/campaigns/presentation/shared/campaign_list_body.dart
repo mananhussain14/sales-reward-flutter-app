@@ -8,6 +8,7 @@ import 'campaign_card.dart';
 import 'campaign_copy.dart';
 import 'campaign_list_cubit.dart';
 import 'campaign_presentation.dart';
+import 'campaign_section_heading.dart';
 
 /// The campaign list, for whichever role supplied the state.
 ///
@@ -19,6 +20,14 @@ import 'campaign_presentation.dart';
 /// and both of those are already settled by the time a [CampaignPresentation]
 /// exists. A Retailer Owner therefore sees up to five sections and a seller sees
 /// up to two, from one implementation, with no role branch anywhere below.
+///
+/// ## Groups a reader can tell apart
+///
+/// A heading alone does not distinguish "Running now" from "Starting soon" when
+/// the cards under both look the same. Each section leads with the **same tinted
+/// disc and the same tone** its cards' status pills carry, a count, and one line
+/// saying what belonging to that group means for a sale. Three channels — the
+/// glyph, the words and the tone — and the tone is never the only one.
 ///
 /// ## Read-only
 ///
@@ -56,7 +65,7 @@ class CampaignListBody extends StatelessWidget {
   /// Renders a banner above a list that is otherwise complete and correct. The
   /// two reads are separate contracts behind separate cubits, so one failing
   /// cannot empty the other — this flag is how the screen *says* that rather
-  /// than leaving a reader to wonder where the bars went.
+  /// than leaving a reader to wonder where the rings went.
   final bool progressUnavailable;
 
   /// Re-issues the read after an outright failure.
@@ -114,22 +123,29 @@ class CampaignListBody extends StatelessWidget {
           )
         else ...<Widget>[
           for (final CampaignSection section in state.sections) ...<Widget>[
-            SrSectionHeader(title: CampaignCopy.sectionTitle(section.kind)),
+            CampaignSectionHeading(
+              kind: section.kind,
+              count: section.campaigns.length,
+            ),
             const SizedBox(height: SrSpacing.lg),
             SrResponsiveGrid(
-              // A campaign card carries a three-line reward sentence and four
-              // fact chips, so it needs more room before pairing than a shop
-              // card does.
+              // A campaign card carries a reward panel and five fact chips, so
+              // it needs more room before pairing than a shop card does.
               twoUpThreshold: 800,
               threeUpThreshold: 1280,
               children: <Widget>[
-                for (final CampaignPresentation campaign in section.campaigns)
-                  _CampaignGridItem(
-                    campaign: campaign,
-                    onOpen: onOpen,
-                    // Joined on the campaign id, exactly as the two contracts
-                    // are documented to join. Never on the name.
-                    progress: progressFor?.call(campaign.offer.campaignId),
+                for (int i = 0; i < section.campaigns.length; i++)
+                  SrEnter(
+                    index: i,
+                    child: _CampaignGridItem(
+                      campaign: section.campaigns[i],
+                      onOpen: onOpen,
+                      // Joined on the campaign id, exactly as the two contracts
+                      // are documented to join. Never on the name.
+                      progress: progressFor?.call(
+                        section.campaigns[i].offer.campaignId,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -149,10 +165,10 @@ class CampaignListBody extends StatelessWidget {
 ///
 /// The progress sits **beside** the card rather than inside it, and that is
 /// deliberate: [CampaignCard] declares itself a single semantics node with
-/// `excludeSemantics: true`, so a bar nested within it would be silent to a
-/// screen reader. As a sibling it keeps its own announcement — the label, the
-/// current value, the target and the state — which is what the indicator has to
-/// carry to mean anything.
+/// `excludeSemantics: true`, so an indicator nested within it would be silent to
+/// a screen reader. As a sibling it keeps its own announcement — the label, the
+/// current value, the target, the percentage and the state — which is what the
+/// indicator has to carry to mean anything.
 class _CampaignGridItem extends StatelessWidget {
   const _CampaignGridItem({
     required this.campaign,
@@ -164,8 +180,8 @@ class _CampaignGridItem extends StatelessWidget {
   final void Function(String campaignId) onOpen;
 
   /// Null for a `PER_UNIT_COINS` campaign — which has no threshold to progress
-  /// towards, so no bar is drawn — and for every campaign when the reading role
-  /// has no progress contract at all.
+  /// towards, so no ring is drawn — and for every campaign when the reading
+  /// role has no progress contract at all.
   final CampaignTargetProgress? progress;
 
   @override

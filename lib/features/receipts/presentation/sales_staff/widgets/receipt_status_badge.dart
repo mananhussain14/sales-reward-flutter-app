@@ -32,24 +32,27 @@ class ReceiptStatusBadge extends StatelessWidget {
     ReceiptSubmissionStatus.unknown => 'Unknown',
   };
 
+  /// The tone this status carries, exposed so a card can tint its leading disc
+  /// to match its own badge.
+  ///
+  /// One definition read from two places. Two switches over the same enum are
+  /// how a row ends up amber on the left and emerald on the right.
+  static SrTone toneFor(ReceiptSubmissionStatus status) => switch (status) {
+    ReceiptSubmissionStatus.submitted => SrTone.emerald,
+    ReceiptSubmissionStatus.reserved => SrTone.amber,
+    ReceiptSubmissionStatus.uploadFailed => SrTone.red,
+    ReceiptSubmissionStatus.unknown => SrTone.slate,
+  };
+
   @override
   Widget build(BuildContext context) {
-    final (SrTone tone, IconData? icon) = switch (status) {
-      ReceiptSubmissionStatus.submitted => (
-        SrTone.emerald,
-        Icons.check_rounded,
-      ),
-      ReceiptSubmissionStatus.reserved => (
-        SrTone.amber,
-        Icons.schedule_rounded,
-      ),
-      ReceiptSubmissionStatus.uploadFailed => (
-        SrTone.red,
-        Icons.error_outline_rounded,
-      ),
-      ReceiptSubmissionStatus.unknown => (SrTone.slate, null),
+    final IconData? icon = switch (status) {
+      ReceiptSubmissionStatus.submitted => Icons.check_rounded,
+      ReceiptSubmissionStatus.reserved => Icons.schedule_rounded,
+      ReceiptSubmissionStatus.uploadFailed => Icons.error_outline_rounded,
+      ReceiptSubmissionStatus.unknown => null,
     };
 
-    return SrBadge(label: labelFor(status), tone: tone, icon: icon);
+    return SrBadge(label: labelFor(status), tone: toneFor(status), icon: icon);
   }
 }

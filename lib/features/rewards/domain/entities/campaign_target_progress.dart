@@ -117,6 +117,31 @@ final class CampaignTargetProgress extends Equatable {
     return ratio.clamp(0.0, 1.0);
   }
 
+  /// [completionFraction] as whole percent, `0`–`100`.
+  ///
+  /// A **rounded display value** derived from the clamped ratio above, and
+  /// nothing else reads it. In particular it is never compared against 100 to
+  /// decide anything: [targetReached] is the database's answer to that question
+  /// and remains the only one.
+  int get completionPercent => (completionFraction * 100).round();
+
+  /// How many more units the subject needs, or `0` once the target is behind
+  /// them.
+  ///
+  /// A subtraction of two **stored** values, used only to phrase the sentence a
+  /// seller actually wants — *"2 more eligible units to reach your target"*.
+  /// It decides nothing: whether the target has been met is [targetReached],
+  /// and whether anybody was paid is [bonusAwardedToMe].
+  ///
+  /// Floored at zero rather than allowed to go negative. A negative remainder
+  /// is not a smaller target, it is no remainder at all — and the real
+  /// numerator and denominator stay on screen beside it either way, so nothing
+  /// here can make a target look smaller than it is.
+  int get unitsRemaining {
+    final int remaining = targetUnits - progressUnits;
+    return remaining < 0 ? 0 : remaining;
+  }
+
   @override
   List<Object?> get props => <Object?>[
     campaignId,

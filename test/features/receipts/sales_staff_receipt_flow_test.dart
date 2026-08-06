@@ -47,6 +47,34 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// Signs in as Sales Staff and opens the submission screen.
+///
+/// The shell now lands on the Home screen, so a test about the submission form
+/// navigates to it first. The route, the cubits, the form and the write are
+/// unchanged — one destination was added in front of them.
+Future<PumpedApp> pumpSubmitScreen(
+  WidgetTester tester, {
+  FakeReceiptRepository? receipts,
+  FakeReceiptImageSource? images,
+  Size surface = phoneSurface,
+}) async {
+  final PumpedApp app = await pumpAppInRole(
+    tester,
+    PortalKind.salesStaff,
+    receipts: receipts,
+    images: images,
+    surface: surface,
+  );
+  await goToLocation(tester, SalesStaffNavigation.submit);
+  return app;
+}
+
+/// Navigates the running application to [location].
+Future<void> goToLocation(WidgetTester tester, String location) async {
+  GoRouter.of(tester.element(find.byType(Navigator).first)).go(location);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   /// Signs in as Sales Staff, chooses a shop and picks a valid receipt.
   Future<PumpedApp> armed(
@@ -55,9 +83,8 @@ void main() {
     FakeReceiptImageSource? images,
     Size surface = phoneSurface,
   }) async {
-    final PumpedApp app = await pumpAppInRole(
+    final PumpedApp app = await pumpSubmitScreen(
       tester,
-      PortalKind.salesStaff,
       receipts: receipts,
       images: images,
       surface: surface,
@@ -73,10 +100,10 @@ void main() {
   }
 
   group('routing and role isolation', () {
-    testWidgets('a Sales Staff user lands on the submit screen', (
+    testWidgets('the Submit destination reaches the submission screen', (
       tester,
     ) async {
-      await pumpAppInRole(tester, PortalKind.salesStaff);
+      await pumpSubmitScreen(tester);
 
       expect(find.byType(SalesStaffShell), findsOneWidget);
       expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
@@ -153,7 +180,7 @@ void main() {
           <ReceiptShop>[],
         );
 
-      await pumpAppInRole(tester, PortalKind.salesStaff, receipts: receipts);
+      await pumpSubmitScreen(tester, receipts: receipts);
 
       expect(find.text('No shops assigned yet'), findsOneWidget);
       expect(find.text('Submit receipt'), findsNothing);
@@ -165,7 +192,7 @@ void main() {
       final FakeReceiptRepository receipts = FakeReceiptRepository()
         ..shopsResult = unavailableRead<List<ReceiptShop>>();
 
-      await pumpAppInRole(tester, PortalKind.salesStaff, receipts: receipts);
+      await pumpSubmitScreen(tester, receipts: receipts);
 
       expect(find.text('Could not load this'), findsOneWidget);
       expect(find.text('Try again'), findsWidgets);
@@ -180,7 +207,7 @@ void main() {
           <ReceiptProduct>[],
         );
 
-      await pumpAppInRole(tester, PortalKind.salesStaff, receipts: receipts);
+      await pumpSubmitScreen(tester, receipts: receipts);
 
       expect(find.text('No products listed yet'), findsOneWidget);
       expect(find.text('Submit receipt'), findsOneWidget);
@@ -197,7 +224,7 @@ void main() {
     testWidgets('camera and gallery are both offered where supported', (
       tester,
     ) async {
-      await pumpAppInRole(tester, PortalKind.salesStaff);
+      await pumpSubmitScreen(tester);
 
       expect(find.text('Take photo'), findsOneWidget);
       expect(find.text('Choose image'), findsOneWidget);
@@ -206,9 +233,8 @@ void main() {
     testWidgets('capture is hidden where the platform has no camera', (
       tester,
     ) async {
-      await pumpAppInRole(
+      await pumpSubmitScreen(
         tester,
-        PortalKind.salesStaff,
         images: FakeReceiptImageSource(supportsCamera: false),
       );
 
@@ -243,7 +269,7 @@ void main() {
           bytes: pdfBytes(),
         );
 
-      await pumpAppInRole(tester, PortalKind.salesStaff, images: images);
+      await pumpSubmitScreen(tester, images: images);
       await tapVisible(tester, find.text('Choose image'));
 
       expect(find.text('This receipt was not accepted'), findsOneWidget);
@@ -527,6 +553,7 @@ void main() {
           portalResult: resolvedResult(PortalKind.salesStaff),
           themeMode: mode,
         );
+        await goToLocation(tester, SalesStaffNavigation.submit);
 
         expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
         expect(tester.takeException(), isNull);

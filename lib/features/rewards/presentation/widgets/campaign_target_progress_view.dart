@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design/design.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../../domain/entities/campaign_target_progress.dart';
 import 'earnings_copy.dart';
 
 /// How much of a screen a progress block is filling.
 enum CampaignProgressDensity {
-  /// Inside a campaign card in the list: the label, the bar, the numbers and
-  /// the state, without the explanatory sentences.
+  /// Inside a campaign card in the list: the ring, the numbers, the state and
+  /// the one encouraging line, without the explanatory sentences.
   compact,
 
-  /// On the campaign detail screen: everything, including whose sales the
-  /// number counts and what the bonus means.
+  /// On the campaign detail screen and the Sales Staff home: everything,
+  /// including whose sales the number counts and what the bonus means.
   full,
 }
 
@@ -26,7 +27,7 @@ enum CampaignProgressDensity {
 ///
 /// ## Every claim is a stored value
 ///
-/// The bar's fill is a display ratio. Everything that *says* something —
+/// The ring's sweep is a display ratio. Everything that *says* something —
 /// "target reached", "the bonus went to another team member", "you were awarded
 /// the bonus" — comes from `target_reached` and `bonus_awarded_to_me`, two
 /// booleans the database computed. Nothing is re-derived here, and the
@@ -34,13 +35,19 @@ enum CampaignProgressDensity {
 /// while somebody else took the bonus, and a client that inferred payment from
 /// the numbers would tell the wrong person they had been paid.
 ///
+/// ## The ring never hides the numbers
+///
+/// `12 of 25 units` sits beside the ring at every density, and the percentage
+/// inside it is the clamped ratio. When 30 units have been counted against a
+/// target of 25 the ring rests at full and the text still reads `30 of 25
+/// units` — the drawing saturates, the facts do not.
+///
 /// ## Text carries the state, not colour
 ///
-/// The tone of the bar repeats what [EarningsCopy.progressStatus] already says
+/// The tone of the ring repeats what [EarningsCopy.progressStatus] already says
 /// in words, and the whole block is announced as one utterance through
 /// [EarningsCopy.progressSemanticLabel] — which names the label, the current
-/// value, the target and the state. A bare `LinearProgressIndicator` announces a
-/// percentage and nothing about whose units it counts.
+/// value, the target, the percentage and the state.
 class CampaignTargetProgressView extends StatelessWidget {
   const CampaignTargetProgressView({
     super.key,
@@ -51,12 +58,85 @@ class CampaignTargetProgressView extends StatelessWidget {
   final CampaignTargetProgress progress;
   final CampaignProgressDensity density;
 
+  /// Below this width the ring and the text stack instead of sitting side by
+  /// side — which is what keeps both readable at a 200% text scale on a narrow
+  /// phone.
+  static const double _sideBySideWidth = 340;
+
   @override
   Widget build(BuildContext context) {
     final SrColorScheme sr = context.sr;
     final bool isFull = density == CampaignProgressDensity.full;
-    final SrToneColors tone = sr.tone(
-      progress.targetReached ? SrTone.emerald : SrTone.indigo,
+    final SrTone toneName = progress.targetReached
+        ? SrTone.emerald
+        : SrTone.indigo;
+    final SrToneColors tone = sr.tone(toneName);
+    final double ringSize = isFull ? 132 : 96;
+
+    final Widget ring = SrProgressRing(
+      value: progress.completionFraction,
+      size: ringSize,
+      strokeWidth: isFull ? 11 : 9,
+      tone: toneName,
+      center: _RingCentre(progress: progress, tone: tone, compact: !isFull),
+    );
+
+    final Widget facts = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // -- Whose progress this is ---------------------------------------
+        //
+        // "Your progress" or "Team progress", never a bare percentage. A team
+        // figure read as a personal one is the single most misleading thing
+        // this screen could do.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(
+              progress.performanceScope.isTeam
+                  ? Icons.groups_rounded
+                  : Icons.person_rounded,
+              size: 15,
+              color: sr.textMuted,
+            ),
+            const SizedBox(width: SrSpacing.sm),
+            Flexible(
+              child: Text(
+                EarningsCopy.progressLabel(progress.performanceScope),
+                style: SrTypography.label.copyWith(color: sr.foreground),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SrSpacing.sm),
+
+        // -- The real numbers ----------------------------------------------
+        //
+        // A reader who never sees the ring — a screen reader, a very large text
+        // scale, a monochrome display — still gets both values.
+        Text(
+          EarningsCopy.progressValue(progress),
+          style: SrTypography.bodyLarge.copyWith(color: sr.foreground),
+        ),
+        const SizedBox(height: SrSpacing.xs),
+
+        // -- The state, in words, on a chip that is never the only channel ---
+        _StatusChip(
+          label: EarningsCopy.progressStatus(progress),
+          tone: tone,
+          icon: progress.targetReached
+              ? Icons.check_circle_rounded
+              : Icons.trending_up_rounded,
+        ),
+        const SizedBox(height: SrSpacing.sm),
+
+        // -- The encouraging line, which is still a statement of fact --------
+        Text(
+          EarningsCopy.progressHeadline(progress),
+          style: SrTypography.body.copyWith(color: sr.textBody),
+        ),
+      ],
     );
 
     return Semantics(
@@ -74,64 +154,33 @@ class CampaignTargetProgressView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            // -- Whose progress this is ---------------------------------------
-            //
-            // "Your progress" or "Team progress", never a bare percentage. A
-            // team figure read as a personal one is the single most misleading
-            // thing this screen could do.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Icon(
-                  progress.performanceScope.isTeam
-                      ? Icons.groups_rounded
-                      : Icons.person_rounded,
-                  size: 15,
-                  color: sr.textMuted,
-                ),
-                const SizedBox(width: SrSpacing.sm),
-                Expanded(
-                  child: Text(
-                    EarningsCopy.progressLabel(progress.performanceScope),
-                    style: SrTypography.label.copyWith(color: sr.foreground),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: SrSpacing.sm),
-
-            // -- The numbers, before the bar ----------------------------------
-            //
-            // A reader who never sees the bar — a screen reader, a very large
-            // text scale, a monochrome display — still gets both values.
-            Text(
-              EarningsCopy.progressValue(progress),
-              style: SrTypography.bodyLarge.copyWith(color: sr.foreground),
-            ),
-            const SizedBox(height: SrSpacing.sm),
-
-            ClipRRect(
-              borderRadius: BorderRadius.circular(SrRadii.full),
-              child: LinearProgressIndicator(
-                value: progress.completionFraction,
-                minHeight: 8,
-                backgroundColor: sr.border,
-                valueColor: AlwaysStoppedAnimation<Color>(tone.foreground),
-                // The parent Semantics owns the announcement; a second one here
-                // would have a reader hear a percentage after the sentence.
-                semanticsLabel: null,
-              ),
-            ),
-            const SizedBox(height: SrSpacing.sm),
-
-            // -- The state, in words ------------------------------------------
-            Text(
-              EarningsCopy.progressStatus(progress),
-              style: SrTypography.caption.copyWith(color: tone.alertText),
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                if (constraints.maxWidth < _sideBySideWidth) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Center(child: ring),
+                      const SizedBox(height: SrSpacing.lg),
+                      facts,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    ring,
+                    const SizedBox(width: SrSpacing.xl),
+                    Expanded(child: facts),
+                  ],
+                );
+              },
             ),
 
             if (isFull) ...<Widget>[
-              const SizedBox(height: SrSpacing.md),
+              const SizedBox(height: SrSpacing.lg),
+              Divider(height: 1, color: sr.border),
+              const SizedBox(height: SrSpacing.lg),
               // Whose sales count. Stated in full on the detail screen, where
               // there is room for the sentence that prevents the team figure
               // being misread.
@@ -164,6 +213,92 @@ class CampaignTargetProgressView extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// What sits inside the ring: the percentage, and the word that stops it being
+/// read as anything else.
+class _RingCentre extends StatelessWidget {
+  const _RingCentre({
+    required this.progress,
+    required this.tone,
+    required this.compact,
+  });
+
+  final CampaignTargetProgress progress;
+  final SrToneColors tone;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            EarningsCopy.progressPercentValue(progress),
+            style:
+                (compact ? SrTypography.sectionTitle : SrTypography.statValue)
+                    .copyWith(color: tone.alertText),
+          ),
+          if (!compact) ...<Widget>[
+            const SizedBox(height: SrSpacing.xxs),
+            Text(
+              'of target',
+              style: SrTypography.caption.copyWith(color: sr.textMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The state, as a chip carrying an icon **and** a word.
+///
+/// Two channels rather than one: the milestone forbids communicating campaign
+/// status by colour alone, and a reader in monochrome still gets the tick and
+/// the sentence.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.tone,
+    required this.icon,
+  });
+
+  final String label;
+  final SrToneColors tone;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SrSpacing.smPlus,
+        vertical: SrSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: tone.fill,
+        borderRadius: BorderRadius.circular(SrRadii.full),
+        border: Border.all(color: tone.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 13, color: tone.foreground),
+          const SizedBox(width: SrSpacing.xs),
+          Flexible(
+            child: Text(
+              label,
+              style: SrTypography.badge.copyWith(color: tone.alertText),
+            ),
+          ),
+        ],
       ),
     );
   }
