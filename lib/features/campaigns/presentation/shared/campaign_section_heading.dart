@@ -54,47 +54,59 @@ class CampaignSectionHeading extends StatelessWidget {
           '${CampaignCopy.sectionCount(count)}. '
           '${CampaignCopy.sectionDescription(kind)}',
       excludeSemantics: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SrIconDisc(
-            icon: CampaignStatusBadge.iconFor(state),
-            tone: tone,
-            size: 40,
-          ),
-          const SizedBox(width: SrSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                // A Wrap rather than a Row: at a large text scale the title and
-                // the count do not share a line, and wrapping keeps both
-                // readable instead of ellipsising the title.
-                Wrap(
-                  spacing: SrSpacing.sm,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: <Widget>[
-                    Text(
-                      CampaignCopy.sectionTitle(kind),
-                      style: SrTypography.sectionTitle.copyWith(
-                        color: sr.foreground,
-                      ),
-                    ),
-                    Text(
-                      CampaignCopy.sectionCount(count),
-                      style: SrTypography.caption.copyWith(color: sr.textMuted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: SrSpacing.xxs),
-                Text(
-                  CampaignCopy.sectionDescription(kind),
-                  style: SrTypography.body.copyWith(color: sr.textSecondary),
-                ),
-              ],
+      // A tinted banner rather than a bare row. Two adjacent groups of similar
+      // cards need a divider a reader cannot miss, and a heading floating on
+      // the page background is not one.
+      child: Container(
+        padding: const EdgeInsets.all(SrSpacing.md),
+        decoration: BoxDecoration(
+          color: sr.tone(tone).fill,
+          borderRadius: BorderRadius.circular(SrRadii.surface),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SrIconDisc(
+              icon: CampaignStatusBadge.iconFor(state),
+              tone: tone,
+              size: 40,
             ),
-          ),
-        ],
+            const SizedBox(width: SrSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // A Wrap rather than a Row: at a large text scale the title and
+                  // the count do not share a line, and wrapping keeps both
+                  // readable instead of ellipsising the title.
+                  Wrap(
+                    spacing: SrSpacing.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        CampaignCopy.sectionTitle(kind),
+                        style: SrTypography.sectionTitle.copyWith(
+                          color: sr.foreground,
+                        ),
+                      ),
+                      Text(
+                        CampaignCopy.sectionCount(count),
+                        style: SrTypography.caption.copyWith(
+                          color: sr.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: SrSpacing.xxs),
+                  Text(
+                    CampaignCopy.sectionDescription(kind),
+                    style: SrTypography.body.copyWith(color: sr.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

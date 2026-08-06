@@ -187,12 +187,30 @@ class _SrCountUpState extends State<SrCountUp>
     return AnimatedBuilder(
       animation: _controller,
       builder: (BuildContext context, Widget? child) {
-        final int displayed = _controller.value >= 1
-            ? widget.value
-            : (_from + ((widget.value - _from) * _controller.value)).round();
-        return widget.builder(context, displayed);
+        return widget.builder(context, _displayedNow);
       },
     );
+  }
+
+  /// The figure to paint this frame.
+  ///
+  /// **The truthful number is the default, and the tween is the exception.**
+  /// Only a run that is actually in flight shows an intermediate value;
+  /// everything else — settled, never started, or started into a ticker that is
+  /// not being driven — shows [SrCountUp.value].
+  ///
+  /// That ordering is load-bearing rather than tidy. A `Ticker` is muted while
+  /// its subtree is inactive, and a browser tab that is not visible when the
+  /// data lands is exactly that case: the controller sits at zero, and a build
+  /// that derived the figure from the controller would render **0 coins** on a
+  /// screen whose other figures read 155. A number that is merely *waiting to
+  /// animate* must never be shown as a smaller number than the one the backend
+  /// returned.
+  int get _displayedNow {
+    if (!_controller.isAnimating) {
+      return widget.value;
+    }
+    return (_from + ((widget.value - _from) * _controller.value)).round();
   }
 }
 

@@ -11,15 +11,15 @@ import 'package:sale_reward/features/campaigns/domain/entities/campaign_reward.d
 import 'package:sale_reward/features/campaigns/domain/entities/campaign_stacking_mode.dart';
 import 'package:sale_reward/features/campaigns/domain/entities/staff_campaign.dart';
 import 'package:sale_reward/features/campaigns/domain/repositories/staff_campaign_repository.dart';
-import 'package:sale_reward/features/campaigns/presentation/shared/campaign_card.dart';
 import 'package:sale_reward/features/campaigns/presentation/shared/campaign_copy.dart';
 import 'package:sale_reward/features/home/presentation/sales_staff/pages/sales_staff_home_page.dart';
 import 'package:sale_reward/features/home/presentation/sales_staff/widgets/sales_staff_add_receipt_cta.dart';
 import 'package:sale_reward/features/home/presentation/sales_staff/widgets/sales_staff_home_copy.dart';
+import 'package:sale_reward/features/home/presentation/sales_staff/widgets/sales_staff_next_reward_hero.dart';
+import 'package:sale_reward/features/home/presentation/sales_staff/widgets/sales_staff_opportunity_card.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
 import 'package:sale_reward/features/rewards/domain/entities/campaign_target_progress.dart';
 import 'package:sale_reward/features/rewards/domain/repositories/staff_earnings_repository.dart';
-import 'package:sale_reward/features/rewards/presentation/widgets/campaign_target_progress_view.dart';
 import 'package:sale_reward/features/rewards/presentation/widgets/earnings_copy.dart';
 
 import '../../support/campaign_fakes.dart';
@@ -47,7 +47,7 @@ void main() {
   Future<void> tapVisible(WidgetTester tester, Finder finder) async {
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
-    await tester.tap(finder);
+    await tester.tap(finder, warnIfMissed: false);
     await tester.pumpAndSettle();
   }
 
@@ -94,6 +94,26 @@ void main() {
     );
   }
 
+  /// A per-unit campaign first and a target campaign second, so the hero rule's
+  /// first filter has to reach past the backend's first row.
+  List<StaffCampaign> targetAndPerUnit() => <StaffCampaign>[
+    exampleStaffCampaign(
+      offer: exampleOffer(campaignId: campaignIdA, name: 'Everyday Coins'),
+    ),
+    exampleStaffCampaign(
+      offer: exampleOffer(
+        campaignId: campaignIdB,
+        name: 'Personal Target',
+        reward: const CampaignTargetReward(
+          thresholdUnits: 25,
+          rewardCoins: 2500,
+          maxRewardCoins: null,
+          metric: CampaignMetricType.unitsSold,
+        ),
+      ),
+    ),
+  ];
+
   // =========================================================================
   group('the landing screen', () {
     testWidgets('a seller lands on Home, not on the submission form', (
@@ -106,7 +126,7 @@ void main() {
       expect(find.byType(SalesStaffSubmitPage), findsNothing);
     });
 
-    testWidgets('the greeting names the Retailer from the session context', (
+    testWidgets('the greeting is one compact row naming the Retailer', (
       WidgetTester tester,
     ) async {
       await openHome(tester);
@@ -116,28 +136,6 @@ void main() {
       // never a value read back from a campaign, a reward or a receipt.
       expect(
         find.text(SalesStaffHomeCopy.forRetailer('Example Org')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('the motivating line is shown when a campaign is running', (
-      WidgetTester tester,
-    ) async {
-      await openHome(tester);
-
-      expect(find.text(SalesStaffHomeCopy.greetingLine), findsOneWidget);
-    });
-
-    testWidgets('the motivating line changes when there is no campaign', (
-      WidgetTester tester,
-    ) async {
-      // The encouragement must never sit directly above a section that says
-      // there is nothing to earn from.
-      await openHome(tester, campaigns: <StaffCampaign>[]);
-
-      expect(find.text(SalesStaffHomeCopy.greetingLine), findsNothing);
-      expect(
-        find.text(SalesStaffHomeCopy.greetingLineNoCampaigns),
         findsOneWidget,
       );
     });
@@ -164,12 +162,181 @@ void main() {
   });
 
   // =========================================================================
-  group('the campaign coins panel', () {
+  group('the next-reward hero', () {
+    testWidgets('leads the screen with the first running target campaign', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        campaigns: targetAndPerUnit(),
+        progress: <CampaignTargetProgress>[
+          exampleTargetProgress(campaignId: campaignIdB),
+        ],
+      );
+
+      expect(find.byType(SalesStaffNextRewardHero), findsOneWidget);
+      // The target campaign is second in the backend order and still wins,
+      // because "running AND has a target" is the first filter.
+      expect(
+        find.descendant(
+          of: find.byType(SalesStaffNextRewardHero),
+          matching: find.text('Personal Target'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows the gauge, both numbers and the remainder', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        progress: <CampaignTargetProgress>[
+          exampleTargetProgress(progressUnits: 12, targetUnits: 25),
+        ],
+      );
+
+      expect(find.byType(SrProgressRing), findsWidgets);
+      expect(find.text(SalesStaffHomeCopy.heroEyebrowNext), findsOneWidget);
+      expect(find.text(EarningsCopy.personalProgressLabel), findsOneWidget);
+      // The numerator and denominator, never replaced by the percentage.
+      expect(find.text('12 of 25 units'), findsOneWidget);
+      expect(find.text('48%'), findsOneWidget);
+      expect(
+        find.text('13 more eligible units to reach your target.'),
+        findsOneWidget,
+      );
+      // What reaching it pays, from the stored configured amount.
+      expect(find.text(EarningsCopy.coins(2500)), findsWidgets);
+    });
+
+    testWidgets('progress past the target keeps the real numbers', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        progress: <CampaignTargetProgress>[
+          exampleTargetProgress(
+            progressUnits: 9,
+            targetUnits: 8,
+            targetReached: true,
+            bonusAwardedToMe: true,
+          ),
+        ],
+      );
+
+      // The ring saturates; the facts do not. A target must never look smaller
+      // than it is, and a numerator must never be rounded down to fit a
+      // drawing.
+      expect(find.text('9 of 8 units'), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
+      expect(find.text(SalesStaffHomeCopy.heroEyebrowReached), findsOneWidget);
+      expect(find.text('Target reached — reward recorded.'), findsOneWidget);
+    });
+
+    testWidgets('a team target says so, and never claims the units are mine', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        progress: <CampaignTargetProgress>[
+          exampleTargetProgress(
+            performanceScope: CampaignPerformanceScope.retailerTeam,
+          ),
+        ],
+      );
+
+      expect(find.text(EarningsCopy.teamProgressLabel), findsOneWidget);
+      expect(find.text(EarningsCopy.personalProgressLabel), findsNothing);
+      expect(
+        find.text('13 more eligible units to reach the team target.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a bonus awarded to somebody else is never claimed by me', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        progress: <CampaignTargetProgress>[teamProgressBonusToSomebodyElse()],
+      );
+
+      expect(find.text('The team has reached the target.'), findsOneWidget);
+      expect(visibleText(tester), isNot(contains('You were awarded')));
+    });
+
+    testWidgets('the hero is announced with its values and its percentage', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        progress: <CampaignTargetProgress>[
+          exampleTargetProgress(progressUnits: 2, targetUnits: 3),
+        ],
+      );
+
+      expect(semanticsContaining('2 of 3 units, 67 percent'), findsWidgets);
+    });
+
+    testWidgets('a campaign with no target shows the offer instead', (
+      WidgetTester tester,
+    ) async {
+      await openHome(tester);
+
+      expect(find.byType(SalesStaffNextRewardHero), findsOneWidget);
+      expect(find.text(SalesStaffHomeCopy.heroEyebrowRunning), findsOneWidget);
+      // No gauge is drawn where the backend returned no row.
+      expect(find.text(SalesStaffHomeCopy.heroOfTarget), findsNothing);
+    });
+
+    testWidgets('the hero opens its campaign', (WidgetTester tester) async {
+      await openHome(tester);
+
+      await tapVisible(tester, find.text(SalesStaffHomeCopy.heroAction));
+
+      expect(
+        currentLocation(tester),
+        SalesStaffNavigation.campaignDetail(campaignIdA),
+      );
+    });
+
+    testWidgets('no campaigns at all is an empty hero, never a failure', (
+      WidgetTester tester,
+    ) async {
+      await openHome(tester, campaigns: <StaffCampaign>[]);
+
+      expect(find.text(SalesStaffHomeCopy.heroEmptyTitle), findsOneWidget);
+      expect(
+        find.text(SalesStaffHomeCopy.campaignsUnavailableTitle),
+        findsNothing,
+      );
+    });
+
+    testWidgets('an unreadable campaign read is never shown as emptiness', (
+      WidgetTester tester,
+    ) async {
+      await openHome(
+        tester,
+        campaignsResult: const StaffCampaignsFailed(
+          RetailerReadProblem.network,
+        ),
+      );
+
+      expect(
+        find.text(SalesStaffHomeCopy.campaignsUnavailableTitle),
+        findsOneWidget,
+      );
+      expect(find.text(SalesStaffHomeCopy.heroEmptyTitle), findsNothing);
+    });
+  });
+
+  // =========================================================================
+  group('the campaign coins strip', () {
     testWidgets('shows the authoritative total, labelled as earned', (
       WidgetTester tester,
     ) async {
       await openHome(tester);
-      // The count-up settles on the stored value.
       await tester.pumpAndSettle();
 
       expect(find.text(SalesStaffHomeCopy.coinsSectionTitle), findsOneWidget);
@@ -213,7 +380,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The total and the this-month figure are both zero, and both render as
+      // The total and the this-month pill are both zero, and both render as
       // zero. A seller who has earned nothing has earned nothing.
       expect(find.text(EarningsCopy.coins(0)), findsNWidgets(2));
     });
@@ -231,71 +398,27 @@ void main() {
       expect(find.text(EarningsCopy.coins(0)), findsNothing);
     });
 
-    testWidgets('the panel routes to the earnings screen', (
+    testWidgets('the strip routes to the earnings screen', (
       WidgetTester tester,
     ) async {
       await openHome(tester);
 
-      await tapVisible(tester, find.text(SalesStaffHomeCopy.coinsAction));
+      await tapVisible(tester, find.text(SalesStaffHomeCopy.coinsSectionTitle));
 
       expect(currentLocation(tester), SalesStaffNavigation.earnings);
     });
   });
 
   // =========================================================================
-  group('the active opportunity section', () {
-    testWidgets('running campaigns are highlighted in the backend order', (
+  group('the opportunity carousel', () {
+    testWidgets('carries every campaign except the one in the hero', (
       WidgetTester tester,
     ) async {
-      await openHome(
-        tester,
-        campaigns: <StaffCampaign>[
-          exampleStaffCampaign(
-            offer: exampleOffer(campaignId: campaignIdA, name: 'First Listed'),
-          ),
-          exampleStaffCampaign(
-            offer: exampleOffer(campaignId: campaignIdB, name: 'Second Listed'),
-          ),
-        ],
-      );
+      await openHome(tester, campaigns: targetAndPerUnit());
 
-      expect(find.text(SalesStaffHomeCopy.opportunitiesTitle), findsOneWidget);
-      expect(find.byType(CampaignCard), findsNWidgets(2));
-
-      final double first = tester.getTopLeft(find.text('First Listed')).dy;
-      final double second = tester.getTopLeft(find.text('Second Listed')).dy;
-      expect(
-        first,
-        lessThan(second),
-        reason: 'the backend order is preserved, not re-ranked',
-      );
-    });
-
-    testWidgets('a scheduled campaign is shown under its own heading', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
-        tester,
-        campaigns: <StaffCampaign>[
-          exampleStaffCampaign(
-            offer: exampleOffer(
-              lifecycleState: CampaignLifecycleState.scheduled,
-              name: 'Autumn Launch',
-            ),
-          ),
-        ],
-      );
-
-      // The heading and the status pill say the same words, which is the
-      // point: the group and its members agree.
-      expect(find.text(SalesStaffHomeCopy.upcomingTitle), findsWidgets);
-      expect(find.text(SalesStaffHomeCopy.opportunitiesTitle), findsNothing);
-      expect(
-        find.text(
-          CampaignCopy.lifecycleLabel(CampaignLifecycleState.scheduled),
-        ),
-        findsWidgets,
-      );
+      expect(find.text(SalesStaffHomeCopy.carouselTitle), findsOneWidget);
+      // Two campaigns, one of which is the hero.
+      expect(find.byType(SalesStaffOpportunityCard), findsOneWidget);
     });
 
     testWidgets('a long list is capped, and the cap is stated', (
@@ -304,51 +427,24 @@ void main() {
       await openHome(
         tester,
         campaigns: <StaffCampaign>[
-          for (int i = 0; i < 5; i++)
+          for (int i = 0; i < 9; i++)
             exampleStaffCampaign(
               offer: exampleOffer(campaignId: campaignIdA, name: 'Campaign $i'),
             ),
         ],
       );
 
-      expect(find.byType(CampaignCard), findsNWidgets(3));
-      // Silent truncation would read as the whole list.
-      expect(find.text(SalesStaffHomeCopy.showingSome(3, 5)), findsOneWidget);
-    });
-
-    testWidgets('no campaigns is an empty state, never a failure', (
-      WidgetTester tester,
-    ) async {
-      await openHome(tester, campaigns: <StaffCampaign>[]);
-
-      expect(find.text(SalesStaffHomeCopy.campaignsEmptyTitle), findsOneWidget);
-      expect(
-        find.text(SalesStaffHomeCopy.campaignsUnavailableTitle),
-        findsNothing,
-      );
-    });
-
-    testWidgets('an unreadable campaign read is never shown as emptiness', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
-        tester,
-        campaignsResult: const StaffCampaignsFailed(
-          RetailerReadProblem.network,
-        ),
-      );
-
-      expect(
-        find.text(SalesStaffHomeCopy.campaignsUnavailableTitle),
-        findsOneWidget,
-      );
-      expect(find.text(SalesStaffHomeCopy.campaignsEmptyTitle), findsNothing);
+      // Nine campaigns: one in the hero, six offered in the strip — of which
+      // the horizontal list builds only what fits — and the truncation stated
+      // rather than silent.
+      expect(find.byType(SalesStaffOpportunityCard), findsWidgets);
+      expect(find.text(SalesStaffHomeCopy.showingSome(6, 8)), findsOneWidget);
     });
 
     testWidgets('the section routes to the full campaign list', (
       WidgetTester tester,
     ) async {
-      await openHome(tester);
+      await openHome(tester, campaigns: targetAndPerUnit());
 
       await tapVisible(
         tester,
@@ -357,136 +453,212 @@ void main() {
 
       expect(currentLocation(tester), SalesStaffNavigation.campaigns);
     });
+
+    testWidgets('a card opens its own campaign', (WidgetTester tester) async {
+      await openHome(
+        tester,
+        campaigns: <StaffCampaign>[
+          exampleStaffCampaign(
+            offer: exampleOffer(campaignId: campaignIdA, name: 'Hero'),
+          ),
+          exampleStaffCampaign(
+            offer: exampleOffer(campaignId: campaignIdB, name: 'In the strip'),
+          ),
+        ],
+      );
+
+      await tapVisible(tester, find.byType(SalesStaffOpportunityCard).first);
+
+      expect(
+        currentLocation(tester),
+        SalesStaffNavigation.campaignDetail(campaignIdB),
+      );
+    });
   });
 
   // =========================================================================
-  group('target progress on the landing screen', () {
-    testWidgets('an individual target shows the ring, the numbers and the '
-        'remainder', (WidgetTester tester) async {
-      await openHome(
+  group('campaign types look different from one another', () {
+    /// Puts [campaign] in the carousel by giving the hero something else.
+    Future<void> openWithCard(
+      WidgetTester tester,
+      StaffCampaign campaign, {
+      List<CampaignTargetProgress> progress = const <CampaignTargetProgress>[],
+    }) => openHome(
+      tester,
+      campaigns: <StaffCampaign>[
+        exampleStaffCampaign(
+          offer: exampleOffer(campaignId: campaignIdA, name: 'Hero campaign'),
+        ),
+        campaign,
+      ],
+      // The hero rule prefers the first running campaign WITH a target, so the
+      // hero is given one of its own — otherwise a campaign under test that has
+      // progress would be promoted out of the strip and into the hero.
+      progress: <CampaignTargetProgress>[
+        exampleTargetProgress(campaignId: campaignIdA),
+        ...progress,
+      ],
+    );
+
+    testWidgets('a per-unit card leads with its rate', (
+      WidgetTester tester,
+    ) async {
+      await openWithCard(
         tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(
+            campaignId: campaignIdB,
+            name: 'Everyday Coins',
+            reward: const CampaignPerUnitReward(
+              coinsPerUnit: 10,
+              maxRewardCoins: null,
+              metric: CampaignMetricType.unitsSold,
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byType(SalesStaffOpportunityCard),
+          matching: find.text('per eligible unit'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(EarningsCopy.coins(10)), findsWidgets);
+    });
+
+    testWidgets('a target card carries a mini gauge and the remainder', (
+      WidgetTester tester,
+    ) async {
+      await openWithCard(
+        tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(campaignId: campaignIdB, name: 'Stretch Target'),
+        ),
         progress: <CampaignTargetProgress>[
-          exampleTargetProgress(progressUnits: 12, targetUnits: 25),
+          exampleTargetProgress(
+            campaignId: campaignIdB,
+            progressUnits: 5,
+            targetUnits: 50,
+          ),
         ],
       );
 
-      expect(find.byType(CampaignTargetProgressView), findsOneWidget);
-      expect(find.byType(SrProgressRing), findsOneWidget);
-      expect(find.text(EarningsCopy.personalProgressLabel), findsOneWidget);
-      // The numerator and the denominator, never replaced by the percentage.
-      expect(find.text('12 of 25 units'), findsOneWidget);
-      expect(find.text('48%'), findsOneWidget);
       expect(
-        find.text('13 more eligible units to reach your target.'),
+        find.descendant(
+          of: find.byType(SalesStaffOpportunityCard),
+          matching: find.text('5 of 50 units'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SalesStaffOpportunityCard),
+          matching: find.byType(SrProgressRing),
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('a per-unit campaign gets no ring at all', (
+    testWidgets('a team target card names the team and who was paid', (
       WidgetTester tester,
     ) async {
-      // The contract returns no row for one, so there is no goal to draw.
-      await openHome(tester);
-
-      expect(find.byType(CampaignTargetProgressView), findsNothing);
-      expect(find.byType(SrProgressRing), findsNothing);
-    });
-
-    testWidgets('progress past the target keeps the real numbers', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
+      await openWithCard(
         tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(campaignId: campaignIdB, name: 'Team Target'),
+        ),
         progress: <CampaignTargetProgress>[
-          exampleTargetProgress(
-            progressUnits: 9,
-            targetUnits: 8,
-            targetReached: true,
-            bonusAwardedToMe: true,
-          ),
+          teamProgressBonusToSomebodyElse(campaignId: campaignIdB),
         ],
       );
 
-      // The ring saturates; the facts do not. A target must never look smaller
-      // than it is, and a numerator must never be rounded down to fit a
-      // drawing.
-      expect(find.text('9 of 8 units'), findsOneWidget);
-      expect(find.text('100%'), findsOneWidget);
-      expect(find.text(EarningsCopy.targetReached), findsOneWidget);
-    });
-
-    testWidgets('a team target says so, and never claims the units are mine', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
-        tester,
-        progress: <CampaignTargetProgress>[
-          exampleTargetProgress(
-            performanceScope: CampaignPerformanceScope.retailerTeam,
-          ),
-        ],
-      );
-
-      expect(find.text(EarningsCopy.teamProgressLabel), findsOneWidget);
-      expect(find.text(EarningsCopy.personalProgressLabel), findsNothing);
-      expect(
-        find.text('13 more eligible units to reach the team target.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a bonus awarded to me is stated as mine', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
-        tester,
-        progress: <CampaignTargetProgress>[
-          exampleTargetProgress(
-            progressUnits: 30,
-            targetReached: true,
-            bonusAwardedToMe: true,
-          ),
-        ],
-      );
-
-      expect(find.text('Target reached — reward recorded.'), findsOneWidget);
-      expect(
-        visibleText(tester),
-        isNot(contains('awarded to another team member')),
-      );
-    });
-
-    testWidgets('a bonus awarded to somebody else is never claimed by me', (
-      WidgetTester tester,
-    ) async {
-      await openHome(
-        tester,
-        progress: <CampaignTargetProgress>[teamProgressBonusToSomebodyElse()],
-      );
-
-      expect(find.text('The team has reached the target.'), findsOneWidget);
+      expect(find.text(EarningsCopy.teamProgressLabel), findsWidgets);
       expect(find.text(EarningsCopy.teamBonusAwardedElsewhere), findsOneWidget);
-      expect(visibleText(tester), isNot(contains('You were awarded')));
     });
 
-    testWidgets('the ring is announced with its values and its percentage', (
+    testWidgets('a scheduled card shows its start date, not progress', (
       WidgetTester tester,
     ) async {
-      await openHome(
+      await openWithCard(
         tester,
-        progress: <CampaignTargetProgress>[
-          exampleTargetProgress(progressUnits: 2, targetUnits: 3),
-        ],
+        exampleStaffCampaign(
+          offer: exampleOffer(
+            campaignId: campaignIdB,
+            name: 'Next Month Launch',
+            lifecycleState: CampaignLifecycleState.scheduled,
+          ),
+        ),
       );
 
-      // The required form: the scope, both numbers, then the percentage.
-      expect(semanticsContaining('2 of 3 units, 67 percent'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SalesStaffOpportunityCard),
+          matching: find.text(CampaignCopy.startsLabel),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a capped card states the maximum, and only then', (
+      WidgetTester tester,
+    ) async {
+      await openWithCard(
+        tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(
+            campaignId: campaignIdB,
+            name: 'Capped Boost',
+            reward: const CampaignPerUnitReward(
+              coinsPerUnit: 10,
+              maxRewardCoins: 5000,
+              metric: CampaignMetricType.unitsSold,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text(EarningsCopy.coins(5000)), findsWidgets);
+    });
+
+    testWidgets('an exclusive card carries an exclusivity pill', (
+      WidgetTester tester,
+    ) async {
+      await openWithCard(
+        tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(
+            campaignId: campaignIdB,
+            name: 'Exclusive',
+            stackingMode: CampaignStackingMode.exclusive,
+          ),
+        ),
+      );
+
+      expect(
+        find.text(CampaignCopy.stackingLabel(CampaignStackingMode.exclusive)),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('snapshot eligibility is marked on the card', (
+      WidgetTester tester,
+    ) async {
+      await openWithCard(
+        tester,
+        exampleStaffCampaign(
+          offer: exampleOffer(campaignId: campaignIdB, name: 'Snapshot rules'),
+        ),
+      );
+
+      expect(find.text('Snapshot'), findsWidgets);
     });
   });
 
   // =========================================================================
   group('the Add receipt call to action', () {
-    testWidgets('is pinned on a phone and opens the submission screen', (
+    testWidgets('floats on a phone and opens the submission screen', (
       WidgetTester tester,
     ) async {
       await openHome(tester);
@@ -498,12 +670,53 @@ void main() {
       expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
     });
 
+    testWidgets('carries supporting copy that promises nothing', (
+      WidgetTester tester,
+    ) async {
+      await openHome(tester);
+
+      expect(find.text(SalesStaffHomeCopy.addReceiptHint), findsOneWidget);
+      // "to qualify", never "to earn".
+      expect(
+        SalesStaffHomeCopy.addReceiptHint.toLowerCase(),
+        isNot(contains('earn')),
+      );
+    });
+
+    testWidgets('never overlaps the bottom navigation', (
+      WidgetTester tester,
+    ) async {
+      await openHome(tester);
+
+      final Rect pill = tester.getRect(find.byType(SalesStaffAddReceiptPill));
+      final Rect bar = tester.getRect(find.byType(NavigationBar));
+
+      expect(
+        pill.bottom,
+        lessThanOrEqualTo(bar.top),
+        reason: 'the floating action must sit above the bottom bar',
+      );
+    });
+
+    testWidgets('never overlaps the hero action', (WidgetTester tester) async {
+      // The two controls do different things; a thumb between them must not be
+      // ambiguous. The hero action is left-aligned and the pill right-aligned.
+      await openHome(tester);
+
+      final Rect pill = tester.getRect(find.byType(SalesStaffAddReceiptPill));
+      final Rect action = tester.getRect(
+        find.widgetWithText(SrButton, SalesStaffHomeCopy.heroAction),
+      );
+
+      expect(pill.overlaps(action), isFalse);
+    });
+
     testWidgets('moves into the header where the shell has a rail', (
       WidgetTester tester,
     ) async {
       await openHome(tester, surface: tabletSurface);
 
-      // No pinned bar to sit above a bottom bar that is not there.
+      // No floating pill to sit above a bottom bar that is not there.
       expect(find.byType(SalesStaffAddReceiptBar), findsNothing);
       expect(find.byType(SalesStaffAddReceiptButton), findsOneWidget);
     });
@@ -521,127 +734,30 @@ void main() {
   });
 
   // =========================================================================
-  group('campaign types on a card', () {
-    Future<void> openWith(WidgetTester tester, StaffCampaign campaign) =>
-        openHome(tester, campaigns: <StaffCampaign>[campaign]);
-
-    testWidgets('a per-unit campaign names its rate and its rule', (
+  group('navigation', () {
+    testWidgets('a phone gets a bottom bar with all five destinations', (
       WidgetTester tester,
     ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(
-            reward: const CampaignPerUnitReward(
-              coinsPerUnit: 10,
-              maxRewardCoins: null,
-              metric: CampaignMetricType.unitsSold,
-            ),
-          ),
-        ),
-      );
+      await openHome(tester);
 
-      expect(find.text(CampaignCopy.perUnitTypeLabel), findsOneWidget);
-      expect(
-        find.textContaining('Earn 10 coins per eligible unit'),
-        findsOneWidget,
-      );
-      // No cap wording where the contract exposes no cap.
-      expect(visibleText(tester), isNot(contains('Campaign maximum')));
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+      for (final String label in <String>[
+        'Home',
+        'Submit',
+        'History',
+        'Campaigns',
+        'Earnings',
+      ]) {
+        expect(find.text(label), findsWidgets, reason: label);
+      }
     });
 
-    testWidgets('a capped campaign states the maximum, and only then', (
-      WidgetTester tester,
-    ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(
-            reward: const CampaignPerUnitReward(
-              coinsPerUnit: 10,
-              maxRewardCoins: 5000,
-              metric: CampaignMetricType.unitsSold,
-            ),
-          ),
-        ),
-      );
+    testWidgets('a tablet promotes to a rail', (WidgetTester tester) async {
+      await openHome(tester, surface: tabletSurface);
 
-      expect(
-        find.text(CampaignCopy.campaignMaximumLabel(5000)),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a target campaign is labelled as one', (
-      WidgetTester tester,
-    ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(
-            reward: const CampaignTargetReward(
-              thresholdUnits: 25,
-              rewardCoins: 2500,
-              maxRewardCoins: null,
-              metric: CampaignMetricType.unitsSold,
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text(CampaignCopy.targetTypeLabel), findsOneWidget);
-    });
-
-    testWidgets('an exclusive campaign says it does not combine', (
-      WidgetTester tester,
-    ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(stackingMode: CampaignStackingMode.exclusive),
-        ),
-      );
-
-      expect(
-        find.text(CampaignCopy.stackingLabel(CampaignStackingMode.exclusive)),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a combinable campaign says so instead', (
-      WidgetTester tester,
-    ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(stackingMode: CampaignStackingMode.stackable),
-        ),
-      );
-
-      expect(
-        find.text(CampaignCopy.stackingLabel(CampaignStackingMode.stackable)),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a Retailer-team campaign names the scope on the card', (
-      WidgetTester tester,
-    ) async {
-      await openWith(
-        tester,
-        exampleStaffCampaign(
-          offer: exampleOffer(
-            performanceScope: CampaignPerformanceScope.retailerTeam,
-          ),
-        ),
-      );
-
-      expect(
-        find.text(
-          CampaignCopy.measurementLabel(CampaignPerformanceScope.retailerTeam),
-        ),
-        findsOneWidget,
-      );
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
     });
   });
 
@@ -658,12 +774,23 @@ void main() {
         await openHome(
           tester,
           surface: surface,
+          campaigns: targetAndPerUnit(),
           progress: <CampaignTargetProgress>[exampleTargetProgress()],
         );
 
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('the desktop layout keeps a reading measure', (
+      WidgetTester tester,
+    ) async {
+      await openHome(tester, surface: desktopSurface);
+
+      // The hero must not be stretched across a 1280px browser.
+      final Rect hero = tester.getRect(find.byType(SalesStaffNextRewardHero));
+      expect(hero.width, lessThan(desktopSurface.width - 200));
+    });
 
     testWidgets('the home screen survives a large text scale', (
       WidgetTester tester,
@@ -678,7 +805,7 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      // The numbers stay readable, and the ring never replaces them.
+      // The numbers stay readable, and the gauge never replaces them.
       expect(find.text('12 of 25 units'), findsOneWidget);
     });
 

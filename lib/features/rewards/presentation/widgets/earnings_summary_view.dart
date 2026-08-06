@@ -44,52 +44,73 @@ class EarningsSummaryView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        // A reward record rather than an analytics slab: the coin disc leads,
+        // the figure sits beside it, and the qualifying notice closes it. The
+        // brand-filled panel this replaced spent the screen's whole visual
+        // budget on one number and left the history beneath it looking like a
+        // table.
         SrEnter(
-          child: SrHeroPanel(
-            icon: Icons.savings_rounded,
+          child: SrFeatureCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  EarningsCopy.totalCoinsLabel,
-                  style: SrTypography.label.copyWith(
-                    color: sr.onBrand.withValues(alpha: 0.82),
-                  ),
-                ),
-                const SizedBox(height: SrSpacing.sm),
-                // One semantics node for the whole figure: a count-up announced
-                // frame by frame would read out a dozen numbers on the way to
-                // the real one.
-                Semantics(
-                  label:
-                      '${EarningsCopy.totalCoinsLabel}: '
-                      '${EarningsCopy.coins(summary.totalRewardCoins)}',
-                  excludeSemantics: true,
-                  child: SrCountUp(
-                    value: summary.totalRewardCoins,
-                    builder: (BuildContext context, int displayed) => Text(
-                      EarningsCopy.coins(displayed),
-                      style: SrTypography.statValue.copyWith(color: sr.onBrand),
-                      softWrap: true,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    const SrIconDisc(
+                      icon: Icons.savings_rounded,
+                      tone: SrTone.indigo,
+                      size: 56,
                     ),
-                  ),
+                    const SizedBox(width: SrSpacing.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            EarningsCopy.totalCoinsLabel,
+                            style: SrTypography.label.copyWith(
+                              color: sr.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: SrSpacing.xxs),
+                          // One semantics node for the whole figure: a count-up
+                          // announced frame by frame would read out a dozen
+                          // numbers on the way to the real one.
+                          Semantics(
+                            label:
+                                '${EarningsCopy.totalCoinsLabel}: '
+                                '${EarningsCopy.coins(summary.totalRewardCoins)}',
+                            excludeSemantics: true,
+                            child: SrCountUp(
+                              value: summary.totalRewardCoins,
+                              builder: (BuildContext context, int displayed) =>
+                                  Text(
+                                    EarningsCopy.coins(displayed),
+                                    style: SrTypography.statValue.copyWith(
+                                      color: sr.foreground,
+                                    ),
+                                    softWrap: true,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: SrSpacing.xs),
+                const SizedBox(height: SrSpacing.md),
                 Text(
                   EarningsCopy.totalCoinsHint,
-                  style: SrTypography.caption.copyWith(
-                    color: sr.onBrand.withValues(alpha: 0.80),
-                  ),
+                  style: SrTypography.caption.copyWith(color: sr.textMuted),
                 ),
-                const SizedBox(height: SrSpacing.lg),
-                // The qualifying notice sits ON the figure's own panel, so
+                const SizedBox(height: SrSpacing.md),
+                // The qualifying notice sits on the figure's own card, so
                 // nobody reads a coin total before learning there is nowhere to
                 // spend it yet.
                 Text(
                   EarningsCopy.walletNotice,
-                  style: SrTypography.caption.copyWith(
-                    color: sr.onBrand.withValues(alpha: 0.80),
-                  ),
+                  style: SrTypography.caption.copyWith(color: sr.textMuted),
                 ),
               ],
             ),

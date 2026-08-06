@@ -18,6 +18,15 @@ import '../design/design.dart';
 /// past its own circumference and rounding the numbers to match it would make a
 /// target look smaller than it is.
 ///
+/// ## The richer treatment is optional, and additive
+///
+/// A bare call draws one arc on a hairline track — that is what a campaign card
+/// wants. The hero on the Sales Staff home passes [gradient], [ticks] and
+/// [glow] and gets a thick, softly-lit gauge with a graduated sweep. **None of
+/// those change the geometry**: the arc still ends at exactly [value], the ticks
+/// are evenly spaced marks around the full circle rather than a scale derived
+/// from the data, and the glow is painted under the arc it follows.
+///
 /// ## Silent to assistive technology, by design
 ///
 /// The ring carries no semantics. A bare circular indicator announces a
@@ -39,6 +48,10 @@ class SrProgressRing extends StatelessWidget {
     this.tone = SrTone.indigo,
     this.segments,
     this.center,
+    this.gradient,
+    this.ticks,
+    this.glow = false,
+    this.trackColor,
   });
 
   /// The fraction to fill, `0.0`–`1.0`. Values outside the range are clamped
@@ -60,6 +73,25 @@ class SrProgressRing extends StatelessWidget {
   /// Rendered inside the ring. Usually the percentage and a short label.
   final Widget? center;
 
+  /// Two or more colours swept along the arc, replacing the flat tone.
+  ///
+  /// A **presentation** choice only. The colours are laid along the drawn arc,
+  /// so the same [value] produces the same geometry with or without them.
+  final List<Color>? gradient;
+
+  /// Evenly spaced marks around the whole circle.
+  ///
+  /// Deliberately **not** derived from the target: a 50-unit target does not
+  /// get 50 ticks. They are a dial's graduations — a constant number of marks
+  /// that make the sweep easier to read — and they say nothing about units.
+  final int? ticks;
+
+  /// Paints a soft halo beneath the arc.
+  final bool glow;
+
+  /// Overrides the hairline track colour, for a ring on a tinted surface.
+  final Color? trackColor;
+
   @override
   Widget build(BuildContext context) {
     final SrColorScheme sr = context.sr;
@@ -71,9 +103,13 @@ class SrProgressRing extends StatelessWidget {
       painter: _RingPainter(
         value: drawn,
         strokeWidth: strokeWidth,
-        track: sr.border,
+        track: trackColor ?? sr.border,
         arc: colors.foreground,
+        gradient: (gradient?.length ?? 0) >= 2 ? gradient : null,
         segments: (segments ?? 0) >= 2 ? segments : null,
+        ticks: (ticks ?? 0) >= 2 ? ticks : null,
+        tickColor: trackColor ?? sr.border,
+        glow: glow,
       ),
       child: SizedBox.square(
         dimension: size,
@@ -97,7 +133,7 @@ class SrProgressRing extends StatelessWidget {
         // Keyed on the target, so the sweep runs once per real value and a
         // rebuild that changes nothing leaves the arc where it is.
         tween: Tween<double>(begin: 0, end: target),
-        duration: const Duration(milliseconds: 700),
+        duration: const Duration(milliseconds: 900),
         curve: Curves.easeOutCubic,
         builder: (BuildContext context, double drawn, Widget? child) =>
             ring(drawn),
@@ -112,14 +148,22 @@ class _RingPainter extends CustomPainter {
     required this.strokeWidth,
     required this.track,
     required this.arc,
+    required this.gradient,
     required this.segments,
+    required this.ticks,
+    required this.tickColor,
+    required this.glow,
   });
 
   final double value;
   final double strokeWidth;
   final Color track;
   final Color arc;
+  final List<Color>? gradient;
   final int? segments;
+  final int? ticks;
+  final Color tickColor;
+  final bool glow;
 
   /// Twelve o'clock. A ring that started at three would read as a pie chart.
   static const double _start = -math.pi / 2;
@@ -138,17 +182,43 @@ class _RingPainter extends CustomPainter {
       size.height - strokeWidth,
     );
 
+    _paintTicks(canvas, size);
+
     final Paint trackPaint = Paint()
       ..color = track
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
+    final List<Color>? sweep = gradient;
     final Paint arcPaint = Paint()
-      ..color = arc
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
+
+    if (sweep == null) {
+      arcPaint.color = arc;
+    } else {
+      // Laid along the drawn arc rather than across the box, so the first
+      // colour is always at twelve o'clock and the last is always at the head
+      // of the sweep — whatever the value happens to be.
+      arcPaint.shader = SweepGradient(
+        startAngle: _start,
+        endAngle: _start + _turn,
+        colors: sweep,
+        transform: GradientRotation(_start),
+      ).createShader(bounds);
+    }
+
+    if (glow && value > 0) {
+      final Paint halo = Paint()
+        ..color = (sweep?.last ?? arc).withValues(alpha: 0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth * 1.7
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      canvas.drawArc(bounds, _start, _turn * value, false, halo);
+    }
 
     final int? count = segments;
     if (count == null) {
@@ -163,15 +233,40 @@ class _RingPainter extends CustomPainter {
     final double filled = value * count;
     for (int i = 0; i < count; i++) {
       final double from = _start + (slice * i) + (_gap / 2);
-      final double sweep = slice - _gap;
-      canvas.drawArc(bounds, from, sweep, false, trackPaint);
+      final double sweepAngle = slice - _gap;
+      canvas.drawArc(bounds, from, sweepAngle, false, trackPaint);
 
       // How much of THIS segment is filled: 1 for a segment wholly behind the
       // value, the remainder for the one it lands in, 0 for the rest.
       final double portion = (filled - i).clamp(0.0, 1.0);
       if (portion > 0) {
-        canvas.drawArc(bounds, from, sweep * portion, false, arcPaint);
+        canvas.drawArc(bounds, from, sweepAngle * portion, false, arcPaint);
       }
+    }
+  }
+
+  /// The dial graduations, inside the track.
+  void _paintTicks(Canvas canvas, Size size) {
+    final int? count = ticks;
+    if (count == null) {
+      return;
+    }
+
+    final Offset centre = Offset(size.width / 2, size.height / 2);
+    final double outer = (size.width / 2) - strokeWidth - 3;
+    final double inner = outer - 5;
+    final Paint paint = Paint()
+      ..color = tickColor
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < count; i++) {
+      final double angle = _start + (_turn / count * i);
+      canvas.drawLine(
+        centre + Offset(math.cos(angle) * inner, math.sin(angle) * inner),
+        centre + Offset(math.cos(angle) * outer, math.sin(angle) * outer),
+        paint,
+      );
     }
   }
 
@@ -181,5 +276,8 @@ class _RingPainter extends CustomPainter {
       oldDelegate.strokeWidth != strokeWidth ||
       oldDelegate.track != track ||
       oldDelegate.arc != arc ||
-      oldDelegate.segments != segments;
+      oldDelegate.gradient != gradient ||
+      oldDelegate.segments != segments ||
+      oldDelegate.ticks != ticks ||
+      oldDelegate.glow != glow;
 }

@@ -59,22 +59,63 @@ class SalesStaffSubmitPage extends StatelessWidget {
         return SrPageBody(
           maxWidth: SrSpacing.formMaxWidth,
           children: <Widget>[
+            // The instruction hero: what this screen is, in one glyph and two
+            // lines, with the four steps under it. The bare page header this
+            // replaced left a form starting at the top of the viewport.
             SrEnter(
-              child: SrPageHeader(
-                eyebrow: PortalKind.salesStaff.displayName,
-                title: 'Submit a receipt',
-                description: ReceiptCopy.submitPageDescription,
+              child: SrFeatureCard(
+                padding: const EdgeInsets.all(SrSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        const SrIconDisc(
+                          icon: Icons.receipt_long_rounded,
+                          tone: SrTone.indigo,
+                          size: 56,
+                        ),
+                        const SizedBox(width: SrSpacing.lg),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                PortalKind.salesStaff.displayName.toUpperCase(),
+                                style: SrTypography.eyebrow.copyWith(
+                                  color: context.sr.brand,
+                                ),
+                              ),
+                              const SizedBox(height: SrSpacing.xxs),
+                              Text(
+                                'Submit a receipt',
+                                style: SrTypography.pageTitle.copyWith(
+                                  color: context.sr.foreground,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: SrSpacing.md),
+                    Text(
+                      ReceiptCopy.submitPageDescription,
+                      style: SrTypography.body.copyWith(
+                        color: context.sr.textSecondary,
+                      ),
+                    ),
+                    if (state.phase !=
+                        ReceiptSubmissionPhase.loadFailed) ...<Widget>[
+                      const SizedBox(height: SrSpacing.xl),
+                      ReceiptStepsStrip(current: _stepFor(state)),
+                    ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: SrSpacing.xl),
-
-            if (state.phase != ReceiptSubmissionPhase.loadFailed) ...<Widget>[
-              SrEnter(
-                index: 1,
-                child: ReceiptStepsStrip(current: _stepFor(state)),
-              ),
-              const SizedBox(height: SrSpacing.xl),
-            ],
 
             if (state.phase == ReceiptSubmissionPhase.loadFailed)
               SrFailureView(failure: state.loadFailure!, onRetry: cubit.load)

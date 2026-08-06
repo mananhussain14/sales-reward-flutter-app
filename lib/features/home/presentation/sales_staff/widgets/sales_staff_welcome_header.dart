@@ -6,6 +6,14 @@ import 'sales_staff_home_copy.dart';
 
 /// The greeting at the top of the Sales Staff home.
 ///
+/// ## Compact, because the screen below it is the point
+///
+/// The first version gave this a 24px title, a subtitle, an encouraging line
+/// and — on a phone — a button, which pushed the actual opportunity below the
+/// fold. It is now **one row**: an avatar, "Welcome back", and the Retailer.
+/// The encouraging line moved onto the hero, where it can be about a real
+/// campaign instead of about nothing in particular.
+///
 /// ## Two facts, and no third
 ///
 /// A greeting and the organization the seller is selling for. The organization
@@ -20,7 +28,6 @@ class SalesStaffWelcomeHeader extends StatelessWidget {
   const SalesStaffWelcomeHeader({
     super.key,
     required this.organizationName,
-    required this.hasCampaigns,
     this.action,
   });
 
@@ -28,14 +35,8 @@ class SalesStaffWelcomeHeader extends StatelessWidget {
   /// carried none. Null omits the line rather than rendering a placeholder.
   final String? organizationName;
 
-  /// Whether any campaign is running or starting soon.
-  ///
-  /// Decides which encouraging line is shown, so the screen never says a reward
-  /// is within reach directly above a section that says there are no campaigns.
-  final bool hasCampaigns;
-
   /// The primary action, on layouts wide enough to carry it in the header.
-  /// Null on a phone, where the action is the sticky bar at the bottom instead.
+  /// Null on a phone, where the action is the floating pill instead.
   final Widget? action;
 
   @override
@@ -43,68 +44,35 @@ class SalesStaffWelcomeHeader extends StatelessWidget {
     final SrColorScheme sr = context.sr;
     final String? organization = organizationName;
 
-    final Widget identity = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
-        ExcludeSemantics(child: SrInitialsAvatar(name: organization, size: 44)),
-        const SizedBox(width: SrSpacing.lg),
+        ExcludeSemantics(child: SrInitialsAvatar(name: organization, size: 40)),
+        const SizedBox(width: SrSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
                 SalesStaffHomeCopy.greeting,
-                style: SrTypography.pageTitle.copyWith(color: sr.foreground),
+                style: SrTypography.sectionTitle.copyWith(color: sr.foreground),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              if (organization != null) ...<Widget>[
-                const SizedBox(height: SrSpacing.xxs),
+              if (organization != null)
                 Text(
                   SalesStaffHomeCopy.forRetailer(organization),
-                  style: SrTypography.body.copyWith(color: sr.textSecondary),
-                  maxLines: 2,
+                  style: SrTypography.caption.copyWith(color: sr.textSecondary),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
             ],
           ),
         ),
-      ],
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        identity,
-        const SizedBox(height: SrSpacing.md),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.only(top: SrSpacing.xxs),
-              child: ExcludeSemantics(
-                child: Icon(
-                  hasCampaigns
-                      ? Icons.auto_awesome_rounded
-                      : Icons.info_outline_rounded,
-                  size: 16,
-                  color: sr.brand,
-                ),
-              ),
-            ),
-            const SizedBox(width: SrSpacing.sm),
-            Expanded(
-              child: Text(
-                hasCampaigns
-                    ? SalesStaffHomeCopy.greetingLine
-                    : SalesStaffHomeCopy.greetingLineNoCampaigns,
-                style: SrTypography.body.copyWith(color: sr.textBody),
-              ),
-            ),
-          ],
-        ),
         if (action != null) ...<Widget>[
-          const SizedBox(height: SrSpacing.xl),
-          Align(alignment: Alignment.centerLeft, child: action!),
+          const SizedBox(width: SrSpacing.md),
+          action!,
         ],
       ],
     );

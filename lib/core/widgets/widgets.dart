@@ -21,6 +21,7 @@ export 'sr_loading_view.dart';
 export 'sr_page_header.dart';
 export 'sr_progress_ring.dart';
 export 'sr_responsive_grid.dart';
+export 'sr_surfaces.dart';
 export 'sr_retailer_problem_view.dart';
 export 'sr_search_field.dart';
 export 'sr_stat_card.dart';

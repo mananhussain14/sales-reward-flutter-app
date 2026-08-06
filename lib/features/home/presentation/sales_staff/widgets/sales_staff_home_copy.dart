@@ -69,10 +69,42 @@ abstract final class SalesStaffHomeCopy {
   static const String rewardedSalesLabel = 'Rewarded sales';
   static const String rewardedCampaignsLabel = 'Rewarded campaigns';
 
+  // -- The hero ------------------------------------------------------------
+
+  /// The hero's eyebrow, chosen from the stored `target_reached` boolean and
+  /// nothing else.
+  ///
+  /// It never says "next reward" over a target that has already been met, and
+  /// never says "reached" over one that has not.
+  static const String heroEyebrowNext = 'YOUR NEXT REWARD';
+  static const String heroEyebrowReached = 'TARGET REACHED';
+  static const String heroEyebrowRunning = 'RUNNING NOW';
+  static const String heroEyebrowUpcoming = 'STARTING SOON';
+
+  /// The action on the hero. It opens the campaign; it earns nothing.
+  static const String heroAction = 'View campaign';
+
+  /// Shown in place of the hero when there is no campaign at all.
+  static const String heroEmptyTitle = 'No campaign to aim at yet';
+  static const String heroEmptyBody =
+      'When a Vendor runs a campaign for your Retailer it appears here, with '
+      'your progress towards it.';
+
+  /// The hero's centre label under the percentage.
+  static const String heroOfTarget = 'of target';
+
   // -- Opportunities --------------------------------------------------------
 
   static const String opportunitiesTitle = 'Running now';
   static const String upcomingTitle = 'Starting soon';
+
+  /// The carousel heading. "for you" is about **targeting** — these campaigns
+  /// were assigned to this seller's Retailer — and not about a ranking.
+  static const String carouselTitle = 'Opportunities for you';
+
+  /// Told once, under the carousel heading, so a horizontal list is not
+  /// mistaken for the whole list.
+  static const String carouselHint = 'Swipe to see more';
 
   static const String opportunitiesDescription =
       'Eligible sales count towards these campaigns.';
@@ -115,4 +147,17 @@ abstract final class SalesStaffHomeCopy {
   /// The accessible name, which has room for the whole phrase the four-word
   /// button does not.
   static const String addReceiptSemanticLabel = 'Add a receipt to submit';
+
+  /// The supporting line under the action.
+  ///
+  /// "to qualify" and not "to earn": submitting a receipt makes a sale
+  /// *eligible for evaluation*. Whether it earns anything is decided by
+  /// verification and by the campaign, neither of which this button performs.
+  static const String addReceiptHint = 'Submit your sale to qualify';
+
+  // -- Recent receipt -------------------------------------------------------
+
+  /// The single latest submission, rather than a list. The full history is one
+  /// tap away and is the screen that owns it.
+  static const String latestReceiptTitle = 'Latest receipt';
 }
