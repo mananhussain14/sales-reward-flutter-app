@@ -150,7 +150,12 @@ class SrSectionCard extends StatelessWidget {
               ),
               if (action != null) ...<Widget>[
                 const SizedBox(width: SrSpacing.lg),
-                action!,
+                // Flexible rather than intrinsic: at a large text scale a
+                // section title and its action are wider than a phone, and a
+                // Row of intrinsic children overflows rather than shrinking.
+                // Every action this card carries is a button whose own label
+                // ellipsises, so giving it a bounded width is enough.
+                Flexible(child: action!),
               ],
             ],
           ),

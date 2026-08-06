@@ -150,7 +150,7 @@ void main() {
     ) async {
       final PumpedApp app = await pumpAppInRole(tester, PortalKind.salesStaff);
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(app.retailerShops.callCount, 0);
       expect(app.retailerStaff.memberCallCount, 0);
       expect(app.retailerProducts.callCount, 0);
@@ -878,7 +878,7 @@ void main() {
       app.auth.emitSignedIn(secondUser);
       await tester.pumpAndSettle();
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(find.byType(RetailerShopCard), findsNothing);
     });
 
@@ -927,7 +927,7 @@ void main() {
       repo.complete();
       await tester.pumpAndSettle();
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
       expect(find.text('Northwind Marina'), findsNothing);
     });
 

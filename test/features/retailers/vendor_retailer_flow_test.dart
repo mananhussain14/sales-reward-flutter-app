@@ -176,7 +176,7 @@ void main() {
       await goTo(tester, VendorNavigation.retailers);
 
       expect(find.byType(VendorRetailersPage), findsNothing);
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
     });
 
     testWidgets('no other role even reads the Vendor Retailer RPCs', (

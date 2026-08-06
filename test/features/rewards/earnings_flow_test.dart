@@ -81,8 +81,9 @@ void main() {
 
       expect(find.text('Submit'), findsWidgets);
       expect(find.text('History'), findsWidgets);
-      // Submit is still the landing tab.
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      // Home is the landing tab now; Submit and History keep their routes and
+      // their places in the bar.
+      expect(currentLocation(tester), SalesStaffNavigation.home);
     });
 
     testWidgets('the Earnings destination routes to the earnings screen', (
@@ -140,7 +141,7 @@ void main() {
       }
     });
 
-    testWidgets('opening the tab issues exactly one pair of reads', (
+    testWidgets('the landing screen issues exactly one pair of reads', (
       WidgetTester tester,
     ) async {
       final FakeStaffEarningsRepository earnings =
@@ -151,15 +152,19 @@ void main() {
         staffEarnings: earnings,
       );
 
-      // Entering the shell reads nothing: the cubits are provided, not loaded.
-      expect(earnings.summaryCallCount, 0);
-      expect(earnings.rewardCallCount, 0);
+      // The shell lands on Home, which renders the earnings summary — so the
+      // pair is read exactly once, on arrival, by the screen that shows it.
+      // The cubits are still not loaded by the shell itself.
+      expect(earnings.summaryCallCount, 1);
+      expect(earnings.rewardCallCount, 1);
 
+      // Opening the tab reads nothing more: `loadOnce` is a no-op once the
+      // phase has left `initial`.
       await goTo(tester, SalesStaffNavigation.earnings);
       expect(earnings.summaryCallCount, 1);
       expect(earnings.rewardCallCount, 1);
 
-      // Returning to a loaded tab reads nothing.
+      // Leaving and returning reads nothing either.
       await goTo(tester, SalesStaffNavigation.submit);
       await goTo(tester, SalesStaffNavigation.earnings);
       expect(earnings.summaryCallCount, 1);
@@ -190,7 +195,8 @@ void main() {
       await openEarnings(tester);
 
       expect(find.text(EarningsCopy.totalCoinsLabel), findsOneWidget);
-      expect(find.text('2,530'), findsOneWidget);
+      // The hero carries the unit; the supporting tiles carry bare counts.
+      expect(find.text(EarningsCopy.coins(2530)), findsOneWidget);
 
       expect(find.text(EarningsCopy.currentMonthLabel), findsOneWidget);
       expect(find.text('530'), findsOneWidget);
@@ -212,8 +218,10 @@ void main() {
         ..summaryResult = StaffEarningsSummaryLoaded(zeroEarningsSummary());
       await openEarnings(tester, earnings: earnings);
 
-      // Four tiles at zero, and a latest-reward line that says so in words.
-      expect(find.text('0'), findsNWidgets(4));
+      // The hero at zero coins, three tiles at zero, and a latest-reward line
+      // that says so in words. Zero is a real answer and renders as zero.
+      expect(find.text(EarningsCopy.coins(0)), findsOneWidget);
+      expect(find.text('0'), findsNWidgets(3));
       expect(find.text(EarningsCopy.latestRewardNever), findsOneWidget);
       expect(find.text('Unavailable'), findsNothing);
     });
@@ -396,7 +404,18 @@ void main() {
     ) async {
       await openWith(tester, <CampaignRewardRecord>[]);
 
-      expect(find.text(EarningsCopy.historyEmptyBody), findsOneWidget);
+      // The required sentence is verbatim; what follows it says what has to
+      // happen next, and the empty state offers the one action a seller with no
+      // rewards can take.
+      expect(
+        find.textContaining(EarningsCopy.historyEmptyBody),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(EarningsCopy.historyEmptyHint),
+        findsOneWidget,
+      );
+      expect(find.text(EarningsCopy.historyEmptyAction), findsOneWidget);
       expect(find.byType(CampaignRewardCard), findsNothing);
       expect(find.text(EarningsCopy.loadOlder), findsNothing);
     });
@@ -484,7 +503,7 @@ void main() {
 
       expect(find.byType(CampaignRewardCard), findsOneWidget);
       expect(find.text(EarningsCopy.totalCoinsLabel), findsOneWidget);
-      expect(find.text('2,530'), findsOneWidget);
+      expect(find.text(EarningsCopy.coins(2530)), findsOneWidget);
       expect(find.text(EarningsCopy.olderFailedTitle), findsOneWidget);
       // Still retryable.
       expect(find.text(EarningsCopy.loadOlder), findsWidgets);

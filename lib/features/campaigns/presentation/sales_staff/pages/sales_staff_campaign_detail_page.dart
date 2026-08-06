@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../../app/shells/sales_staff/sales_staff_navigation.dart';
 import '../../../../rewards/presentation/bloc/campaign_target_progress_cubit.dart';
@@ -50,6 +51,11 @@ class SalesStaffCampaignDetailPage extends StatelessWidget {
           campaignId: campaignId,
           listPath: SalesStaffNavigation.campaigns,
           progress: progress.forCampaign(campaignId),
+          // The route out of a campaign and into what it actually paid. Named
+          // here rather than inside the shared detail widget, so that widget
+          // holds no role's routes — and a Retailer Owner, who has no earnings
+          // contract, simply passes nothing and gets no control.
+          onOpenEarnings: () => context.go(SalesStaffNavigation.earnings),
         );
       },
     );

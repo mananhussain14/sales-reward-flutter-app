@@ -128,6 +128,31 @@ abstract final class ReceiptCopy {
   static const String submitPageDescription =
       'Photograph a receipt, choose the shop it belongs to, and send it in.';
 
+  // -- The four steps -------------------------------------------------------
+
+  /// The sequence a submission actually goes through, named on the screen so a
+  /// person can see where they are and what is still ahead.
+  ///
+  /// Four steps and no fifth. In particular there is **no** "earn coins" step:
+  /// whether a sale qualifies is decided by verification and campaign
+  /// evaluation, neither of which this screen performs or can promise.
+  static const List<String> submitSteps = <String>[
+    'Choose receipt',
+    'Review image',
+    'Submit securely',
+    'Review extracted details',
+  ];
+
+  /// What the last step actually offers.
+  ///
+  /// Deliberately worded so it cannot be read as "the text has been read
+  /// automatically". Extraction is a separate, reviewable step with its own
+  /// screen, and outside approved testing there is no production extraction
+  /// provider at all — so this promises a screen to check, not a result.
+  static const String submitStepsNote =
+      'After a receipt is submitted you can open it to check and confirm its '
+      'details.';
+
   /// The reference-section caption. It states plainly that nothing here is
   /// attached to the submission, so the section cannot be mistaken for a
   /// selection the backend receives.

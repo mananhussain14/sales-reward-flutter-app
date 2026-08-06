@@ -63,8 +63,12 @@ class ReceiptSuccessCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const SrIconDisc(
-                icon: Icons.check_circle_outline_rounded,
+              // A 280 ms scale-in and nothing else. Somebody who has just
+              // photographed one receipt is usually about to photograph the
+              // next, so a celebration they have to wait out is a cost. Under
+              // reduced motion the disc is simply there.
+              const SrSuccessMark(
+                icon: Icons.check_circle_rounded,
                 tone: SrTone.emerald,
                 size: 48,
               ),

@@ -31,6 +31,7 @@ class EarningsBody extends StatelessWidget {
     required this.state,
     required this.onRetry,
     required this.onLoadOlder,
+    required this.onAddReceipt,
   });
 
   final SalesStaffEarningsState state;
@@ -40,6 +41,13 @@ class EarningsBody extends StatelessWidget {
 
   /// Fetches the page before the oldest reward on screen.
   final VoidCallback onLoadOlder;
+
+  /// Opens the existing receipt submission screen.
+  ///
+  /// Offered from the empty state only, where it is the one thing a seller with
+  /// no rewards can actually do. It opens the flow that has always performed
+  /// the write — there is no second submission path behind it.
+  final VoidCallback onAddReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +62,7 @@ class EarningsBody extends StatelessWidget {
           state: state,
           onRetry: onRetry,
           onLoadOlder: onLoadOlder,
+          onAddReceipt: onAddReceipt,
         ),
       ],
     );
@@ -118,11 +127,13 @@ class _HistoryRegion extends StatelessWidget {
     required this.state,
     required this.onRetry,
     required this.onLoadOlder,
+    required this.onAddReceipt,
   });
 
   final SalesStaffEarningsState state;
   final VoidCallback onRetry;
   final VoidCallback onLoadOlder;
+  final VoidCallback onAddReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -143,11 +154,23 @@ class _HistoryRegion extends StatelessWidget {
     }
 
     if (rewards.isEmpty) {
-      return const SrEmptyState(
+      // Encouraging, and still exactly true. The required sentence stays
+      // verbatim; what is added is what has to happen next and the one action
+      // a seller with no rewards can take — never a promise that taking it
+      // will produce one.
+      return SrEmptyState(
         icon: Icons.emoji_events_outlined,
-        tone: SrTone.slate,
+        tone: SrTone.indigo,
         title: EarningsCopy.historyEmptyTitle,
-        description: EarningsCopy.historyEmptyBody,
+        description:
+            '${EarningsCopy.historyEmptyBody} '
+            '${EarningsCopy.historyEmptyHint}',
+        action: SrButton(
+          label: EarningsCopy.historyEmptyAction,
+          icon: Icons.add_a_photo_rounded,
+          size: SrButtonSize.lg,
+          onPressed: onAddReceipt,
+        ),
       );
     }
 
@@ -156,7 +179,10 @@ class _HistoryRegion extends StatelessWidget {
       children: <Widget>[
         for (int i = 0; i < rewards.length; i++) ...<Widget>[
           if (i > 0) const SizedBox(height: SrSpacing.lg),
-          CampaignRewardCard(reward: rewards[i]),
+          SrEnter(
+            index: i,
+            child: CampaignRewardCard(reward: rewards[i]),
+          ),
         ],
 
         // -- The pagination attempt's own failure --------------------------

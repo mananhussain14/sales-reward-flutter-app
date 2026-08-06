@@ -14,7 +14,8 @@ import 'package:sale_reward/features/campaigns/presentation/retailer_owner/pages
 import 'package:sale_reward/features/campaigns/presentation/sales_staff/pages/sales_staff_campaigns_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/retailer_owner/pages/retailer_owner_overview_page.dart';
 import 'package:sale_reward/features/dashboard/presentation/vendor/pages/vendor_dashboard_page.dart';
-import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
+import 'package:sale_reward/features/home/presentation/sales_staff/pages/sales_staff_home_page.dart';
+import 'package:sale_reward/features/home/presentation/sales_staff/widgets/sales_staff_home_copy.dart';
 import 'package:sale_reward/features/staff/presentation/retailer/pages/retailer_staff_page.dart';
 
 import '../../support/fakes.dart';
@@ -38,7 +39,7 @@ const Map<PortalKind, Type> _landingPages = <PortalKind, Type>{
   PortalKind.vendorSuperAdmin: VendorDashboardPage,
   PortalKind.retailerOwner: RetailerOwnerOverviewPage,
   PortalKind.retailerManager: RetailerStaffPage,
-  PortalKind.salesStaff: SalesStaffSubmitPage,
+  PortalKind.salesStaff: SalesStaffHomePage,
 };
 
 Future<void> _goTo(WidgetTester tester, String location) async {
@@ -318,11 +319,12 @@ void main() {
       tester,
     ) async {
       await pumpAppInRole(tester, PortalKind.salesStaff);
-      expect(find.text('Submit a receipt'), findsOneWidget);
+      // The landing is the home screen; the greeting is its own.
+      expect(find.text(SalesStaffHomeCopy.greeting), findsOneWidget);
 
-      // Scoped to the bottom bar. The submit screen now renders real receipt
-      // content of its own, so an unscoped icon finder could match the page
-      // rather than the destination it is trying to tap.
+      // Scoped to the bottom bar. The home screen renders real receipt content
+      // of its own, so an unscoped icon finder could match the page rather than
+      // the destination it is trying to tap.
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationBar),

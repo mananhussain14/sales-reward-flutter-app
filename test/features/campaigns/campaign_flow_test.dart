@@ -23,6 +23,7 @@ import 'package:sale_reward/features/campaigns/presentation/sales_staff/pages/sa
 import 'package:sale_reward/features/campaigns/presentation/shared/campaign_card.dart';
 import 'package:sale_reward/features/campaigns/presentation/shared/campaign_copy.dart';
 import 'package:sale_reward/features/campaigns/presentation/shared/campaign_detail_view.dart';
+import 'package:sale_reward/features/campaigns/presentation/shared/campaign_section_heading.dart';
 
 import '../../support/campaign_fakes.dart';
 import '../../support/pump_app.dart';
@@ -211,7 +212,7 @@ void main() {
       await goTo(tester, RetailerOwnerNavigation.campaigns);
 
       Finder heading(String title) => find.descendant(
-        of: find.byType(SrSectionHeader),
+        of: find.byType(CampaignSectionHeading),
         matching: find.text(title),
       );
 
@@ -223,7 +224,7 @@ void main() {
       expect(heading('Paused'), findsNothing);
       expect(heading('Cancelled'), findsNothing);
       expect(heading('Starting soon'), findsNothing);
-      expect(find.byType(SrSectionHeader), findsNWidgets(2));
+      expect(find.byType(CampaignSectionHeading), findsNWidgets(2));
     });
 
     testWidgets('the list states that results are not connected yet', (
@@ -415,10 +416,15 @@ void main() {
       expect(find.byType(SalesStaffCampaignsPage), findsOneWidget);
     });
 
-    testWidgets('Submit remains the landing tab', (WidgetTester tester) async {
+    testWidgets('Home is the landing tab, with Submit beside it', (
+      WidgetTester tester,
+    ) async {
       await pumpAppInRole(tester, PortalKind.salesStaff);
 
-      expect(currentLocation(tester), SalesStaffNavigation.submit);
+      expect(currentLocation(tester), SalesStaffNavigation.home);
+      // The submission destination did not move out of the bar when the home
+      // screen moved in front of it.
+      expect(find.text('Submit'), findsWidgets);
     });
 
     testWidgets('a seller card shows no Vendor', (WidgetTester tester) async {

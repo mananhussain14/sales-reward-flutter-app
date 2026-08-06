@@ -7,20 +7,31 @@ import 'earnings_copy.dart';
 
 /// The five totals from `get_my_campaign_earnings_summary()`.
 ///
+/// ## One hero, four supporting facts
+///
+/// The total is the reason a seller opens this screen, so it gets the brand
+/// panel and the 30px figure; everything else is a tile. Giving all five equal
+/// weight — which is what a uniform grid does — is what made this screen read as
+/// an administrative report rather than as a record of what somebody earned.
+///
 /// ## Exact stored values, and zero is one of them
 ///
-/// Nothing here sums, nets, rounds or projects. Each tile shows a number the
+/// Nothing here sums, nets, rounds or projects. Each figure is a number the
 /// database returned, and a zero renders as `0` — never as a dash, an empty box
 /// or an error. A seller who has earned nothing has earned nothing, and saying
 /// so plainly is the honest answer.
 ///
+/// The count-up is a **presentation** of that number and never a different one:
+/// it ends on the stored value, it runs once per change rather than once per
+/// build, and under reduced motion the first frame is the last.
+///
 /// ## Not one of these is a balance
 ///
-/// No tile is labelled wallet balance, available balance, redeemable coins, paid
-/// coins or withdrawable coins, because no such value exists: the deployed
+/// No tile is labelled wallet balance, available balance, redeemable coins,
+/// paid coins or withdrawable coins, because no such value exists: the deployed
 /// schema has no ledger, no wallet and no redemption model, and nothing is
-/// subtracted from anything. [EarningsCopy.walletNotice] states that above the
-/// tiles rather than leaving the absence to be inferred.
+/// subtracted from anything. [EarningsCopy.walletNotice] states that on the
+/// panel itself rather than leaving the absence to be inferred.
 class EarningsSummaryView extends StatelessWidget {
   const EarningsSummaryView({super.key, required this.summary});
 
@@ -33,45 +44,116 @@ class EarningsSummaryView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // The qualifying notice sits ABOVE the numbers, so nobody reads a coin
-        // total before learning there is nowhere to spend it yet.
-        const SrAlert(message: EarningsCopy.walletNotice),
-        const SizedBox(height: SrSpacing.xl),
+        // A reward record rather than an analytics slab: the coin disc leads,
+        // the figure sits beside it, and the qualifying notice closes it. The
+        // brand-filled panel this replaced spent the screen's whole visual
+        // budget on one number and left the history beneath it looking like a
+        // table.
+        SrEnter(
+          child: SrFeatureCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    const SrIconDisc(
+                      icon: Icons.savings_rounded,
+                      tone: SrTone.indigo,
+                      size: 56,
+                    ),
+                    const SizedBox(width: SrSpacing.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            EarningsCopy.totalCoinsLabel,
+                            style: SrTypography.label.copyWith(
+                              color: sr.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: SrSpacing.xxs),
+                          // One semantics node for the whole figure: a count-up
+                          // announced frame by frame would read out a dozen
+                          // numbers on the way to the real one.
+                          Semantics(
+                            label:
+                                '${EarningsCopy.totalCoinsLabel}: '
+                                '${EarningsCopy.coins(summary.totalRewardCoins)}',
+                            excludeSemantics: true,
+                            child: SrCountUp(
+                              value: summary.totalRewardCoins,
+                              builder: (BuildContext context, int displayed) =>
+                                  Text(
+                                    EarningsCopy.coins(displayed),
+                                    style: SrTypography.statValue.copyWith(
+                                      color: sr.foreground,
+                                    ),
+                                    softWrap: true,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SrSpacing.md),
+                Text(
+                  EarningsCopy.totalCoinsHint,
+                  style: SrTypography.caption.copyWith(color: sr.textMuted),
+                ),
+                const SizedBox(height: SrSpacing.md),
+                // The qualifying notice sits on the figure's own card, so
+                // nobody reads a coin total before learning there is nowhere to
+                // spend it yet.
+                Text(
+                  EarningsCopy.walletNotice,
+                  style: SrTypography.caption.copyWith(color: sr.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: SrSpacing.lg),
 
         SrResponsiveGrid(
           twoUpThreshold: 560,
           threeUpThreshold: 1024,
           children: <Widget>[
-            SrStatCard(
-              label: EarningsCopy.totalCoinsLabel,
-              value: summary.totalRewardCoins,
-              hint: EarningsCopy.totalCoinsHint,
-              icon: Icons.savings_outlined,
-              tone: SrTone.indigo,
-            ),
-            SrStatCard(
-              label: EarningsCopy.currentMonthLabel,
-              value: summary.currentMonthRewardCoins,
-              hint: EarningsCopy.currentMonthHint(
-                summary.currentMonthStartUtc,
-                summary.currentMonthEndUtc,
+            SrEnter(
+              index: 1,
+              child: _MetricTile(
+                label: EarningsCopy.currentMonthLabel,
+                value: summary.currentMonthRewardCoins,
+                hint: EarningsCopy.currentMonthHint(
+                  summary.currentMonthStartUtc,
+                  summary.currentMonthEndUtc,
+                ),
+                icon: Icons.calendar_month_outlined,
+                tone: SrTone.blue,
               ),
-              icon: Icons.calendar_month_outlined,
-              tone: SrTone.blue,
             ),
-            SrStatCard(
-              label: EarningsCopy.rewardedSalesLabel,
-              value: summary.rewardedSaleCount,
-              hint: EarningsCopy.rewardedSalesHint,
-              icon: Icons.receipt_long_outlined,
-              tone: SrTone.emerald,
+            SrEnter(
+              index: 2,
+              child: _MetricTile(
+                label: EarningsCopy.rewardedSalesLabel,
+                value: summary.rewardedSaleCount,
+                hint: EarningsCopy.rewardedSalesHint,
+                icon: Icons.receipt_long_outlined,
+                tone: SrTone.emerald,
+              ),
             ),
-            SrStatCard(
-              label: EarningsCopy.rewardedCampaignsLabel,
-              value: summary.rewardedCampaignCount,
-              hint: EarningsCopy.rewardedCampaignsHint,
-              icon: Icons.campaign_outlined,
-              tone: SrTone.slate,
+            SrEnter(
+              index: 3,
+              child: _MetricTile(
+                label: EarningsCopy.rewardedCampaignsLabel,
+                value: summary.rewardedCampaignCount,
+                hint: EarningsCopy.rewardedCampaignsHint,
+                icon: Icons.campaign_outlined,
+                tone: SrTone.indigo,
+              ),
             ),
           ],
         ),
@@ -79,45 +161,112 @@ class EarningsSummaryView extends StatelessWidget {
         // -- The latest reward date ------------------------------------------
         //
         // A date rather than a count, so it does not belong in the numeric grid
-        // above: `SrStatCard` takes an `int`, and formatting a timestamp into
-        // one would either lie about its type or drop the "no rewards yet" case.
+        // above: a tile that counts up to a timestamp would either lie about
+        // its type or drop the "no rewards yet" case.
         const SizedBox(height: SrSpacing.lg),
-        SrCard(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              ExcludeSemantics(
-                child: Icon(
-                  Icons.event_available_outlined,
-                  size: 18,
-                  color: sr.textMuted,
+        SrEnter(
+          index: 4,
+          child: SrCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                const SrIconDisc(
+                  icon: Icons.event_available_outlined,
+                  tone: SrTone.slate,
+                  size: 40,
                 ),
-              ),
-              const SizedBox(width: SrSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      EarningsCopy.latestRewardLabel,
-                      style: SrTypography.label.copyWith(
-                        color: sr.textSecondary,
+                const SizedBox(width: SrSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        EarningsCopy.latestRewardLabel,
+                        style: SrTypography.label.copyWith(
+                          color: sr.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: SrSpacing.xxs),
-                    Text(
-                      EarningsCopy.latestRewardValue(summary.latestRewardAt),
-                      style: SrTypography.bodyLarge.copyWith(
-                        color: sr.foreground,
+                      const SizedBox(height: SrSpacing.xxs),
+                      Text(
+                        EarningsCopy.latestRewardValue(summary.latestRewardAt),
+                        style: SrTypography.bodyLarge.copyWith(
+                          color: sr.foreground,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One supporting figure.
+///
+/// The geometry of [SrStatCard] — 14/500 label, 40px tinted disc, 30px value
+/// with tabular figures, 12px hint — with the value animated. It is a local
+/// widget rather than a change to the shared card because only this screen
+/// counts up: a dashboard tile that animated every time a Vendor's list
+/// refreshed would be movement without meaning.
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.hint,
+    required this.icon,
+    required this.tone,
+  });
+
+  final String label;
+
+  /// The authoritative count. Zero is a real answer and renders as `0`.
+  final int value;
+
+  final String hint;
+  final IconData icon;
+  final SrTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final SrColorScheme sr = context.sr;
+
+    return SrCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  label,
+                  style: SrTypography.label.copyWith(color: sr.textSecondary),
+                ),
+              ),
+              const SizedBox(width: SrSpacing.md),
+              SrIconDisc(icon: icon, tone: tone, size: 40),
+            ],
+          ),
+          const SizedBox(height: SrSpacing.md),
+          Semantics(
+            label: '$label: ${SrStatCard.format(value)}',
+            excludeSemantics: true,
+            child: SrCountUp(
+              value: value,
+              builder: (BuildContext context, int displayed) => Text(
+                SrStatCard.format(displayed),
+                style: SrTypography.statValue.copyWith(color: sr.foreground),
+              ),
+            ),
+          ),
+          const SizedBox(height: SrSpacing.xs),
+          Text(hint, style: SrTypography.caption.copyWith(color: sr.textMuted)),
+        ],
+      ),
     );
   }
 }

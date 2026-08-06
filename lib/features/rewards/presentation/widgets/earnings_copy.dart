@@ -97,6 +97,23 @@ abstract final class EarningsCopy {
   static const String historyEmptyBody =
       'You have not earned any campaign rewards yet.';
 
+  /// What actually has to happen, so the empty state is encouraging without
+  /// promising anything.
+  ///
+  /// It names verification and evaluation as the two things that decide, and
+  /// says outright that not every receipt qualifies — because eligibility
+  /// depends on the product, the campaign and the sale, and none of those is
+  /// settled by submitting a photograph. Telling a seller their next receipt
+  /// will earn them coins would be the one motivating sentence on this screen
+  /// that is not true.
+  static const String historyEmptyHint =
+      'Rewards appear here after an eligible sale is verified and the campaign '
+      'is evaluated. Not every receipt qualifies.';
+
+  /// The action offered from the empty state: the ordinary submission flow,
+  /// and nothing new.
+  static const String historyEmptyAction = 'Add receipt';
+
   /// Required wording for the pagination control.
   static const String loadOlder = 'Load older rewards';
   static const String loadingOlder = 'Loading older rewards…';
@@ -236,12 +253,72 @@ abstract final class EarningsCopy {
       };
 
   /// `12 of 25 units`. Both numbers are stored values; nothing is derived.
+  ///
+  /// **Never rounded to fit the ring.** A seller who has sold 9 units against a
+  /// target of 8 reads `9 of 8 units`, because the numerator is a fact and the
+  /// indicator beside it is only a drawing.
   static String progressValue(CampaignTargetProgress progress) =>
       '${formatCampaignNumber(progress.progressUnits)} of '
       '${units(progress.targetUnits)}';
 
+  /// `67%` — the clamped display ratio as whole percent.
+  ///
+  /// Shown **beside** [progressValue] and never instead of it. A percentage on
+  /// its own hides the denominator, and the denominator is the target.
+  static String progressPercentValue(CampaignTargetProgress progress) =>
+      '${progress.completionPercent}%';
+
+  /// The spoken form, so a reader hears "67 percent" rather than "67 modulo".
+  static String progressPercentSpoken(CampaignTargetProgress progress) =>
+      '${progress.completionPercent} percent';
+
+  /// How far along, as a sentence. Only meaningful before the target is met.
+  static String progressPercentSentence(CampaignTargetProgress progress) =>
+      switch (progress.performanceScope) {
+        CampaignPerformanceScope.individualStaff =>
+          'You are ${progressPercentValue(progress)} of the way there.',
+        CampaignPerformanceScope.retailerTeam =>
+          'Your Retailer is ${progressPercentValue(progress)} of the way '
+              'there.',
+      };
+
   static const String targetNotReached = 'Target not reached yet';
   static const String targetReached = 'Target reached';
+
+  /// The encouraging line, and the one place on the indicator where the tone
+  /// changes with the state.
+  ///
+  /// Every branch is decided by the two stored booleans and a subtraction of
+  /// two stored unit counts. Nothing here promises a reward, predicts one, or
+  /// tells a reader they were paid when the bonus went elsewhere.
+  static String progressHeadline(CampaignTargetProgress progress) {
+    if (!progress.targetReached) {
+      final int remaining = progress.unitsRemaining;
+      if (remaining == 0) {
+        // Counted up to the target, but the backend has not recorded it as
+        // reached. Said plainly rather than guessed at: evaluation is the
+        // database's, and it may simply not have run yet.
+        return 'This target has not been recorded as reached yet.';
+      }
+      final String more =
+          '${formatCampaignNumber(remaining)} more eligible '
+          '${remaining == 1 ? 'unit' : 'units'}';
+      return switch (progress.performanceScope) {
+        CampaignPerformanceScope.individualStaff =>
+          '$more to reach your target.',
+        CampaignPerformanceScope.retailerTeam =>
+          '$more to reach the team target.',
+      };
+    }
+
+    if (progress.bonusAwardedToMe) {
+      return 'Target reached — reward recorded.';
+    }
+    if (progress.performanceScope.isTeam) {
+      return 'The team has reached the target.';
+    }
+    return 'This target has been reached.';
+  }
 
   /// What the state line says, from the two stored booleans and nothing else.
   static String progressStatus(CampaignTargetProgress progress) {
@@ -302,12 +379,18 @@ abstract final class EarningsCopy {
 
   /// The screen-reader label for a progress indicator.
   ///
-  /// Carries the label, the current value, the target and the state, so the
-  /// bar is never the only channel — a `LinearProgressIndicator` on its own
-  /// announces a bare percentage, which says nothing about whose units they are.
+  /// Carries the label, the current value, the target, the percentage and the
+  /// state, so the ring is never the only channel — a circular indicator on its
+  /// own announces a bare percentage, which says nothing about whose units they
+  /// are or how many are left.
+  ///
+  /// The numerator and denominator come **first** and the percentage second:
+  /// "12 of 25 units, 48 percent" is the order the visible block reads in, and
+  /// the percentage is the derived value of the two.
   static String progressSemanticLabel(CampaignTargetProgress progress) {
     return '${progressLabel(progress.performanceScope)}: '
-        '${progressValue(progress)}. ${progressStatus(progress)}. '
+        '${progressValue(progress)}, ${progressPercentSpoken(progress)}. '
+        '${progressStatus(progress)}. ${progressHeadline(progress)} '
         '${bonusSentence(progress)}';
   }
 }

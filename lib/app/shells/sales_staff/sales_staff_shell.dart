@@ -82,10 +82,13 @@ class SalesStaffShell extends StatelessWidget {
                   create: (_) => SalesStaffShellBloc(),
                 ),
                 // The campaign cubits, deliberately NOT loaded on creation —
-                // unlike the two receipt cubits above, which back the landing
-                // tab. Entering this shell must still issue exactly the reads
-                // the Submit screen needs; the Campaigns tab reads itself when
-                // a user actually opens it.
+                // unlike the two receipt cubits above. The screen that needs
+                // them reads them: the Home screen is now the landing route and
+                // starts all three from its own `initState`, and the Campaigns
+                // tab does the same if it is opened first through a deep link.
+                // `loadOnce` makes the second of those a no-op, so a seller who
+                // lands on Home and then opens Campaigns issues one read, not
+                // two.
                 //
                 // Provided here rather than on the routes so both sit ABOVE the
                 // session listener below, which is the subtree that has to be
@@ -183,11 +186,21 @@ class _SessionIsolation extends StatelessWidget {
           // backend under the new caller's own identity.
           submission.load();
           history.load();
-          // The campaign, progress and earnings cubits are deliberately NOT
-          // reloaded here. They return to `initial`, and each tab reads itself
-          // through `loadOnce` if the new session actually opens it — eagerly
-          // refetching a screen nobody is looking at would issue a request for
-          // nothing.
+          // The campaign, progress and earnings cubits are reloaded with them,
+          // and that is a change from the previous milestone — which left them
+          // at `initial` on the grounds that "eagerly refetching a screen
+          // nobody is looking at would issue a request for nothing".
+          //
+          // Somebody IS looking at them now. The Home screen is the landing
+          // route and renders all three, and its `initState` has already run
+          // for the previous person: the element survives a user switch inside
+          // one microtask drain, so nothing would re-read them and the new
+          // seller would land on a screen of empty sections until they pulled
+          // to refresh. The detail cubit is left cleared — no campaign is open
+          // at the moment a session changes.
+          campaigns.load();
+          campaignProgress.load();
+          earnings.load();
           return;
         }
 

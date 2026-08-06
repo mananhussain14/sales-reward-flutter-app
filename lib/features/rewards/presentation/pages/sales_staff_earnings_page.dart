@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/shells/sales_staff/sales_staff_navigation.dart';
 import '../../../../core/design/design.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../auth/domain/entities/portal_kind.dart';
@@ -93,6 +95,9 @@ class _SalesStaffEarningsPageState extends State<SalesStaffEarningsPage> {
                 state: state,
                 onRetry: cubit.load,
                 onLoadOlder: cubit.loadOlder,
+                // Opens the existing submission screen. Named here rather than
+                // inside the body widget, which holds no route of its own.
+                onAddReceipt: () => context.go(SalesStaffNavigation.submit),
               ),
             ],
           ),

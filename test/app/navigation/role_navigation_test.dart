@@ -141,9 +141,11 @@ void main() {
       );
     });
 
-    test('Sales Staff: Submit, History, Campaigns, Earnings', () {
-      // Submit stays first, and stays the landing tab: the primary action is
-      // still one tap away, which is the reason this shell has a bottom bar.
+    test('Sales Staff: Home, Submit, History, Campaigns, Earnings', () {
+      // Home is first and is the landing tab. Submit keeps its route, its
+      // cubits and its place in the bar — one destination was added in front of
+      // it, nothing was moved — and the primary action is still one tap away:
+      // it is a tab AND the pinned call to action on the landing screen.
       //
       // Earnings is last, and its visible label is deliberately shorter than
       // the milestone's "My campaign earnings" — three words under an icon in a
@@ -153,14 +155,16 @@ void main() {
         SalesStaffNavigation.model.destinations.map(
           (RoleDestination d) => d.label,
         ),
-        <String>['Submit', 'History', 'Campaigns', 'Earnings'],
+        <String>['Home', 'Submit', 'History', 'Campaigns', 'Earnings'],
       );
-      expect(
-        SalesStaffNavigation.model.landingPath,
-        SalesStaffNavigation.submit,
-      );
-      // Four entries is still inside the two-to-five range a bottom bar is for.
+      expect(SalesStaffNavigation.model.landingPath, SalesStaffNavigation.home);
+      // Five entries is the upper end of the range a bottom bar is for, and
+      // still inside it.
       expect(SalesStaffNavigation.model.chrome, RoleShellChrome.bottomBar);
+      expect(
+        SalesStaffNavigation.model.destinations.length,
+        lessThanOrEqualTo(5),
+      );
     });
 
     test('Campaigns never appears for the Retailer Manager', () {
@@ -306,15 +310,20 @@ void main() {
       );
     });
 
-    test('Sales Staff lands on the primary write action', () {
-      expect(
-        SalesStaffNavigation.model.landingPath,
-        SalesStaffNavigation.submit,
-      );
+    test('Sales Staff lands on its home, with Submit one tap away', () {
+      expect(SalesStaffNavigation.model.landingPath, SalesStaffNavigation.home);
       expect(
         SalesStaffNavigation.model.destinations.first.path,
-        SalesStaffNavigation.submit,
-        reason: 'the receipt action must be immediately visible',
+        SalesStaffNavigation.home,
+      );
+      // The primary write action did not move out of the bar when the home
+      // screen moved in front of it.
+      expect(
+        SalesStaffNavigation.model.routableDestinations.map(
+          (RoleDestination d) => d.path,
+        ),
+        contains(SalesStaffNavigation.submit),
+        reason: 'the receipt action must stay immediately reachable',
       );
     });
   });

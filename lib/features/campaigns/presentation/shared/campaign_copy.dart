@@ -172,6 +172,40 @@ abstract final class CampaignCopy {
     CampaignSectionKind.notPublished => 'Not published',
   };
 
+  /// One line under a section heading, saying what belonging to it means.
+  ///
+  /// This is what turns two adjacent lists of near-identical cards into two
+  /// groups a reader can tell apart: the heading names the state, the line
+  /// says the consequence. Every sentence restates
+  /// [lifecycleExplanation] for the group rather than adding a new claim.
+  static String sectionDescription(CampaignSectionKind kind) => switch (kind) {
+    CampaignSectionKind.runningNow => 'Eligible sales count towards these now.',
+    CampaignSectionKind.startingSoon =>
+      'Not started yet. Eligible sales will count from each start date.',
+    CampaignSectionKind.paused =>
+      'Paused by the Vendor. Eligible sales do not count while paused.',
+    CampaignSectionKind.finished => 'These have run their period.',
+    CampaignSectionKind.cancelled => 'Stopped by the Vendor.',
+    CampaignSectionKind.notPublished => 'Not published.',
+  };
+
+  /// The tone and glyph a section heading carries, matching the status pill on
+  /// every card beneath it — so the group and its members agree.
+  static CampaignLifecycleState sectionState(CampaignSectionKind kind) =>
+      switch (kind) {
+        CampaignSectionKind.runningNow => CampaignLifecycleState.active,
+        CampaignSectionKind.startingSoon => CampaignLifecycleState.scheduled,
+        CampaignSectionKind.paused => CampaignLifecycleState.paused,
+        CampaignSectionKind.finished => CampaignLifecycleState.ended,
+        CampaignSectionKind.cancelled => CampaignLifecycleState.cancelled,
+        CampaignSectionKind.notPublished => CampaignLifecycleState.draft,
+      };
+
+  /// `3 campaigns`; `1 campaign`. Never a bare number beside a heading, which
+  /// reads as a badge of unknown meaning.
+  static String sectionCount(int count) =>
+      '$count ${count == 1 ? 'campaign' : 'campaigns'}';
+
   // -- Lifecycle ------------------------------------------------------------
 
   /// The badge label. Never the backend token.
@@ -210,6 +244,29 @@ abstract final class CampaignCopy {
   // -- Reward ---------------------------------------------------------------
 
   static const String rewardSectionTitle = 'Reward';
+
+  /// The rule a campaign pays by, in words. Never the backend token.
+  ///
+  /// Two kinds and no third: `campaign_rules.rule_type` admits
+  /// `PER_UNIT_COINS` and `TARGET_BONUS`, and the sealed reward hierarchy
+  /// mirrors that exactly — so a third rule added to the contract stops this
+  /// compiling rather than silently rendering as one of the two.
+  static const String perUnitTypeLabel = 'Per unit';
+  static const String targetTypeLabel = 'Target bonus';
+
+  static String rewardTypeLabel(CampaignReward reward) => switch (reward) {
+    CampaignPerUnitReward() => perUnitTypeLabel,
+    CampaignTargetReward() => targetTypeLabel,
+  };
+
+  /// The campaign's overall ceiling, as a card fact.
+  ///
+  /// Rendered **only** when `campaign_rules.max_reward_coins` is non-null.
+  /// There is no "uncapped" chip and no "no maximum" wording: absence of a cap
+  /// is the ordinary case, and labelling it would give a reader a term to
+  /// wonder about where the contract simply has nothing to say.
+  static String campaignMaximumLabel(int cap) =>
+      'Campaign maximum ${_coins(cap)}';
 
   /// The configured offer, in one sentence.
   ///
@@ -280,6 +337,76 @@ abstract final class CampaignCopy {
     // individual reward.
     return '$sentence This campaign pays no more than ${_coins(cap)} in total.';
   }
+
+  // -- What a reader actually has to do -------------------------------------
+
+  static const String howItWorksSectionTitle = 'What you need to do';
+
+  /// The campaign restated as the sequence of things that have to happen.
+  ///
+  /// Every step is a **restatement** of a rule already on the screen — the
+  /// product eligibility rule, the reward rule and the performance scope — in
+  /// the order they occur on a shop floor. Nothing here adds a term, promises
+  /// an outcome, or says a reward *will* be paid: the last step names
+  /// verification and evaluation as the things that decide, because they are.
+  static List<String> howItWorksSteps(
+    CampaignOffer offer,
+    CampaignAudience audience,
+  ) {
+    final bool seller = audience == CampaignAudience.salesStaff;
+
+    final String sell = switch (offer.productEligibility.scope) {
+      CampaignProductScope.selectedProducts =>
+        seller
+            ? 'Sell one of the eligible products listed below.'
+            : 'A Sales Staff member sells one of the eligible products listed '
+                  'below.',
+      CampaignProductScope.allEligibleProducts =>
+        seller
+            ? 'Sell a product assigned to your Retailer while it is eligible.'
+            : 'A Sales Staff member sells a product assigned to your Retailer '
+                  'while it is eligible.',
+    };
+
+    final String submit = seller
+        ? 'Submit the receipt for that sale from the Submit screen.'
+        : 'That Sales Staff member submits the receipt for the sale.';
+
+    final CampaignReward reward = offer.reward;
+    final String counts = switch (reward) {
+      CampaignPerUnitReward() =>
+        seller
+            ? 'Every eligible unit on the verified sale earns the configured '
+                  'coins.'
+            : 'Every eligible unit on the verified sale earns the configured '
+                  'coins for the seller.',
+      CampaignTargetReward() => switch (offer.performanceScope) {
+        CampaignPerformanceScope.individualStaff =>
+          seller
+              ? 'Your own eligible units add up towards the target.'
+              : "Each seller's own eligible units add up towards the target.",
+        CampaignPerformanceScope.retailerTeam =>
+          'Eligible units from across your Retailer add up towards one shared '
+              'target.',
+      },
+    };
+
+    return <String>[
+      sell,
+      submit,
+      counts,
+      'Rewards are recorded after the sale is verified and the campaign is '
+          'evaluated.',
+    ];
+  }
+
+  /// The route out of a campaign and into what it actually paid.
+  ///
+  /// Offered on the Sales Staff detail screen only. There is no Retailer Owner
+  /// earnings contract — `STAFF_EARNINGS_VIEW` is mapped to `SALES_STAFF`
+  /// alone — so the Owner screen has nowhere to send a reader and shows no
+  /// link.
+  static const String earningsLinkLabel = 'My campaign earnings';
 
   // -- Measurement ----------------------------------------------------------
 
@@ -546,6 +673,9 @@ abstract final class CampaignCopy {
     final StringBuffer buffer = StringBuffer(offer.name)
       ..write('. ')
       ..write(lifecycleLabel(offer.lifecycleState))
+      ..write('. ')
+      // The rule pill, spoken where it is drawn — beside the status.
+      ..write(rewardTypeLabel(offer.reward))
       ..write('. ');
 
     final String? vendor = campaign.vendorName;

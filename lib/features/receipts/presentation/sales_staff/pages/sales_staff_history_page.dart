@@ -44,44 +44,58 @@ class SalesStaffHistoryPage extends StatelessWidget {
         return SrPageBody(
           maxWidth: SrSpacing.formMaxWidth,
           children: <Widget>[
-            SrPageHeader(
-              eyebrow: PortalKind.salesStaff.displayName,
-              title: 'My receipts',
-              description:
-                  'Every receipt you have submitted, newest first. Only your '
-                  'own submissions appear here.',
-              actions: <Widget>[
-                SrButton(
-                  label: 'Refresh',
-                  variant: SrButtonVariant.outline,
-                  icon: Icons.refresh_rounded,
-                  loading: state.isRefreshing,
-                  loadingLabel: 'Refreshing…',
-                  onPressed: state.isRefreshing ? null : cubit.refresh,
-                ),
-              ],
+            SrEnter(
+              child: SrPageHeader(
+                eyebrow: PortalKind.salesStaff.displayName,
+                title: 'My receipts',
+                description:
+                    'Every receipt you have submitted, newest first. Only your '
+                    'own submissions appear here.',
+                actions: <Widget>[
+                  SrButton(
+                    label: 'Refresh',
+                    variant: SrButtonVariant.outline,
+                    icon: Icons.refresh_rounded,
+                    loading: state.isRefreshing,
+                    loadingLabel: 'Refreshing…',
+                    onPressed: state.isRefreshing ? null : cubit.refresh,
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: SrSpacing.xxl),
-            _body(state, cubit),
+            _body(context, state, cubit),
           ],
         );
       },
     );
   }
 
-  Widget _body(ReceiptHistoryState state, ReceiptHistoryCubit cubit) {
+  Widget _body(
+    BuildContext context,
+    ReceiptHistoryState state,
+    ReceiptHistoryCubit cubit,
+  ) {
     if (state.phase == ReceiptHistoryPhase.failed &&
         state.submissions.isEmpty) {
       return SrFailureView(failure: state.failure!, onRetry: cubit.load);
     }
 
     if (state.submissions.isEmpty) {
-      return const SrEmptyState(
+      return SrEmptyState(
         icon: Icons.inbox_outlined,
         tone: SrTone.indigo,
         title: 'No receipts yet',
         description:
-            'Once you submit a receipt from the Submit tab it will appear here.',
+            'Once you submit a receipt it will appear here, newest first.',
+        // The one thing a person with no receipts can do, opening the flow
+        // that already performs the write.
+        action: SrButton(
+          label: 'Add receipt',
+          icon: Icons.add_a_photo_rounded,
+          size: SrButtonSize.lg,
+          onPressed: () => context.go(SalesStaffNavigation.submit),
+        ),
       );
     }
 
@@ -99,17 +113,25 @@ class SalesStaffHistoryPage extends StatelessWidget {
           ),
           const SizedBox(height: SrSpacing.lg),
         ],
-        for (final ReceiptSubmission submission in state.submissions)
+        for (int i = 0; i < state.submissions.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: SrSpacing.md),
-            child: Builder(
-              builder: (BuildContext context) => ReceiptSubmissionTile(
-                submission: submission,
-                onOpenReview: submission.status.isSubmitted
-                    ? () => context.go(
-                        SalesStaffNavigation.review(submission.submissionId),
-                      )
-                    : null,
+            child: SrEnter(
+              index: i,
+              child: Builder(
+                builder: (BuildContext context) {
+                  final ReceiptSubmission submission = state.submissions[i];
+                  return ReceiptSubmissionTile(
+                    submission: submission,
+                    onOpenReview: submission.status.isSubmitted
+                        ? () => context.go(
+                            SalesStaffNavigation.review(
+                              submission.submissionId,
+                            ),
+                          )
+                        : null,
+                  );
+                },
               ),
             ),
           ),

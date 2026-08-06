@@ -14,6 +14,7 @@ import '../widgets/receipt_file_field.dart';
 import '../widgets/receipt_products_section.dart';
 import '../widgets/receipt_progress_panel.dart';
 import '../widgets/receipt_shop_selector.dart';
+import '../widgets/receipt_steps_strip.dart';
 import '../widgets/receipt_submission_tile.dart';
 import '../widgets/receipt_success_card.dart';
 
@@ -58,12 +59,63 @@ class SalesStaffSubmitPage extends StatelessWidget {
         return SrPageBody(
           maxWidth: SrSpacing.formMaxWidth,
           children: <Widget>[
-            SrPageHeader(
-              eyebrow: PortalKind.salesStaff.displayName,
-              title: 'Submit a receipt',
-              description: ReceiptCopy.submitPageDescription,
+            // The instruction hero: what this screen is, in one glyph and two
+            // lines, with the four steps under it. The bare page header this
+            // replaced left a form starting at the top of the viewport.
+            SrEnter(
+              child: SrFeatureCard(
+                padding: const EdgeInsets.all(SrSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        const SrIconDisc(
+                          icon: Icons.receipt_long_rounded,
+                          tone: SrTone.indigo,
+                          size: 56,
+                        ),
+                        const SizedBox(width: SrSpacing.lg),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                PortalKind.salesStaff.displayName.toUpperCase(),
+                                style: SrTypography.eyebrow.copyWith(
+                                  color: context.sr.brand,
+                                ),
+                              ),
+                              const SizedBox(height: SrSpacing.xxs),
+                              Text(
+                                'Submit a receipt',
+                                style: SrTypography.pageTitle.copyWith(
+                                  color: context.sr.foreground,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: SrSpacing.md),
+                    Text(
+                      ReceiptCopy.submitPageDescription,
+                      style: SrTypography.body.copyWith(
+                        color: context.sr.textSecondary,
+                      ),
+                    ),
+                    if (state.phase !=
+                        ReceiptSubmissionPhase.loadFailed) ...<Widget>[
+                      const SizedBox(height: SrSpacing.xl),
+                      ReceiptStepsStrip(current: _stepFor(state)),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: SrSpacing.xxl),
+            const SizedBox(height: SrSpacing.xl),
 
             if (state.phase == ReceiptSubmissionPhase.loadFailed)
               SrFailureView(failure: state.loadFailure!, onRetry: cubit.load)
@@ -83,21 +135,50 @@ class SalesStaffSubmitPage extends StatelessWidget {
                         ),
                 )
               else
-                _SubmitForm(state: state, cubit: cubit),
+                SrEnter(
+                  index: 2,
+                  child: _SubmitForm(state: state, cubit: cubit),
+                ),
 
               const SizedBox(height: SrSpacing.xxl),
-              ReceiptProductsSection(
-                products: state.products,
-                failure: state.productsFailure,
-                onRetry: cubit.load,
+              SrEnter(
+                index: 3,
+                child: ReceiptProductsSection(
+                  products: state.products,
+                  failure: state.productsFailure,
+                  onRetry: cubit.load,
+                ),
               ),
               const SizedBox(height: SrSpacing.xxl),
-              const _RecentSubmissions(),
+              const SrEnter(index: 4, child: _RecentSubmissions()),
             ],
           ],
         );
       },
     );
+  }
+
+  /// Which of the four steps the current phase is at.
+  ///
+  /// Derived, never stored. The submission cubit holds one phase and this
+  /// reads it — a second counter kept alongside would be one more thing that
+  /// could disagree with the state that actually performs the write.
+  ///
+  /// A settled failure — rejected, retryable, unconfirmed, duplicate, denied —
+  /// leaves the strip wherever the person actually is: they still have a file
+  /// chosen, so they are on "Review image", which is exactly the step the
+  /// notice above the form is asking them to act on.
+  ReceiptStep _stepFor(ReceiptSubmissionState state) {
+    if (state.phase == ReceiptSubmissionPhase.success) {
+      return ReceiptStep.reviewDetails;
+    }
+    if (state.phase == ReceiptSubmissionPhase.submitting ||
+        state.phase == ReceiptSubmissionPhase.validating) {
+      return ReceiptStep.submitSecurely;
+    }
+    return state.file == null
+        ? ReceiptStep.chooseReceipt
+        : ReceiptStep.reviewImage;
   }
 }
 

@@ -194,6 +194,12 @@ void main() {
         PortalKind.salesStaff,
         receipts: receipts,
       );
+      // The shell lands on the Home screen; the submission form is one tap
+      // away, on the destination it has always been on.
+      GoRouter.of(
+        tester.element(find.byType(Navigator).first),
+      ).go(SalesStaffNavigation.submit);
+      await tester.pumpAndSettle();
 
       await tapVisible(tester, find.text('Select a shop…'));
       await tester.tap(find.text('Marina Mall').last);
