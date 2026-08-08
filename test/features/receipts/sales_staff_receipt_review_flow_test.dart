@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sale_reward/app/shells/sales_staff/sales_staff_navigation.dart';
+import 'package:sale_reward/core/widgets/widgets.dart';
 import 'package:sale_reward/features/auth/domain/entities/portal_kind.dart';
 import 'package:sale_reward/features/receipts/domain/entities/extracted_value.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmation_input.dart';
@@ -16,6 +17,7 @@ import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_request_outcome.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_warning_code.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_request_result.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_status.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_submission.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_submission_status.dart';
 import 'package:sale_reward/features/receipts/domain/repositories/receipt_extraction_result.dart';
@@ -83,11 +85,13 @@ void main() {
     WidgetTester tester, {
     FakeReceiptExtractionRepository? extraction,
     String submissionId = reviewSubmissionId,
+    Size surface = phoneSurface,
   }) async {
     final PumpedApp app = await pumpAppInRole(
       tester,
       PortalKind.salesStaff,
       receiptExtraction: extraction,
+      surface: surface,
     );
     final BuildContext context = tester.element(
       find.byType(SalesStaffHistoryPage).evaluate().isEmpty
@@ -703,10 +707,368 @@ void main() {
   /// extraction's own currency and width may describe them.
   ///
   /// Every test here drives the real screen: the real router, the real cubit,
-  /// the real `ExpansionTile` opened by a real tap. Nothing asserts on a
-  /// constructor argument, because the defect these cover was a call site
-  /// passing the wrong two values into a widget that was itself correct — an
-  /// assertion on what the widget was handed would have gone on passing.
+  /// the real widget. Nothing asserts on a constructor argument, because the
+  /// defect these cover was a call site passing the wrong two values into a
+  /// widget that was itself correct — an assertion on what the widget was
+  /// handed would have gone on passing.
+  /// What the provider read, shown as soon as there is a reading.
+  ///
+  /// The subject here is presentation only: which lines appear, in what order,
+  /// carrying which of the four figures, and under whose currency. Nothing in
+  /// this group confirms, edits or matches anything.
+  group('the extracted items, on screen', () {
+    const ExtractedValue<String> aed = ExtractedValue<String>(
+      value: 'AED',
+      sourceText: 'AED',
+      confidence: 0.99,
+    );
+
+    FakeReceiptExtractionRepository reading({
+      ExtractedValue<String> currencyCode = aed,
+      int? currencyMinorUnit = 2,
+      List<ReceiptExtractionLineItem> lines = tenMixedLineItems,
+      ReceiptExtractionStatus status = ReceiptExtractionStatus.succeeded,
+    }) {
+      final ReceiptExtraction extraction = succeededExtraction(
+        status: status,
+        currencyCode: currencyCode,
+        currencyMinorUnit: currencyMinorUnit,
+        lineItemCount: lines.length,
+      );
+      return FakeReceiptExtractionRepository(
+        requestResults:
+            <ReceiptExtractionResult<ReceiptExtractionRequestResult>>[
+              ReceiptExtractionSuccess<ReceiptExtractionRequestResult>(
+                requestResult(extraction: extraction),
+              ),
+            ],
+        extractionResults: <ReceiptExtractionResult<ReceiptExtraction>>[
+          ReceiptExtractionSuccess<ReceiptExtraction>(extraction),
+        ],
+        lineItemResults:
+            <ReceiptExtractionResult<List<ReceiptExtractionLineItem>>>[
+              ReceiptExtractionSuccess<List<ReceiptExtractionLineItem>>(lines),
+            ],
+      );
+    }
+
+    Finder itemText(String text) => find.descendant(
+      of: find.byType(ReceiptReviewLineItems),
+      matching: find.text(text),
+    );
+
+    /// Every string the panel renders, in the order it lays them out.
+    List<String> rendered(WidgetTester tester) => tester
+        .widgetList<Text>(
+          find.descendant(
+            of: find.byType(ReceiptReviewLineItems),
+            matching: find.byType(Text),
+          ),
+        )
+        .map((Text text) => text.data ?? '')
+        .toList();
+
+    testWidgets('are visible the moment the reading arrives, with no tap', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      // Not one gesture between opening the screen and reading the items.
+      expect(find.byType(ReceiptReviewLineItems), findsOneWidget);
+      expect(find.byType(ExpansionTile), findsNothing);
+      expect(itemText('Chain lubricant'), findsOneWidget);
+      expect(find.text('10 items detected'), findsOneWidget);
+    });
+
+    testWidgets('sit above the confirmation form, not below it', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      // Compared by position in the laid-out tree, which is what a person
+      // actually scrolls through — an assertion on child order in a list would
+      // pass even if the widget were painted somewhere else.
+      final double items = tester
+          .getTopLeft(find.byType(ReceiptReviewLineItems))
+          .dy;
+      final double form = tester.getTopLeft(find.byType(ReceiptReviewForm)).dy;
+      expect(items, lessThan(form));
+    });
+
+    testWidgets('every returned line is rendered, in the backend order', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      final List<String> text = rendered(tester);
+      const List<String> named = <String>[
+        'Front and rear brake cables, stainless, with ferrules',
+        'Chain lubricant',
+        'Handlebar tape',
+        'Inner tube 700x25',
+        'Item not read',
+        'Promotional water bottle',
+        'Cable housing',
+        'Workshop labour',
+        'Bar end plugs',
+        'Disc brake pads',
+      ];
+
+      // All ten, and the tenth as surely as the first: nothing takes, caps,
+      // pages or filters.
+      for (final String description in named) {
+        expect(itemText(description), findsOneWidget, reason: description);
+      }
+      // And in exactly the order the backend returned them.
+      final List<int> positions = named
+          .map((String d) => text.indexOf(d))
+          .toList();
+      expect(positions, everyElement(isNonNegative));
+      for (int i = 1; i < positions.length; i++) {
+        expect(positions[i], greaterThan(positions[i - 1]));
+      }
+      // The count states what came back, and never rounds up to look complete.
+      expect(find.text('10 items detected'), findsOneWidget);
+    });
+
+    testWidgets('one line is counted in the singular', (tester) async {
+      await openReview(tester, extraction: reading(lines: oneCompleteLineItem));
+
+      expect(find.text('1 item detected'), findsOneWidget);
+      expect(find.text('1 items detected'), findsNothing);
+    });
+
+    testWidgets('a complete line shows all three figures', (tester) async {
+      await openReview(tester, extraction: reading(lines: oneCompleteLineItem));
+
+      expect(itemText('Front and rear brake cables'), findsOneWidget);
+      expect(itemText('Qty 1'), findsOneWidget);
+      expect(itemText('Unit AED 10.00'), findsOneWidget);
+      expect(itemText('Amount AED 10.00'), findsOneWidget);
+    });
+
+    testWidgets('a missing quantity never becomes one', (tester) async {
+      await openReview(tester, extraction: reading());
+
+      // Line 2 read a price but no quantity. Four lines in the fixture do
+      // carry a quantity of exactly 1 — 1, 5, 6 and 10 — and line 2 is not one
+      // of them: a fifth "Qty 1" would be this screen inventing the number.
+      expect(itemText('Unit AED 8.50'), findsOneWidget);
+      expect(itemText('Qty 1'), findsNWidgets(4));
+    });
+
+    testWidgets('a missing unit price is never derived from the amount', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      // Line 3: 2 × ? = AED 30.00. The obvious division is AED 15.00, and it
+      // must not appear — the provider did not read a unit price for this line.
+      expect(itemText('Amount AED 30.00'), findsOneWidget);
+      expect(itemText('Unit AED 15.00'), findsNothing);
+      // Nor is the label rendered with nothing behind it.
+      expect(itemText('Unit —'), findsNothing);
+    });
+
+    testWidgets('a missing line total is never derived from the unit price', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      // Line 4: 3 × AED 6.00. The product, AED 18.00, must not appear.
+      expect(itemText('Qty 3'), findsOneWidget);
+      expect(itemText('Unit AED 6.00'), findsOneWidget);
+      expect(itemText('Amount AED 18.00'), findsNothing);
+      // It is stated as unavailable instead, which is the honest answer.
+      expect(itemText('Amount —'), findsNWidgets(2));
+    });
+
+    testWidgets('zero is a reading, and is written as a figure', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      // Line 6 was free. Zero and unknown are different facts and the panel
+      // keeps them apart: this is AED 0.00, not an em dash.
+      expect(itemText('Unit AED 0.00'), findsOneWidget);
+      expect(itemText('Amount AED 0.00'), findsOneWidget);
+    });
+
+    testWidgets('a fractional quantity keeps its fraction', (tester) async {
+      await openReview(tester, extraction: reading());
+
+      expect(itemText('Qty 1.5'), findsOneWidget);
+    });
+
+    testWidgets('a line with no figures at all carries none', (tester) async {
+      await openReview(tester, extraction: reading());
+
+      // Line 8 is a description and nothing else. It still appears, because a
+      // line the provider read is a line the reviewer should see.
+      expect(itemText('Workshop labour'), findsOneWidget);
+    });
+
+    for (final (String code, int digits, String unit, String amount)
+        in const <(String, int, String, String)>[
+          // JPY is whole: 1000 minor units is ¥1000, not ¥10.00.
+          ('JPY', 0, 'Unit JPY 1000', 'Amount JPY 1000'),
+          ('AED', 2, 'Unit AED 10.00', 'Amount AED 10.00'),
+          // KWD is thousandths: the same integer is one dinar, not ten.
+          ('KWD', 3, 'Unit KWD 1.000', 'Amount KWD 1.000'),
+        ]) {
+      testWidgets('$code is written at its own $digits decimals', (
+        tester,
+      ) async {
+        await openReview(
+          tester,
+          extraction: reading(
+            currencyCode: ExtractedValue<String>(
+              value: code,
+              sourceText: code,
+              confidence: 0.99,
+            ),
+            currencyMinorUnit: digits,
+            lines: oneCompleteLineItem,
+          ),
+        );
+
+        expect(itemText(unit), findsOneWidget);
+        expect(itemText(amount), findsOneWidget);
+        // And never at somebody else's width.
+        expect(
+          itemText('Amount $code 10.00'),
+          digits == 2 ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+
+    testWidgets('a width the backend could not have reported is refused', (
+      tester,
+    ) async {
+      await openReview(
+        tester,
+        extraction: reading(currencyMinorUnit: 7, lines: oneCompleteLineItem),
+      );
+
+      // Seven is outside 0..4. Neither figure is written, and nothing falls
+      // back to two decimals behind them.
+      expect(itemText('Unit —'), findsOneWidget);
+      expect(itemText('Amount —'), findsOneWidget);
+      expect(itemText('Unit AED 10.00'), findsNothing);
+      expect(itemText('Amount AED 10.00'), findsNothing);
+      expect(itemText('AED 10.00'), findsNothing);
+      expect(itemText('10.00'), findsNothing);
+    });
+
+    testWidgets('no width at all is not two decimals', (tester) async {
+      await openReview(
+        tester,
+        extraction: reading(
+          currencyMinorUnit: null,
+          lines: oneCompleteLineItem,
+        ),
+      );
+
+      expect(itemText('Unit —'), findsOneWidget);
+      expect(itemText('Amount —'), findsOneWidget);
+      expect(itemText('10.00'), findsNothing);
+      // The description is still shown: a figure this screen cannot write does
+      // not cost the reviewer the line it belonged to.
+      expect(itemText('Front and rear brake cables'), findsOneWidget);
+    });
+
+    testWidgets('nothing in the panel can be edited or removed', (
+      tester,
+    ) async {
+      await openReview(tester, extraction: reading());
+
+      final Finder panel = find.byType(ReceiptReviewLineItems);
+      // No control of any kind: not a field to type in, not a stepper, not a
+      // delete, not a match, not an approval. This milestone only reports.
+      expect(
+        find.descendant(of: panel, matching: find.byType(TextField)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.byType(EditableText)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.byType(SrButton)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.byType(IconButton)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.byType(InkWell)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('no reference or code is invented for a line', (tester) async {
+      await openReview(tester, extraction: reading());
+
+      // The contract carries no SKU, product code, reference or barcode, so the
+      // panel shows none — and in particular does not mine one out of the
+      // description or the source text.
+      for (final String label in <String>[
+        'SKU',
+        'Code',
+        'Reference',
+        'Barcode',
+        'Ref',
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byType(ReceiptReviewLineItems),
+            matching: find.textContaining(label),
+          ),
+          findsNothing,
+          reason: 'the panel must not present a $label',
+        );
+      }
+    });
+
+    testWidgets('a failed attempt shows no items and asks for none', (
+      tester,
+    ) async {
+      final FakeReceiptExtractionRepository repository = reading(
+        status: ReceiptExtractionStatus.failed,
+      );
+
+      await openReview(tester, extraction: repository);
+
+      // There will never be a reading for this attempt. The panel is absent and
+      // the line-item read was never made — there is nothing to return.
+      expect(find.byType(ReceiptReviewLineItems), findsNothing);
+      expect(repository.lineItemIds, isEmpty);
+      // The rest of the screen is unaffected.
+      expect(find.byType(ReceiptReviewPreview), findsOneWidget);
+    });
+
+    // QUEUED and PROCESSING are asserted in `receipt_review_cubit_test.dart`
+    // instead. An open attempt polls, so this screen never settles, and driving
+    // it here would mean either a real three-second wait per case or a fake
+    // clock the router does not let a widget test inject. The cubit owns the
+    // decision anyway: the line-item read happens only for a stored reading.
+
+    for (final Size surface in <Size>[smallPhoneSurface, phoneSurface]) {
+      testWidgets('ten items do not overflow at '
+          '${surface.width}×${surface.height}', (tester) async {
+        await openReview(tester, extraction: reading(), surface: surface);
+
+        expect(find.byType(ReceiptReviewLineItems), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('the line items, and whose currency describes them', () {
     const ExtractedValue<String> extractedAed = ExtractedValue<String>(
       value: 'AED',
@@ -749,30 +1111,14 @@ void main() {
       matching: find.text(text),
     );
 
-    /// Opens the panel, which is collapsed by default.
-    ///
-    /// Idempotent by inspection rather than by counting taps: a rebuild between
-    /// two assertions may or may not preserve the tile's expansion, and a helper
-    /// that blindly tapped would close it exactly when it had survived.
-    Future<void> showLines(
-      WidgetTester tester, {
-      String title = '1 line item',
-    }) async {
-      if (lineText('Paracetamol 500mg').evaluate().isNotEmpty) {
-        return;
-      }
-      await tapVisible(tester, find.text(title));
-    }
-
     testWidgets(
       'a line is written in the extraction\'s own currency and width',
       (tester) async {
         final FakeReceiptExtractionRepository repository = readingOf();
         await openReview(tester, extraction: repository);
-        await showLines(tester);
 
         // 1250 minor units, at the two decimals the READING reported for AED.
-        expect(lineText('AED 12.50'), findsOneWidget);
+        expect(lineText('Amount AED 12.50'), findsOneWidget);
       },
     );
 
@@ -785,27 +1131,24 @@ void main() {
         repository.currencyGates['JPY'] =
             Completer<ReceiptExtractionResult<ReceiptCurrencyMinorUnit?>>();
         await openReview(tester, extraction: repository);
-        await showLines(tester);
-        expect(lineText('AED 12.50'), findsOneWidget);
+        expect(lineText('Amount AED 12.50'), findsOneWidget);
 
         await tester.enterText(find.byType(TextField).at(0), 'JPY');
         await tester.pumpAndSettle();
-        await showLines(tester);
 
         // The lookup is still in flight, and the line has not moved.
-        expect(lineText('AED 12.50'), findsOneWidget);
-        expect(lineText('JPY 1250'), findsNothing);
+        expect(lineText('Amount AED 12.50'), findsOneWidget);
+        expect(lineText('Amount JPY 1250'), findsNothing);
 
         // JPY answers: whole numbers. That is an answer about the CONFIRMATION.
         repository.currencyGates['JPY']!.complete(currencyWidth('JPY', 0));
         await tester.pumpAndSettle();
-        await showLines(tester);
 
         // The line still says what the provider read. Relabelling it JPY would
         // multiply what the reviewer is checking against by a hundred.
-        expect(lineText('AED 12.50'), findsOneWidget);
-        expect(lineText('JPY 1250'), findsNothing);
-        expect(lineText('JPY 12.50'), findsNothing);
+        expect(lineText('Amount AED 12.50'), findsOneWidget);
+        expect(lineText('Amount JPY 1250'), findsNothing);
+        expect(lineText('Amount JPY 12.50'), findsNothing);
 
         // And the form did take the width, for itself.
         final ReceiptReviewForm form = tester.widget<ReceiptReviewForm>(
@@ -823,7 +1166,6 @@ void main() {
         );
         repository.currencyResults['AED'] = currencyWidth('AED', 2);
         await openReview(tester, extraction: repository);
-        await showLines(tester);
 
         // The confirmation side resolved two decimals, and is using them.
         final ReceiptReviewForm form = tester.widget<ReceiptReviewForm>(
@@ -833,8 +1175,8 @@ void main() {
 
         // The line is still unwritable: the READING carried no width, and a
         // lookup about the form's currency does not retroactively supply one.
-        expect(lineText('—'), findsOneWidget);
-        expect(lineText('AED 12.50'), findsNothing);
+        expect(lineText('Amount —'), findsOneWidget);
+        expect(lineText('Amount AED 12.50'), findsNothing);
         // Nor is there a two-decimal assumption hiding behind it.
         expect(lineText('12.50'), findsNothing);
       },
@@ -854,21 +1196,19 @@ void main() {
         );
         repository.currencyResults['AED'] = currencyWidth('AED', 2);
         await openReview(tester, extraction: repository);
-        await showLines(tester);
 
         // The reviewer supplies the currency the CONFIRMATION will use, and it
         // resolves. None of that says what the provider's integers meant.
         await tester.enterText(find.byType(TextField).at(0), 'AED');
         await tester.pumpAndSettle();
-        await showLines(tester);
 
         final ReceiptReviewForm form = tester.widget<ReceiptReviewForm>(
           find.byType(ReceiptReviewForm),
         );
         expect(form.minorDigits, 2);
 
-        expect(lineText('—'), findsOneWidget);
-        expect(lineText('AED 12.50'), findsNothing);
+        expect(lineText('Amount —'), findsOneWidget);
+        expect(lineText('Amount AED 12.50'), findsNothing);
         // A width with no currency is not an amount either.
         expect(lineText('12.50'), findsNothing);
       });
@@ -886,12 +1226,11 @@ void main() {
           currencyMinorUnit: 0,
         );
         await openReview(tester, extraction: repository);
-        await showLines(tester);
 
         // Here JPY 1250 is the RIGHT answer, because JPY is what the reading
         // itself reported. The rule is ownership, not a banned string.
-        expect(lineText('JPY 1250'), findsOneWidget);
-        expect(lineText('JPY 12.50'), findsNothing);
+        expect(lineText('Amount JPY 1250'), findsOneWidget);
+        expect(lineText('Amount JPY 12.50'), findsNothing);
       },
     );
 
@@ -901,7 +1240,6 @@ void main() {
         final FakeReceiptExtractionRepository repository = readingOf();
         repository.currencyResults['JPY'] = currencyWidth('JPY', 0);
         await openReview(tester, extraction: repository);
-        await showLines(tester);
 
         await tester.enterText(find.byType(TextField).at(0), 'JPY');
         await tester.pumpAndSettle();
@@ -911,10 +1249,9 @@ void main() {
         await tester.enterText(find.byType(TextField).at(2), '');
         await tester.enterText(find.byType(TextField).at(3), '');
         await tester.pumpAndSettle();
-        await showLines(tester);
 
         // Still the reading's own currency, right up to the moment of sending.
-        expect(lineText('AED 12.50'), findsOneWidget);
+        expect(lineText('Amount AED 12.50'), findsOneWidget);
 
         await chooseFirstProduct(tester);
         await confirmReceiptAndProducts(tester);
@@ -938,7 +1275,6 @@ void main() {
         lines: reviewLineItems,
       );
       await openReview(tester, extraction: repository);
-      await tapVisible(tester, find.text('2 line items'));
 
       final List<String> rendered = tester
           .widgetList<Text>(
@@ -955,8 +1291,8 @@ void main() {
         lessThan(rendered.indexOf('Vitamin D3')),
       );
       // Both in the extraction's AED, at its own width of two.
-      expect(lineText('AED 25.00'), findsOneWidget);
-      expect(lineText('AED 100.50'), findsOneWidget);
+      expect(lineText('Amount AED 25.00'), findsOneWidget);
+      expect(lineText('Amount AED 100.50'), findsOneWidget);
     });
 
     testWidgets('a line-item read failure degrades only that panel', (

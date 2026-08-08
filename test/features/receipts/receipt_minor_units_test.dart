@@ -150,6 +150,24 @@ void main() {
       expect(formatMinorAmount(12550, null, 2), '125.50');
       expect(formatMinorAmount(12550, '  ', 2), '125.50');
     });
+
+    test('one integer, four widths, four different amounts', () {
+      // The figure a line item shows is this function's output, so the widths
+      // the extraction can report are exercised here directly. 1000 minor units
+      // is a thousand yen, ten dirhams, one dinar and a tenth of a CLF.
+      expect(formatMinorAmount(1000, 'JPY', 0), 'JPY 1000');
+      expect(formatMinorAmount(1000, 'AED', 2), 'AED 10.00');
+      expect(formatMinorAmount(1000, 'KWD', 3), 'KWD 1.000');
+      expect(formatMinorAmount(1000, 'CLF', 4), 'CLF 0.1000');
+    });
+
+    test('zero is written as a figure at every width', () {
+      // A line item priced at zero renders this, never an em dash: the em dash
+      // means "not read", and a free item was read perfectly well.
+      expect(formatMinorAmount(0, 'JPY', 0), 'JPY 0');
+      expect(formatMinorAmount(0, 'AED', 2), 'AED 0.00');
+      expect(formatMinorAmount(0, 'KWD', 3), 'KWD 0.000');
+    });
   });
 
   group('the four widths, on the amounts they scale', () {

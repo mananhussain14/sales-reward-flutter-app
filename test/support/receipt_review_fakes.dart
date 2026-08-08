@@ -292,6 +292,104 @@ const List<ReceiptExtractionLineItem> reviewLineItems =
       ),
     ];
 
+/// Ten lines, each missing something different.
+///
+/// Long enough to prove nothing truncates it, and deliberately ragged so the
+/// "a field the provider did not read is not invented" rule is exercised by
+/// ordinary data rather than by one contrived row:
+///
+/// * 1 — everything read, and a description long enough to wrap on a phone.
+/// * 2 — no quantity. It must not become 1.
+/// * 3 — no unit price. It must not become the amount divided by the quantity.
+/// * 4 — no line total. It must not become the unit price times the quantity.
+/// * 5 — no description at all.
+/// * 6 — a **zero** unit price and a **zero** amount. Zero is a reading, not a
+///   gap, and it is written as a figure.
+/// * 7 — a fractional quantity, the one genuinely non-integer value there is.
+/// * 8 — only a description; every figure absent.
+/// * 9, 10 — ordinary, so the tail of the list is plainly present.
+const List<ReceiptExtractionLineItem> tenMixedLineItems =
+    <ReceiptExtractionLineItem>[
+      ReceiptExtractionLineItem(
+        lineNumber: 1,
+        description: 'Front and rear brake cables, stainless, with ferrules',
+        quantity: 1,
+        unitPriceMinor: 10000,
+        lineTotalMinor: 10000,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 2,
+        description: 'Chain lubricant',
+        unitPriceMinor: 850,
+        lineTotalMinor: 850,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 3,
+        description: 'Handlebar tape',
+        quantity: 2,
+        lineTotalMinor: 3000,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 4,
+        description: 'Inner tube 700x25',
+        quantity: 3,
+        unitPriceMinor: 600,
+      ),
+      // 17.00 rather than 15.00 on purpose: line 3's amount divided by its
+      // quantity is 15.00, and that figure must appear nowhere in the panel for
+      // the "a unit price is never derived" assertion to mean anything.
+      ReceiptExtractionLineItem(
+        lineNumber: 5,
+        quantity: 1,
+        unitPriceMinor: 1700,
+        lineTotalMinor: 1700,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 6,
+        description: 'Promotional water bottle',
+        quantity: 1,
+        unitPriceMinor: 0,
+        lineTotalMinor: 0,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 7,
+        description: 'Cable housing',
+        quantity: 1.5,
+        unitPriceMinor: 400,
+        lineTotalMinor: 600,
+      ),
+      ReceiptExtractionLineItem(lineNumber: 8, description: 'Workshop labour'),
+      ReceiptExtractionLineItem(
+        lineNumber: 9,
+        description: 'Bar end plugs',
+        quantity: 2,
+        unitPriceMinor: 250,
+        lineTotalMinor: 500,
+      ),
+      ReceiptExtractionLineItem(
+        lineNumber: 10,
+        description: 'Disc brake pads',
+        quantity: 1,
+        unitPriceMinor: 2200,
+        lineTotalMinor: 2200,
+      ),
+    ];
+
+/// One fully-populated line, for the currency-width tests.
+///
+/// The same integers under every width: `1` at 0 decimals, `1.000` at 3. What
+/// changes between those tests is only the currency the *reading* reported.
+const List<ReceiptExtractionLineItem> oneCompleteLineItem =
+    <ReceiptExtractionLineItem>[
+      ReceiptExtractionLineItem(
+        lineNumber: 1,
+        description: 'Front and rear brake cables',
+        quantity: 1,
+        unitPriceMinor: 1000,
+        lineTotalMinor: 1000,
+      ),
+    ];
+
 /// One line whose integer reads very differently under two currencies.
 ///
 /// `1250` is AED 12.50 at the extraction's own width of two, and ¥1250 at JPY's

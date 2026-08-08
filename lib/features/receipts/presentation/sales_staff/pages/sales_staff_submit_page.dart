@@ -6,6 +6,7 @@ import '../../../../../app/shells/sales_staff/sales_staff_navigation.dart';
 import '../../../../../core/design/design.dart';
 import '../../../../../core/widgets/widgets.dart';
 import '../../../../auth/domain/entities/portal_kind.dart';
+import '../../../domain/entities/receipt_shop.dart';
 import '../../../domain/entities/receipt_submission.dart';
 import '../cubit/receipt_history_cubit.dart';
 import '../cubit/receipt_submission_cubit.dart';
@@ -13,6 +14,7 @@ import '../widgets/receipt_copy.dart';
 import '../widgets/receipt_file_field.dart';
 import '../widgets/receipt_products_section.dart';
 import '../widgets/receipt_progress_panel.dart';
+import '../widgets/receipt_shop_context.dart';
 import '../widgets/receipt_shop_selector.dart';
 import '../widgets/receipt_steps_strip.dart';
 import '../widgets/receipt_submission_tile.dart';
@@ -23,8 +25,19 @@ import '../widgets/receipt_success_card.dart';
 /// ## The whole flow, in the order it appears
 ///
 /// 1. **Shop** — from `list_my_assigned_receipt_shops()`. Always visible, so a
-///    person can see which shop a receipt is about to be filed against.
+///    person can see which shop a receipt is about to be filed against, and it
+///    takes one of three forms depending on what that call returned:
+///
+///    * **none** — the form is replaced by an explanation. No selector, no
+///      image control and no submit button, because none of the three could
+///      lead anywhere.
+///    * **exactly one** — selected by the cubit and shown read-only. Nobody is
+///      asked to choose between one thing.
+///    * **several** — a required selector with nothing preselected, and the
+///      image control below it stays locked until it is answered.
+///
 /// 2. **Receipt image** — camera or gallery, previewed, replaceable, removable.
+///    Reachable only once step 1 has settled on a shop.
 /// 3. **Submit** — one `POST` to the `submit-receipt` Edge Function carrying
 ///    `shop_id` and the file, and nothing else.
 /// 4. **Progress** — four true stages, and no invented percentage.
@@ -192,7 +205,16 @@ class _SubmitForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ReceiptNotice? notice = ReceiptCopy.noticeFor(state);
-    final bool hasShops = state.shops.isNotEmpty;
+    final bool hasShops = state.hasShops;
+
+    // The sole assigned shop, once the cubit has actually selected it. Read
+    // through `selectedShop` rather than off the list, so what this card names
+    // and what a submission would send cannot come apart; if the selection is
+    // somehow absent, the selector below is rendered instead and the person can
+    // still get through the form.
+    final ReceiptShop? soleShop = state.hasSingleShop
+        ? state.selectedShop
+        : null;
 
     return SrSectionCard(
       title: 'Receipt details',
@@ -218,17 +240,28 @@ class _SubmitForm extends StatelessWidget {
                   'submit a receipt. Ask your manager to assign you.',
             )
           else ...<Widget>[
-            ReceiptShopSelector(
-              shops: state.shops,
-              selected: state.selectedShop,
-              enabled: !state.isBusy,
-              onChanged: cubit.selectShop,
-            ),
+            // One shop is stated; several are chosen from. The cubit has
+            // already selected the single shop by the time this renders, so the
+            // read-only card is a description of a settled fact rather than a
+            // control that happens to be switched off.
+            if (soleShop != null)
+              ReceiptShopContext(shop: soleShop)
+            else
+              ReceiptShopSelector(
+                shops: state.shops,
+                selected: state.selectedShop,
+                enabled: !state.isBusy,
+                onChanged: cubit.selectShop,
+              ),
             const SizedBox(height: SrSpacing.xl),
 
             ReceiptFileField(
               file: state.file,
               enabled: state.canChooseFile,
+              // Locked, not disabled — see the widget. With one assigned shop
+              // this is never true, so that person reaches the picker in one
+              // step.
+              locked: state.isShopSelectionPending,
               supportsCamera: cubit.supportsCamera,
               onChoose: cubit.chooseImage,
               onRemove: cubit.removeFile,

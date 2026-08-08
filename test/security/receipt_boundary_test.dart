@@ -187,6 +187,39 @@ void main() {
       }
     });
 
+    test('no receipt source carries a shop id of its own', () {
+      // The submission cubit now selects a shop for the caller when they have
+      // exactly one. That convenience must never become a *source* of shop ids:
+      // the only id this client may hold is one `list_my_assigned_receipt_shops`
+      // just returned, and a literal UUID anywhere in the feature would mean
+      // somebody had introduced a second one.
+      final RegExp uuid = RegExp(
+        r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+        r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+      );
+      for (final File file in receiptSources) {
+        expect(
+          uuid.hasMatch(code(file)),
+          isFalse,
+          reason: '${file.path} hardcodes an id',
+        );
+      }
+    });
+
+    test('the automatic selection reads the id off the loaded list', () {
+      final String cubit = code(
+        sources.firstWhere(
+          (File f) => f.path.endsWith('receipt_submission_cubit.dart'),
+        ),
+      );
+
+      // The auto-selection takes the id from the single element of the RPC's
+      // own result, so there is no path by which a shop the backend did not
+      // return could be selected — and `reserve_receipt_submission` re-proves
+      // the assignment under the caller's token regardless.
+      expect(cubit.contains('value.single.shopId'), isTrue);
+    });
+
     test('no receipt source assigns a submission status', () {
       // The three status tokens may be *recognised* — that is what the parser
       // does — but never assembled into a value the client sends.

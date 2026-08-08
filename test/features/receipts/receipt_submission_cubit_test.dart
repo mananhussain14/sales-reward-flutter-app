@@ -25,11 +25,23 @@ void main() {
     onSubmissionSettled: () => historyRefreshes++,
   );
 
-  /// A cubit already loaded, with a shop and a valid receipt chosen.
-  Future<ReceiptSubmissionCubit> armed() async {
+  /// A cubit already loaded, with a shop chosen and no image yet.
+  ///
+  /// A chosen shop is a **prerequisite** of the image picker, not a field
+  /// beside it, so every test that reaches [ReceiptSubmissionCubit.chooseImage]
+  /// has to settle one first. The default fixture carries two assigned shops,
+  /// which is deliberately the case where nothing is chosen automatically.
+  Future<ReceiptSubmissionCubit> withShop() async {
     final ReceiptSubmissionCubit cubit = build();
     await cubit.load();
     cubit.selectShop(shopAUuid);
+    expect(cubit.state.canChooseFile, isTrue);
+    return cubit;
+  }
+
+  /// A cubit already loaded, with a shop and a valid receipt chosen.
+  Future<ReceiptSubmissionCubit> armed() async {
+    final ReceiptSubmissionCubit cubit = await withShop();
     await cubit.chooseImage(ReceiptImageOrigin.gallery);
     expect(cubit.state.canSubmit, isTrue);
     return cubit;
@@ -127,16 +139,224 @@ void main() {
 
     test('a shop that disappears between loads stops being selected', () async {
       final ReceiptSubmissionCubit cubit = build();
+      repository.shopsResult = const ReceiptReadSuccess<List<ReceiptShop>>(
+        <ReceiptShop>[shopA, shopB, shopC],
+      );
       await cubit.load();
       cubit.selectShop(shopAUuid);
 
+      // Down to two, not to one: a list of one is selected automatically, which
+      // would hide the clearing this test is about.
       repository.shopsResult = const ReceiptReadSuccess<List<ReceiptShop>>(
-        <ReceiptShop>[shopB],
+        <ReceiptShop>[shopB, shopC],
       );
       await cubit.load();
 
       expect(cubit.state.selectedShopId, isNull);
       expect(cubit.state.selectedShop, isNull);
+    });
+
+    test('a still-assigned shop survives a reload', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+      cubit.selectShop(shopBUuid);
+
+      await cubit.load();
+
+      expect(cubit.state.selectedShop, shopB);
+    });
+  });
+
+  group('exactly one assigned shop', () {
+    setUp(() {
+      repository.shopsResult = oneShopAssigned();
+    });
+
+    test('is selected when the list loads, without being asked', () async {
+      final ReceiptSubmissionCubit cubit = build();
+
+      await cubit.load();
+
+      expect(cubit.state.selectedShopId, shopAUuid);
+      expect(cubit.state.selectedShop, shopA);
+      expect(cubit.state.hasSingleShop, isTrue);
+      expect(cubit.state.requiresShopChoice, isFalse);
+      expect(cubit.state.isShopSelectionPending, isFalse);
+    });
+
+    test('the id comes from the assigned list and nowhere else', () async {
+      final ReceiptSubmissionCubit cubit = build();
+
+      await cubit.load();
+
+      // The only source of a shop id in this cubit is the zero-argument RPC the
+      // repository wraps. Nothing is derived, defaulted or remembered.
+      expect(repository.assignedShopsCallCount, 1);
+      expect(
+        cubit.state.shops.map((ReceiptShop shop) => shop.shopId),
+        contains(cubit.state.selectedShopId),
+      );
+    });
+
+    test('leaves the image picker open immediately', () async {
+      final ReceiptSubmissionCubit cubit = build();
+
+      await cubit.load();
+
+      expect(cubit.state.canChooseFile, isTrue);
+
+      await cubit.chooseImage(ReceiptImageOrigin.camera);
+
+      expect(cubit.state.phase, ReceiptSubmissionPhase.fileSelected);
+      expect(cubit.state.canSubmit, isTrue);
+    });
+
+    test('submits the automatically selected shop id', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+      await cubit.chooseImage(ReceiptImageOrigin.gallery);
+
+      await cubit.submit();
+
+      expect(repository.submitCallCount, 1);
+      expect(repository.lastSubmittedShopId, shopAUuid);
+      expect(cubit.state.phase, ReceiptSubmissionPhase.success);
+    });
+
+    test('dropping from several shops to one selects the survivor', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      repository.shopsResult = const ReceiptReadSuccess<List<ReceiptShop>>(
+        <ReceiptShop>[shopA, shopB],
+      );
+      await cubit.load();
+      cubit.selectShop(shopAUuid);
+
+      // shopA is unassigned; only shopB remains.
+      repository.shopsResult = oneShopAssigned(shopB);
+      await cubit.load();
+
+      expect(cubit.state.selectedShop, shopB);
+      expect(cubit.state.canChooseFile, isTrue);
+    });
+
+    test('gaining a second shop drops back to an unanswered choice', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+      expect(cubit.state.selectedShop, shopA);
+
+      repository.shopsResult = const ReceiptReadSuccess<List<ReceiptShop>>(
+        <ReceiptShop>[shopA, shopB],
+      );
+      await cubit.load();
+
+      // shopA is still assigned, so the existing selection stands rather than
+      // being thrown away — but it is now a choice the person owns.
+      expect(cubit.state.selectedShop, shopA);
+      expect(cubit.state.requiresShopChoice, isTrue);
+    });
+  });
+
+  group('no assigned shops', () {
+    setUp(() {
+      repository.shopsResult = noShopsAssigned();
+    });
+
+    test('nothing is selected and the picker stays shut', () async {
+      final ReceiptSubmissionCubit cubit = build();
+
+      await cubit.load();
+
+      expect(cubit.state.phase, ReceiptSubmissionPhase.ready);
+      expect(cubit.state.hasShops, isFalse);
+      expect(cubit.state.selectedShop, isNull);
+      expect(cubit.state.canChooseFile, isFalse);
+      expect(cubit.state.canSubmit, isFalse);
+      // Not "pending": there is no choice waiting to be made, so nothing is
+      // locked — the whole form is replaced upstream.
+      expect(cubit.state.isShopSelectionPending, isFalse);
+    });
+
+    test('an image cannot be picked at all', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+
+      await cubit.chooseImage(ReceiptImageOrigin.gallery);
+
+      expect(images.pickCallCount, 0);
+      expect(cubit.state.file, isNull);
+      expect(repository.submitCallCount, 0);
+    });
+  });
+
+  group('several assigned shops', () {
+    test('nothing is preselected', () async {
+      final ReceiptSubmissionCubit cubit = build();
+
+      await cubit.load();
+
+      expect(cubit.state.shops, <ReceiptShop>[shopA, shopB]);
+      expect(cubit.state.selectedShopId, isNull);
+      expect(cubit.state.selectedShop, isNull);
+      expect(cubit.state.requiresShopChoice, isTrue);
+      expect(cubit.state.isShopSelectionPending, isTrue);
+    });
+
+    test('the picker is shut until a shop is chosen', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+
+      expect(cubit.state.canChooseFile, isFalse);
+
+      await cubit.chooseImage(ReceiptImageOrigin.camera);
+
+      // Refused by the cubit itself, not merely hidden by the screen: the
+      // picker was never opened.
+      expect(images.pickCallCount, 0);
+      expect(cubit.state.file, isNull);
+    });
+
+    test('choosing a shop opens the picker', () async {
+      final ReceiptSubmissionCubit cubit = build();
+      await cubit.load();
+
+      cubit.selectShop(shopBUuid);
+
+      expect(cubit.state.isShopSelectionPending, isFalse);
+      expect(cubit.state.canChooseFile, isTrue);
+
+      await cubit.chooseImage(ReceiptImageOrigin.gallery);
+
+      expect(images.pickCallCount, 1);
+      expect(cubit.state.phase, ReceiptSubmissionPhase.fileSelected);
+    });
+
+    test('changing shop keeps the chosen image', () async {
+      final ReceiptSubmissionCubit cubit = await armed();
+      final ReceiptFile chosen = cubit.state.file!;
+
+      cubit.selectShop(shopBUuid);
+
+      expect(cubit.state.selectedShop, shopB);
+      expect(cubit.state.file, same(chosen));
+      expect(cubit.state.phase, ReceiptSubmissionPhase.fileSelected);
+      expect(cubit.state.canSubmit, isTrue);
+      // The picker was opened once, for the original pick. Changing shop does
+      // not re-open it and does not discard what it returned.
+      expect(images.pickCallCount, 1);
+    });
+
+    test('the final shop is the one submitted', () async {
+      final ReceiptSubmissionCubit cubit = await armed();
+      final ReceiptFile chosen = cubit.state.file!;
+
+      // Chosen under shopA, then moved to shopB.
+      cubit.selectShop(shopBUuid);
+      await cubit.submit();
+
+      expect(repository.submitCallCount, 1);
+      expect(repository.lastSubmittedShopId, shopBUuid);
+      // The same photograph, filed against the shop chosen last.
+      expect(repository.lastSubmittedFile, same(chosen));
     });
   });
 
@@ -164,8 +384,7 @@ void main() {
     test(
       'a valid image is accepted and the type comes from the bytes',
       () async {
-        final ReceiptSubmissionCubit cubit = build();
-        await cubit.load();
+        final ReceiptSubmissionCubit cubit = await withShop();
 
         await cubit.chooseImage(ReceiptImageOrigin.camera);
 
@@ -196,8 +415,7 @@ void main() {
     );
 
     test('an oversized file is refused before any upload', () async {
-      final ReceiptSubmissionCubit cubit = build();
-      await cubit.load();
+      final ReceiptSubmissionCubit cubit = await withShop();
 
       images.nextImage = PickedReceiptImage(
         fileName: 'huge.png',
@@ -221,8 +439,7 @@ void main() {
     });
 
     test('a picker failure is retryable, never a denial', () async {
-      final ReceiptSubmissionCubit cubit = build();
-      await cubit.load();
+      final ReceiptSubmissionCubit cubit = await withShop();
 
       images.throwOnPick = true;
       await cubit.chooseImage(ReceiptImageOrigin.camera);
@@ -394,6 +611,10 @@ void main() {
 
       await cubit.submit();
 
+      // Two assigned shops and none chosen, so the picker never opened either —
+      // the guard sits in front of the image, not only in front of the send.
+      expect(images.pickCallCount, 0);
+      expect(cubit.state.file, isNull);
       expect(repository.submitCallCount, 0);
     });
 
