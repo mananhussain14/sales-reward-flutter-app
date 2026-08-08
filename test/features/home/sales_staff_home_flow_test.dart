@@ -734,6 +734,33 @@ void main() {
   });
 
   // =========================================================================
+  /// The home screen names the document the same way every other screen does.
+  group('invoice / receipt terminology', () {
+    testWidgets('the recent section and the call to action name both', (
+      tester,
+    ) async {
+      await openHome(tester);
+
+      // The call to action is the one home control that names the document,
+      // and it is always on screen.
+      expect(find.text('Add invoice / receipt'), findsWidgets);
+      expect(find.text('Add receipt'), findsNothing);
+
+      // The recent section sits below the fold on a phone. Its empty state is
+      // what an account with no submissions sees.
+      //
+      // `SalesStaffHomeCopy.recentTitle` is deliberately not asserted: it is a
+      // dead constant that predates this change and no screen renders it.
+      await tester.scrollUntilVisible(
+        find.text(SalesStaffHomeCopy.recentEmptyTitle),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('No invoices / receipts yet'), findsWidgets);
+      expect(find.text('No receipts yet'), findsNothing);
+    });
+  });
+
   group('navigation', () {
     testWidgets('a phone gets a bottom bar with all five destinations', (
       WidgetTester tester,

@@ -369,8 +369,9 @@ abstract final class CampaignCopy {
     };
 
     final String submit = seller
-        ? 'Submit the receipt for that sale from the Submit screen.'
-        : 'That Sales Staff member submits the receipt for the sale.';
+        ? 'Submit the invoice / receipt for that sale from the Submit screen.'
+        : 'That Sales Staff member submits the invoice / receipt for the '
+              'sale.';
 
     final CampaignReward reward = offer.reward;
     final String counts = switch (reward) {

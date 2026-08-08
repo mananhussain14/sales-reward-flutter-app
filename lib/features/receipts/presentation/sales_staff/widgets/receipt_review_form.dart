@@ -137,9 +137,10 @@ class _ReceiptReviewFormState extends State<ReceiptReviewForm> {
     final bool enabled = state.canEditTransaction;
 
     return SrSectionCard(
-      title: 'Receipt details',
+      title: 'Invoice / receipt details',
       description:
-          'Check each value against the paper receipt and correct anything '
+          'Check each value against the printed invoice / receipt and correct '
+          'anything '
           'that is wrong.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,7 +170,7 @@ class _ReceiptReviewFormState extends State<ReceiptReviewForm> {
             maxLength: 3,
             textCapitalization: TextCapitalization.characters,
             placeholder: 'AED',
-            hint: 'The three-letter code printed on the receipt.',
+            hint: 'The three-letter code printed on the invoice / receipt.',
             // A code this system will not accept outlives a keystroke that did
             // not change it, so it is derived from the resolution rather than
             // read out of the per-field map an edit clears.
@@ -238,14 +239,17 @@ class _ReceiptReviewFormState extends State<ReceiptReviewForm> {
           const SizedBox(height: SrSpacing.xl),
 
           SrTextField(
-            label: 'Receipt number',
+            label: 'Invoice / receipt no.',
             controller: _document,
             enabled: enabled,
             maxLength: 100,
             errorText: _error(ReceiptReviewField.documentNumber),
             onChanged: widget.cubit.setDocumentNumber,
           ),
-          _Source(value: extraction?.documentNumber, what: 'receipt number'),
+          _Source(
+            value: extraction?.documentNumber,
+            what: 'invoice / receipt number',
+          ),
           const SizedBox(height: SrSpacing.sm),
 
           // NO submit control here, deliberately. These details and the product
@@ -304,7 +308,7 @@ class _DateField extends StatelessWidget {
         const SizedBox(height: SrSpacing.sm),
         Semantics(
           button: true,
-          label: 'Choose the receipt date',
+          label: 'Choose the invoice / receipt date',
           child: SrButton(
             label: value?.iso ?? 'Choose date',
             icon: Icons.event_outlined,
@@ -383,7 +387,7 @@ class _TimeField extends StatelessWidget {
             Expanded(
               child: Semantics(
                 button: true,
-                label: 'Choose the receipt time',
+                label: 'Choose the invoice / receipt time',
                 child: SrButton(
                   label: value?.iso ?? 'Choose time',
                   icon: Icons.schedule_outlined,
@@ -397,7 +401,7 @@ class _TimeField extends StatelessWidget {
               const SizedBox(width: SrSpacing.sm),
               Semantics(
                 button: true,
-                label: 'Remove the receipt time',
+                label: 'Remove the invoice / receipt time',
                 child: SrButton(
                   label: 'Clear',
                   variant: SrButtonVariant.ghost,
@@ -569,7 +573,7 @@ class _Source extends StatelessWidget {
       message = 'Printed as “$sourceText” — we could not read it exactly.';
       colour = sr.tone(SrTone.amber).alertText;
     } else if (extracted.isAbsent) {
-      message = 'No $what found on the receipt.';
+      message = 'No $what found on the invoice / receipt.';
     } else if (sourceText != null) {
       message = confidence == null
           ? 'Read from “$sourceText”.'

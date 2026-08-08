@@ -108,11 +108,11 @@ abstract final class EarningsCopy {
   /// that is not true.
   static const String historyEmptyHint =
       'Rewards appear here after an eligible sale is verified and the campaign '
-      'is evaluated. Not every receipt qualifies.';
+      'is evaluated. Not every invoice / receipt qualifies.';
 
   /// The action offered from the empty state: the ordinary submission flow,
   /// and nothing new.
-  static const String historyEmptyAction = 'Add receipt';
+  static const String historyEmptyAction = 'Add invoice / receipt';
 
   /// Required wording for the pagination control.
   static const String loadOlder = 'Load older rewards';
@@ -138,7 +138,7 @@ abstract final class EarningsCopy {
 
   static const String saleDateLabel = 'Sale date';
   static const String awardedAtLabel = 'Awarded';
-  static const String receiptLabel = 'Receipt';
+  static const String receiptLabel = 'Invoice / receipt';
   static const String shopLabel = 'Shop';
   static const String qualifyingProductsLabel = 'Qualifying products';
   static const String qualifyingUnitsLabel = 'Qualifying units';

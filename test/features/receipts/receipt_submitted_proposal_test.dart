@@ -535,7 +535,10 @@ void main() {
       GoRouter.of(context).go(SalesStaffNavigation.review('not-a-uuid'));
       await tester.pumpAndSettle();
 
-      expect(find.text('This receipt is not available to you'), findsOneWidget);
+      expect(
+        find.text('This invoice / receipt is not available to you'),
+        findsOneWidget,
+      );
       expect(find.byType(ReceiptSubmittedProposalSection), findsNothing);
       expect(find.byType(ReceiptLegacyConfirmationSection), findsNothing);
       // Not one call of any kind — least of all a read naming that id.
@@ -617,8 +620,14 @@ void main() {
         changed: false,
       );
 
-      expect(find.text('This receipt was already recorded'), findsOneWidget);
-      expect(find.text('Receipt and products recorded'), findsNothing);
+      expect(
+        find.text('This invoice / receipt was already recorded'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsNothing,
+      );
       expect(find.text('Name As Proposed One'), findsOneWidget);
     });
 

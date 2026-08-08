@@ -78,7 +78,7 @@ class ReceiptSuccessCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'Receipt submitted',
+                      'Invoice / receipt submitted',
                       style: SrTypography.sectionTitle.copyWith(
                         color: sr.foreground,
                       ),
@@ -86,10 +86,10 @@ class ReceiptSuccessCard extends StatelessWidget {
                     const SizedBox(height: SrSpacing.xxs),
                     Text(
                       row == null
-                          ? 'Your receipt was accepted. We could not read the '
+                          ? 'Your invoice / receipt was accepted. We could not read the '
                                 'details back just now — it is on your '
                                 'submissions list.'
-                          : 'Your receipt for ${row.shopName} was received.',
+                          : 'Your invoice / receipt for ${row.shopName} was received.',
                       style: SrTypography.body.copyWith(
                         color: sr.textSecondary,
                       ),
@@ -130,9 +130,9 @@ class ReceiptSuccessCard extends StatelessWidget {
           if (onReviewReceipt != null) ...<Widget>[
             Semantics(
               button: true,
-              label: 'Review this receipt',
+              label: 'Review this invoice / receipt',
               child: SrButton(
-                label: 'Review receipt',
+                label: 'Review invoice / receipt',
                 icon: Icons.fact_check_outlined,
                 size: SrButtonSize.lg,
                 fullWidth: true,
@@ -142,7 +142,7 @@ class ReceiptSuccessCard extends StatelessWidget {
             const SizedBox(height: SrSpacing.md),
           ],
           SrButton(
-            label: 'Submit another receipt',
+            label: 'Submit another invoice / receipt',
             icon: Icons.add_a_photo_outlined,
             size: SrButtonSize.lg,
             fullWidth: true,

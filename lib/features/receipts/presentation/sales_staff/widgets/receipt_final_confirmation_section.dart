@@ -65,9 +65,10 @@ class ReceiptFinalConfirmationSection extends StatelessWidget {
         ReceiptReviewCopy.productSubmissionNotice(_submission);
 
     return SrSectionCard(
-      title: 'Confirm this receipt',
+      title: 'Confirm this invoice / receipt',
       description:
-          'The receipt details and the products are recorded together, in one '
+          'The invoice / receipt details and the products are recorded '
+          'together, in one '
           'step. Once recorded, neither can be changed.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -106,7 +107,7 @@ class ReceiptFinalConfirmationSection extends StatelessWidget {
       // is an invitation to press it and find out.
       return <Widget>[
         Text(
-          'Nothing further is needed for this receipt.',
+          'Nothing further is needed for this invoice / receipt.',
           textAlign: TextAlign.center,
           style: SrTypography.caption.copyWith(color: context.sr.textSecondary),
         ),
@@ -121,7 +122,7 @@ class ReceiptFinalConfirmationSection extends StatelessWidget {
         Semantics(
           button: true,
           enabled: _submission.canCheckStatus,
-          label: 'Check what is stored for this receipt',
+          label: 'Check what is stored for this invoice / receipt',
           child: SrButton(
             label: ReceiptReviewCopy.statusCheckAction,
             icon: Icons.search_rounded,
@@ -151,7 +152,7 @@ class ReceiptFinalConfirmationSection extends StatelessWidget {
       Semantics(
         button: true,
         enabled: enabled,
-        label: 'Confirm this receipt',
+        label: 'Confirm this invoice / receipt',
         child: SrButton(
           label: ReceiptReviewCopy.confirmAction,
           icon: Icons.check_rounded,
@@ -165,7 +166,7 @@ class ReceiptFinalConfirmationSection extends StatelessWidget {
       const SizedBox(height: SrSpacing.sm),
       Text(
         lineCount == 0
-            ? 'Choose at least one product to confirm this receipt.'
+            ? 'Choose at least one product to confirm this invoice / receipt.'
             : 'Once confirmed, these details and these products cannot be '
                   'changed.',
         textAlign: TextAlign.center,

@@ -46,7 +46,8 @@ final class ReceiptReviewNotice {
 /// access when the network merely failed is both wrong and alarming.
 abstract final class ReceiptReviewCopy {
   static const String pageDescription =
-      'Check what we read from your receipt, correct anything that is wrong, '
+      'Check what we read from your invoice / receipt, correct anything that '
+      'is wrong, '
       'and confirm it.';
 
   // ---- Attempt status ------------------------------------------------------
@@ -84,18 +85,23 @@ abstract final class ReceiptReviewCopy {
   static String? statusDescription(ReceiptReviewState state) =>
       switch (state.phase) {
         ReceiptReviewPhase.requesting =>
-          'Asking for your receipt to be read. This does not take long.',
+          'Asking for your invoice / receipt to be read. This does not take '
+              'long.',
         ReceiptReviewPhase.queued =>
-          'Your receipt is in the queue. This screen updates on its own.',
+          'Your invoice / receipt is in the queue. This screen updates on '
+              'its own.',
         ReceiptReviewPhase.processing =>
-          'Reading your receipt now. This screen updates on its own.',
+          'Reading your invoice / receipt now. This screen updates on its own.',
         ReceiptReviewPhase.succeeded =>
-          'Check every value against the paper receipt before you confirm.',
+          'Check every value against the printed invoice / receipt before you '
+              'confirm.',
         ReceiptReviewPhase.exhausted =>
-          'This receipt has used all three reading attempts. You can still '
+          'This invoice / receipt has used all three reading attempts. You '
+              'can still '
               'type the details in yourself.',
         ReceiptReviewPhase.unavailable =>
-          'Reading receipts is not available right now. You can type the '
+          'Reading invoices / receipts is not available right now. You can '
+              'type the '
               'details in yourself.',
         ReceiptReviewPhase.confirmed =>
           'These details are recorded and cannot be changed.',
@@ -113,10 +119,11 @@ abstract final class ReceiptReviewCopy {
     return switch (code) {
       ReceiptExtractionFailureCode.imageNotAReceipt => const ReceiptReviewNotice(
         tone: SrAlertTone.warning,
-        title: 'That photo does not look like a receipt',
+        title: 'That photo does not look like an invoice / receipt',
         message:
-            'Take another photo of the printed receipt, making sure the whole '
-            'receipt is in frame.',
+            'Take another photo of the printed invoice / receipt, making sure '
+            'the whole '
+            'invoice / receipt is in frame.',
       ),
       ReceiptExtractionFailureCode.imageUnusable => const ReceiptReviewNotice(
         tone: SrAlertTone.warning,
@@ -129,7 +136,7 @@ abstract final class ReceiptReviewCopy {
       ReceiptExtractionFailureCode.unknown ||
       null => const ReceiptReviewNotice(
         tone: SrAlertTone.warning,
-        title: 'We could not read this receipt',
+        title: 'We could not read this invoice / receipt',
         message:
             'Nothing is wrong with your photo. You can try again, or type the '
             'details in yourself.',
@@ -151,11 +158,11 @@ abstract final class ReceiptReviewCopy {
     ReceiptExtractionWarningCode.lowConfidenceDate =>
       'Check the date carefully — we were not confident reading it.',
     ReceiptExtractionWarningCode.missingMerchantName =>
-      'We could not find a shop name on the receipt.',
+      'We could not find a shop name on the invoice / receipt.',
     ReceiptExtractionWarningCode.missingDocumentNumber =>
-      'We could not find a receipt number.',
+      'We could not find an invoice / receipt number.',
     ReceiptExtractionWarningCode.missingTransactionTime =>
-      'We could not find a time on the receipt.',
+      'We could not find a time on the invoice / receipt.',
     ReceiptExtractionWarningCode.subtotalTaxTotalMismatch =>
       'The subtotal and tax do not add up to the total. That is often '
           'normal — check the figures anyway.',
@@ -165,9 +172,11 @@ abstract final class ReceiptReviewCopy {
     ReceiptExtractionWarningCode.negativeAmountRejected =>
       'An amount came out negative, so we left it blank. Please type it in.',
     ReceiptExtractionWarningCode.zeroTotal =>
-      'The total reads as zero. Check that against the paper receipt.',
+      'The total reads as zero. Check that against the printed '
+          'invoice / receipt.',
     ReceiptExtractionWarningCode.dateInFuture =>
-      'The date is in the future. Check it against the paper receipt.',
+      'The date is in the future. Check it against the printed '
+          'invoice / receipt.',
     ReceiptExtractionWarningCode.currencyInferredFromDefault =>
       'No currency was printed, so we assumed one. Check it.',
     ReceiptExtractionWarningCode.multipleTotalsFound =>
@@ -175,7 +184,7 @@ abstract final class ReceiptReviewCopy {
     // A hint this build does not recognise. Rendered generically rather
     // than as its raw token.
     ReceiptExtractionWarningCode.unknown =>
-      'Something on this receipt is worth a second look.',
+      'Something on this invoice / receipt is worth a second look.',
   };
 
   // ---- Confirmation --------------------------------------------------------
@@ -186,7 +195,8 @@ abstract final class ReceiptReviewCopy {
   static String entryModeLabel(ReceiptConfirmationEntryMode? mode) =>
       switch (mode) {
         ReceiptConfirmationEntryMode.manual => 'Typed in',
-        ReceiptConfirmationEntryMode.extracted => 'As read from the receipt',
+        ReceiptConfirmationEntryMode.extracted =>
+          'As read from the invoice / receipt',
         ReceiptConfirmationEntryMode.mixed => 'Read, with your corrections',
         ReceiptConfirmationEntryMode.unknown || null => 'Recorded',
       };
@@ -195,7 +205,7 @@ abstract final class ReceiptReviewCopy {
   static String changedFieldLabel(ReceiptConfirmationField field) =>
       switch (field) {
         ReceiptConfirmationField.currencyCode => 'Currency',
-        ReceiptConfirmationField.documentNumber => 'Receipt number',
+        ReceiptConfirmationField.documentNumber => 'Invoice / receipt no.',
         ReceiptConfirmationField.merchantName => 'Shop name',
         ReceiptConfirmationField.subtotalMinor => 'Subtotal',
         ReceiptConfirmationField.taxTotalMinor => 'Tax',
@@ -249,9 +259,10 @@ abstract final class ReceiptReviewCopy {
   ) {
     return switch (problem) {
       ReceiptReviewFieldProblem.missing => switch (field) {
-        ReceiptReviewField.transactionDate => 'Choose the date on the receipt.',
+        ReceiptReviewField.transactionDate =>
+          'Choose the date on the invoice / receipt.',
         ReceiptReviewField.currencyCode => 'Enter the currency.',
-        ReceiptReviewField.total => 'Enter the total on the receipt.',
+        ReceiptReviewField.total => 'Enter the total on the invoice / receipt.',
         _ => 'This is required.',
       },
       ReceiptReviewFieldProblem.invalidCurrency =>
@@ -259,8 +270,8 @@ abstract final class ReceiptReviewCopy {
       // Three letters, but not one this system accepts. It says what to do and
       // does not name a table, a list or how many currencies there are.
       ReceiptReviewFieldProblem.unsupportedCurrency =>
-        'We cannot record receipts in that currency. Check the code on the '
-            'receipt.',
+        'We cannot record invoices / receipts in that currency. Check the '
+            'code on the invoice / receipt.',
       ReceiptReviewFieldProblem.notANumber =>
         'Enter the amount using digits and one decimal point.',
       ReceiptReviewFieldProblem.tooPrecise =>
@@ -269,21 +280,22 @@ abstract final class ReceiptReviewCopy {
         'That amount is outside the range we can record.',
       ReceiptReviewFieldProblem.tooLong => 'That is too long.',
       ReceiptReviewFieldProblem.dateTooEarly =>
-        'That date is too far in the past to be a receipt date.',
+        'That date is too far in the past to be an invoice / receipt date.',
     };
   }
 
   // ---- The atomic header-and-products confirmation -------------------------
 
   /// The label on the one final confirmation control.
-  static const String confirmAction = 'Confirm receipt and products';
+  static const String confirmAction = 'Confirm invoice / receipt and products';
 
   /// What is said while the immutable write is in flight.
   ///
   /// It names **both** halves on purpose: one call writes the transaction and
   /// the product proposal together, and a sentence that mentioned only the
   /// receipt would understate what is about to become unchangeable.
-  static const String confirmPending = 'Confirming receipt and products…';
+  static const String confirmPending =
+      'Confirming invoice / receipt and products…';
 
   /// Shown once the request has outlived [slowConfirmationNotice].
   ///
@@ -302,7 +314,7 @@ abstract final class ReceiptReviewCopy {
       'The confirmation result could not be verified. Do not submit again.';
 
   /// The one manual recovery affordance. A read, never a resend.
-  static const String statusCheckAction = 'Check receipt status';
+  static const String statusCheckAction = 'Check invoice / receipt status';
 
   /// Why a proposal was refused before anything was sent.
   ///
@@ -313,10 +325,12 @@ abstract final class ReceiptReviewCopy {
   static String productError(ReceiptProductSelectionProblem problem) =>
       switch (problem) {
         ReceiptProductSelectionProblem.noProductsSelected =>
-          'Add at least one product before confirming. A receipt cannot be '
+          'Add at least one product before confirming. An invoice / receipt '
+              'cannot be '
               'submitted without its products.',
         ReceiptProductSelectionProblem.tooManyProducts =>
-          'A receipt can carry at most $maxReceiptProductLines products. '
+          'An invoice / receipt can carry at most $maxReceiptProductLines '
+              'products. '
               'Remove some before confirming — nothing was removed for you.',
         ReceiptProductSelectionProblem.invalidQuantity =>
           'Every quantity must be a whole number between '
@@ -342,7 +356,7 @@ abstract final class ReceiptReviewCopy {
     if (refused != null) {
       return ReceiptReviewNotice(
         tone: SrAlertTone.warning,
-        title: 'Check the products on this receipt',
+        title: 'Check the products on this invoice / receipt',
         message: productError(refused),
       );
     }
@@ -352,7 +366,7 @@ abstract final class ReceiptReviewCopy {
         submission.statusCheck == ReceiptProductStatusCheckOutcome.nothingStored
             ? const ReceiptReviewNotice(
                 tone: SrAlertTone.info,
-                title: 'Nothing was stored for this receipt',
+                title: 'Nothing was stored for this invoice / receipt',
                 message:
                     'We found no confirmation and no products for it. Your '
                     'details and your chosen products are exactly as you left '
@@ -365,7 +379,8 @@ abstract final class ReceiptReviewCopy {
         title: confirmPending,
         message: submission.isSlow
             ? confirmSlow
-            : 'The receipt details and the products are being recorded '
+            : 'The invoice / receipt details and the products are being '
+                  'recorded '
                   'together. This cannot be undone once it finishes.',
       ),
 
@@ -380,7 +395,7 @@ abstract final class ReceiptReviewCopy {
                 ReceiptProductStatusCheckOutcome.legacyHeaderOnly
             ? const ReceiptReviewNotice(
                 tone: SrAlertTone.warning,
-                title: 'This receipt was confirmed without products',
+                title: 'This invoice / receipt was confirmed without products',
                 message:
                     'Its details are already recorded and cannot be changed, '
                     'and products cannot be added to it now. Nothing you '
@@ -388,11 +403,12 @@ abstract final class ReceiptReviewCopy {
               )
             : const ReceiptReviewNotice(
                 tone: SrAlertTone.warning,
-                title: 'This receipt already has a different confirmation',
+                title:
+                    'This invoice / receipt already has a different confirmation',
                 message:
                     'Nothing was recorded by this attempt and nothing was '
-                    'overwritten. Check what is stored for this receipt before '
-                    'doing anything else.',
+                    'overwritten. Check what is stored for this '
+                    'invoice / receipt before doing anything else.',
               ),
 
       ReceiptProductSubmissionStatus.uncertain => ReceiptReviewNotice(
@@ -427,7 +443,8 @@ abstract final class ReceiptReviewCopy {
         'This proposal is final and cannot be changed. '
         'No campaign, reward or coins were created by it.';
     final String what = created
-        ? 'The receipt details and the products you chose are now recorded '
+        ? 'The invoice / receipt details and the products you chose are now '
+              'recorded '
               'together.'
         : 'The same details and the same products were already stored, so '
               'nothing was duplicated.';
@@ -435,8 +452,8 @@ abstract final class ReceiptReviewCopy {
     return ReceiptReviewNotice(
       tone: SrAlertTone.success,
       title: created
-          ? 'Receipt and products recorded'
-          : 'This receipt was already recorded',
+          ? 'Invoice / receipt and products recorded'
+          : 'This invoice / receipt was already recorded',
       message: '$what $finality',
     );
   }
@@ -463,7 +480,8 @@ abstract final class ReceiptReviewCopy {
       'wrong, the whole list can be rejected.';
 
   static const String submittedReceiptSeparate =
-      'Checking the receipt photo itself is a separate decision, made on its '
+      'Checking the invoice / receipt photo itself is a separate decision, '
+      'made on its '
       'own.';
 
   static const String submittedNoRewards =
@@ -478,12 +496,13 @@ abstract final class ReceiptReviewCopy {
   /// none: the confirmation is authoritative and stays so, and this sentence
   /// must never read as "your products were lost".
   static const String submittedUnreadable =
-      'Your receipt and products are recorded. We could not load the submitted '
+      'Your invoice / receipt and products are recorded. We could not load '
+      'the submitted '
       'lines just now — nothing was lost, and nothing was sent again.';
 
   /// The heading for a receipt confirmed before Phase 1D-B existed.
   static const String legacyTitle =
-      'This receipt was confirmed without products';
+      'This invoice / receipt was confirmed without products';
 
   /// What a header-only confirmation means, in four plain facts.
   ///
@@ -493,11 +512,13 @@ abstract final class ReceiptReviewCopy {
   /// could only ever fail.
   static const String legacyExplanation =
       'Its transaction details were recorded through the earlier flow, before '
-      'products were part of a receipt. No product list was submitted with it, '
+      'products were part of an invoice / receipt. No product list was '
+      'submitted with it, '
       'and products cannot be added to it now.';
 
   static const String legacyConsequence =
-      'This receipt cannot go forward for product-based campaign qualification. '
+      'This invoice / receipt cannot go forward for product-based campaign '
+      'qualification. '
       'No campaign, reward or coins were created.';
 
   // ---- Problems ------------------------------------------------------------
@@ -512,7 +533,7 @@ abstract final class ReceiptReviewCopy {
       ExtractionUnauthenticatedProblem() => const ReceiptReviewNotice(
         tone: SrAlertTone.error,
         title: 'Your session has ended',
-        message: 'Sign in again to carry on reviewing this receipt.',
+        message: 'Sign in again to carry on reviewing this invoice / receipt.',
       ),
       // Deliberately says nothing about *why*, and never "that is not yours":
       // the backend answers an unknown receipt, somebody else's, and another
@@ -521,9 +542,10 @@ abstract final class ReceiptReviewCopy {
       ExtractionForbiddenProblem() ||
       ExtractionNotFoundProblem() => const ReceiptReviewNotice(
         tone: SrAlertTone.warning,
-        title: 'This receipt is not available to you',
+        title: 'This invoice / receipt is not available to you',
         message:
-            'You can only review receipts you submitted yourself. Go back to '
+            'You can only review invoices / receipts you submitted yourself. '
+            'Go back to '
             'your submissions and pick one from there.',
       ),
       ExtractionInvalidRequestProblem() => const ReceiptReviewNotice(
@@ -568,7 +590,7 @@ abstract final class ReceiptReviewCopy {
     if (state.confirmBlockedByExtraction) {
       return const ReceiptReviewNotice(
         tone: SrAlertTone.info,
-        title: 'Still reading this receipt',
+        title: 'Still reading this invoice / receipt',
         message:
             'We are finishing the reading first. Nothing was recorded — try '
             'confirming again in a moment.',

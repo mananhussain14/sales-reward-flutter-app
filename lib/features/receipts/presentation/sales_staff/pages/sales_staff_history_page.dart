@@ -38,7 +38,7 @@ class SalesStaffHistoryPage extends StatelessWidget {
         if (state.phase == ReceiptHistoryPhase.initial ||
             (state.phase == ReceiptHistoryPhase.loading &&
                 state.submissions.isEmpty)) {
-          return const SrLoadingView(label: 'Loading your receipts');
+          return const SrLoadingView(label: 'Loading your invoices / receipts');
         }
 
         return SrPageBody(
@@ -47,9 +47,10 @@ class SalesStaffHistoryPage extends StatelessWidget {
             SrEnter(
               child: SrPageHeader(
                 eyebrow: PortalKind.salesStaff.displayName,
-                title: 'My receipts',
+                title: 'My invoices / receipts',
                 description:
-                    'Every receipt you have submitted, newest first. Only your '
+                    'Every invoice / receipt you have submitted, newest first. Only '
+                    'your '
                     'own submissions appear here.',
                 actions: <Widget>[
                   SrButton(
@@ -85,13 +86,14 @@ class SalesStaffHistoryPage extends StatelessWidget {
       return SrEmptyState(
         icon: Icons.inbox_outlined,
         tone: SrTone.indigo,
-        title: 'No receipts yet',
+        title: 'No invoices / receipts yet',
         description:
-            'Once you submit a receipt it will appear here, newest first.',
+            'Once you submit an invoice / receipt it will appear here, newest '
+            'first.',
         // The one thing a person with no receipts can do, opening the flow
         // that already performs the write.
         action: SrButton(
-          label: 'Add receipt',
+          label: 'Add invoice / receipt',
           icon: Icons.add_a_photo_rounded,
           size: SrButtonSize.lg,
           onPressed: () => context.go(SalesStaffNavigation.submit),
@@ -109,7 +111,7 @@ class SalesStaffHistoryPage extends StatelessWidget {
           const SrAlert(
             tone: SrAlertTone.warning,
             title: 'This list may be out of date',
-            message: 'We could not refresh your receipts just now.',
+            message: 'We could not refresh your invoices / receipts just now.',
           ),
           const SizedBox(height: SrSpacing.lg),
         ],

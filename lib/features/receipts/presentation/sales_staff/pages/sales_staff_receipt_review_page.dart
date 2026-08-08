@@ -141,12 +141,12 @@ class _SalesStaffReceiptReviewPageState
           children: <Widget>[
             SrPageHeader(
               eyebrow: PortalKind.salesStaff.displayName,
-              title: 'Review your receipt',
+              title: 'Review your invoice / receipt',
               description: ReceiptReviewCopy.pageDescription,
               actions: <Widget>[
                 Semantics(
                   button: true,
-                  label: 'Back to my submitted receipts',
+                  label: 'Back to my submitted invoices / receipts',
                   child: SrButton(
                     label: 'Back',
                     variant: SrButtonVariant.ghost,
@@ -288,9 +288,10 @@ class _SalesStaffReceiptReviewPageState
           icon: Icons.hourglass_empty_rounded,
           title: 'Not ready to confirm yet',
           description: state.isAwaitingExtraction
-              ? 'We are still reading this receipt. The form opens as soon as '
+              ? 'We are still reading this invoice / receipt. The form opens as '
+                    'soon as '
                     'the reading finishes.'
-              : 'This receipt cannot be confirmed from here just now.',
+              : 'This invoice / receipt cannot be confirmed from here just now.',
         ),
 
       // Phase 1D-B. The product proposal, built AFTER the transaction details
@@ -364,7 +365,7 @@ class _SalesStaffReceiptReviewPageState
       const SizedBox(height: SrSpacing.xl),
       Semantics(
         button: true,
-        label: 'Back to my submitted receipts',
+        label: 'Back to my submitted invoices / receipts',
         child: SrButton(
           label: 'Back to my submissions',
           icon: Icons.arrow_back_rounded,

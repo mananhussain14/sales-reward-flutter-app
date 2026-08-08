@@ -144,7 +144,7 @@ void main() {
 
       expect(find.byType(SalesStaffShell), findsOneWidget);
       expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
-      expect(find.text('Submit a receipt'), findsOneWidget);
+      expect(find.text('Submit an invoice / receipt'), findsOneWidget);
     });
 
     testWidgets('the History tab reaches the receipts list', (tester) async {
@@ -159,7 +159,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SalesStaffHistoryPage), findsOneWidget);
-      expect(find.text('My receipts'), findsOneWidget);
+      expect(find.text('My invoices / receipts'), findsOneWidget);
     });
 
     for (final PortalKind other in <PortalKind>[
@@ -222,7 +222,7 @@ void main() {
         find.textContaining('Ask your manager to assign you'),
         findsOneWidget,
       );
-      expect(find.text('Submit receipt'), findsNothing);
+      expect(find.text('Submit invoice / receipt'), findsNothing);
       // Nothing about this reads as a refusal — it is an assignment that has
       // not happened yet, not permission that was withheld.
       expect(find.text('Not available to this account'), findsNothing);
@@ -244,7 +244,7 @@ void main() {
       expect(find.text('Select a shop…'), findsNothing);
       expect(find.text('Take photo'), findsNothing);
       expect(find.text('Choose image'), findsNothing);
-      expect(find.text('Submit receipt'), findsNothing);
+      expect(find.text('Submit invoice / receipt'), findsNothing);
     });
 
     testWidgets('a shop read failure offers a retry, not a denial', (
@@ -271,13 +271,13 @@ void main() {
       await pumpSubmitScreen(tester, receipts: receipts);
 
       expect(find.text('No products listed yet'), findsOneWidget);
-      expect(find.text('Submit receipt'), findsOneWidget);
+      expect(find.text('Submit invoice / receipt'), findsOneWidget);
     });
 
     testWidgets('an empty history says so on both screens', (tester) async {
       await pumpAppInRole(tester, PortalKind.salesStaff);
 
-      expect(find.text('No receipts yet'), findsOneWidget);
+      expect(find.text('No invoices / receipts yet'), findsOneWidget);
     });
   });
 
@@ -317,11 +317,11 @@ void main() {
 
       await pumpSubmitScreen(tester, receipts: receipts);
       await tapVisible(tester, find.text('Choose image'));
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(receipts.submitCallCount, 1);
       expect(receipts.lastSubmittedShopId, shopAUuid);
-      expect(find.text('Receipt submitted'), findsOneWidget);
+      expect(find.text('Invoice / receipt submitted'), findsOneWidget);
     });
 
     testWidgets('the read-only shop is announced as one statement', (
@@ -383,7 +383,7 @@ void main() {
       // Locked means there is nothing to tap, not a dimmed button.
       expect(find.text('Take photo'), findsNothing);
       expect(find.text('Choose image'), findsNothing);
-      expect(find.text('Add the receipt'), findsNothing);
+      expect(find.text('Add the invoice / receipt'), findsNothing);
     });
 
     testWidgets('the submit button cannot fire before a shop is chosen', (
@@ -392,7 +392,7 @@ void main() {
       final FakeReceiptRepository receipts = FakeReceiptRepository();
 
       await pumpSubmitScreen(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(receipts.submitCallCount, 0);
     });
@@ -402,7 +402,7 @@ void main() {
       await chooseShop(tester);
 
       expect(find.text('Choose a shop first'), findsNothing);
-      expect(find.text('Add the receipt'), findsOneWidget);
+      expect(find.text('Add the invoice / receipt'), findsOneWidget);
       expect(find.text('Choose image'), findsOneWidget);
 
       await tapVisible(tester, find.text('Choose image'));
@@ -429,7 +429,7 @@ void main() {
       // The picker was not re-opened to get it back.
       expect(images.pickCallCount, 1);
 
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       // Sent against the shop chosen LAST, with the photograph chosen first.
       expect(receipts.submitCallCount, 1);
@@ -476,7 +476,7 @@ void main() {
 
       await tapVisible(tester, find.text('Remove'));
 
-      expect(find.text('Add the receipt'), findsOneWidget);
+      expect(find.text('Add the invoice / receipt'), findsOneWidget);
       expect(find.text('receipt.png'), findsNothing);
     });
 
@@ -490,7 +490,10 @@ void main() {
       await withShop(tester, images: images);
       await tapVisible(tester, find.text('Choose image'));
 
-      expect(find.text('This receipt was not accepted'), findsOneWidget);
+      expect(
+        find.text('This invoice / receipt was not accepted'),
+        findsOneWidget,
+      );
       expect(find.textContaining('JPEG, PNG or WebP'), findsWidgets);
     });
   });
@@ -512,13 +515,13 @@ void main() {
         ..manualSubmit = true;
 
       await armed(tester, receipts: receipts);
-      await tester.ensureVisible(find.text('Submit receipt'));
+      await tester.ensureVisible(find.text('Submit invoice / receipt'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Submit receipt'));
+      await tester.tap(find.text('Submit invoice / receipt'));
       await tester.pump();
 
       expect(find.byType(ReceiptProgressPanel), findsOneWidget);
-      expect(find.text('Uploading receipt'), findsWidgets);
+      expect(find.text('Uploading invoice / receipt'), findsWidgets);
       expect(find.text('Step 2 of 3'), findsOneWidget);
       // No fabricated percentage anywhere.
       expect(find.textContaining('%'), findsNothing);
@@ -532,15 +535,15 @@ void main() {
       (tester) async {
         await armed(tester);
 
-        await tester.tap(find.text('Submit receipt'));
+        await tester.tap(find.text('Submit invoice / receipt'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Receipt submitted'), findsOneWidget);
+        expect(find.text('Invoice / receipt submitted'), findsOneWidget);
         expect(find.text('Submitted'), findsWidgets);
         expect(find.text(submissionUuid), findsOneWidget);
-        expect(find.text('Submit another receipt'), findsOneWidget);
+        expect(find.text('Submit another invoice / receipt'), findsOneWidget);
         // The form is gone and the receipt is no longer held.
-        expect(find.text('Submit receipt'), findsNothing);
+        expect(find.text('Submit invoice / receipt'), findsNothing);
       },
     );
 
@@ -548,7 +551,7 @@ void main() {
       tester,
     ) async {
       await armed(tester);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       for (final String forbidden in <String>[
         'receipts/',
@@ -577,20 +580,20 @@ void main() {
         <ReceiptSubmission>[submittedRow],
       );
 
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.byType(ReceiptSubmissionTile), findsOneWidget);
-      expect(find.text('No receipts yet'), findsNothing);
+      expect(find.text('No invoices / receipts yet'), findsNothing);
     });
 
     testWidgets('submitting again resets the form', (tester) async {
       await armed(tester);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
-      await tapVisible(tester, find.text('Submit another receipt'));
+      await tapVisible(tester, find.text('Submit another invoice / receipt'));
 
-      expect(find.text('Add the receipt'), findsOneWidget);
-      expect(find.text('Receipt submitted'), findsNothing);
+      expect(find.text('Add the invoice / receipt'), findsOneWidget);
+      expect(find.text('Invoice / receipt submitted'), findsNothing);
     });
   });
 
@@ -602,13 +605,19 @@ void main() {
         ..submitOutcome = const ReceiptSubmissionDuplicate();
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
-      expect(find.text('You already submitted this receipt'), findsOneWidget);
+      expect(
+        find.text('You already submitted this invoice / receipt'),
+        findsOneWidget,
+      );
       expect(receipts.submitCallCount, 1);
 
       // The button is disabled, so a second tap changes nothing.
-      await tester.tap(find.text('Submit receipt'), warnIfMissed: false);
+      await tester.tap(
+        find.text('Submit invoice / receipt'),
+        warnIfMissed: false,
+      );
       await tester.pumpAndSettle();
       expect(receipts.submitCallCount, 1);
     });
@@ -620,7 +629,7 @@ void main() {
         ..submitOutcome = const ReceiptSubmissionDenied();
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.text('That shop is not available to you'), findsOneWidget);
       // The receipt is kept so another shop can be tried.
@@ -634,14 +643,14 @@ void main() {
         ..submitOutcome = const ReceiptSubmissionUploadFailed();
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.text('Upload failed'), findsOneWidget);
 
       receipts.submitOutcome = const ReceiptSubmissionAccepted(submissionUuid);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
-      expect(find.text('Receipt submitted'), findsOneWidget);
+      expect(find.text('Invoice / receipt submitted'), findsOneWidget);
       expect(receipts.submitCallCount, 2);
     });
 
@@ -652,7 +661,7 @@ void main() {
         ..submitOutcome = const ReceiptSubmissionUnconfirmed();
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.text('We could not confirm this submission'), findsOneWidget);
       expect(
@@ -671,7 +680,7 @@ void main() {
         ..submitOutcome = const ReceiptSubmissionUnauthenticated();
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.text('Your session has ended'), findsOneWidget);
       expect(find.text('That shop is not available to you'), findsNothing);
@@ -684,7 +693,7 @@ void main() {
         );
 
       await armed(tester, receipts: receipts);
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
       expect(find.textContaining('larger than 10 MB'), findsOneWidget);
     });
@@ -723,6 +732,205 @@ void main() {
       expect(find.text('receipt.png'), findsNothing);
       expect(find.text('Select a shop…'), findsOneWidget);
       expect(find.text('Choose a shop first'), findsOneWidget);
+    });
+  });
+
+  /// The words a Sales Staff member reads for the document they upload.
+  ///
+  /// The system takes an itemized sales invoice **or** a POS receipt, so copy
+  /// that says only "receipt" tells somebody holding an invoice that this app
+  /// is not for them. These assert the visible sentences, not the identifiers
+  /// underneath them — `submit-receipt`, `ReceiptSubmissionCubit` and the rest
+  /// keep the backend's own vocabulary and are pinned in
+  /// `test/security/invoice_receipt_terminology_test.dart`.
+  group('invoice / receipt terminology', () {
+    testWidgets('the submission screen says invoice / receipt throughout', (
+      tester,
+    ) async {
+      await pumpSubmitScreen(
+        tester,
+        receipts: FakeReceiptRepository()..shopsResult = oneShopAssigned(),
+      );
+
+      expect(find.text('Submit an invoice / receipt'), findsOneWidget);
+      expect(find.text('Invoice / receipt details'), findsOneWidget);
+      expect(find.text('Submit invoice / receipt'), findsOneWidget);
+      expect(find.text('Choose invoice / receipt'), findsOneWidget);
+
+      // And nowhere does the bare noun survive as a label.
+      expect(find.text('Submit a receipt'), findsNothing);
+      expect(find.text('Receipt details'), findsNothing);
+      expect(find.text('Submit receipt'), findsNothing);
+    });
+
+    testWidgets('the image picker says invoice / receipt', (tester) async {
+      await pumpSubmitScreen(
+        tester,
+        receipts: FakeReceiptRepository()..shopsResult = oneShopAssigned(),
+      );
+
+      // The field caption is a Text.rich carrying the required marker, so it
+      // is read as a span rather than as a plain Text.
+      Finder caption(String label) => find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Text && (widget.textSpan?.toPlainText() ?? '') == label,
+        description: 'field caption "$label"',
+      );
+
+      expect(caption('Invoice / receipt image *'), findsOneWidget);
+      expect(caption('Receipt image *'), findsNothing);
+      expect(find.text('Add the invoice / receipt'), findsOneWidget);
+      expect(
+        find.textContaining('Take a photo of the invoice / receipt'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the locked picker keeps the Slice 1 wording', (tester) async {
+      await pumpSubmitScreen(tester);
+
+      // Multi-shop: introduced by the shop-selection slice and already correct.
+      expect(
+        find.text(
+          'Select the shop above first, then add the invoice / receipt.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'Select the shop where this sale happened before adding the '
+          'invoice / receipt.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the success card says invoice / receipt', (tester) async {
+      await armed(tester);
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
+
+      expect(find.text('Invoice / receipt submitted'), findsOneWidget);
+      expect(find.text('Review invoice / receipt'), findsOneWidget);
+      expect(find.text('Submit another invoice / receipt'), findsOneWidget);
+      expect(find.text('Receipt submitted'), findsNothing);
+    });
+
+    testWidgets('the history screen says invoices / receipts', (tester) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository()
+        ..submissionsResult = const ReceiptReadSuccess<List<ReceiptSubmission>>(
+          <ReceiptSubmission>[],
+        );
+
+      await pumpAppInRole(tester, PortalKind.salesStaff, receipts: receipts);
+      await goToLocation(tester, SalesStaffNavigation.history);
+
+      expect(find.text('My invoices / receipts'), findsOneWidget);
+      expect(find.text('No invoices / receipts yet'), findsOneWidget);
+      expect(find.text('Add invoice / receipt'), findsWidgets);
+      expect(find.text('My receipts'), findsNothing);
+    });
+
+    testWidgets('an upload failure notice says invoice / receipt', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository()
+        ..submitOutcome = const ReceiptSubmissionDuplicate();
+
+      await armed(tester, receipts: receipts);
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
+
+      expect(
+        find.text('You already submitted this invoice / receipt'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the stage labels say invoice / receipt', (tester) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository()
+        ..manualSubmit = true;
+
+      await armed(tester, receipts: receipts);
+      await tester.ensureVisible(find.text('Submit invoice / receipt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Submit invoice / receipt'));
+      await tester.pump();
+
+      // The progress panel names the stage twice — once as the heading and
+      // once in the step list beneath it.
+      expect(find.text('Uploading invoice / receipt'), findsWidgets);
+      expect(find.text('Uploading receipt'), findsNothing);
+
+      receipts.completeSubmit();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  /// Slice 1 behaviour, re-asserted after a copy-only change.
+  ///
+  /// The terminology sweep edited the same three files the shop rules live in,
+  /// so the rules are checked again rather than assumed. Nothing here is new —
+  /// each is the shortest statement of a behaviour asserted at length above.
+  group('shop selection still behaves as Slice 1 left it', () {
+    testWidgets('zero shops still blocks the whole form', (tester) async {
+      await pumpSubmitScreen(
+        tester,
+        receipts: FakeReceiptRepository()..shopsResult = noShopsAssigned(),
+      );
+
+      expect(find.text('No shops assigned yet'), findsOneWidget);
+      expect(find.byType(ReceiptShopSelector), findsNothing);
+      expect(find.byType(ReceiptShopContext), findsNothing);
+      expect(find.byType(ReceiptFileField), findsNothing);
+      expect(find.text('Submit invoice / receipt'), findsNothing);
+    });
+
+    testWidgets('one shop is still auto-selected and read-only', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository()
+        ..shopsResult = oneShopAssigned();
+
+      await pumpSubmitScreen(tester, receipts: receipts);
+
+      expect(find.byType(ReceiptShopContext), findsOneWidget);
+      expect(find.byType(ReceiptShopSelector), findsNothing);
+      expect(find.text('Marina Mall · MM-01'), findsOneWidget);
+      // And the picker is open immediately.
+      expect(find.text('Choose image'), findsOneWidget);
+      expect(find.text('Choose a shop first'), findsNothing);
+    });
+
+    testWidgets('several shops still lock the picker until one is chosen', (
+      tester,
+    ) async {
+      await pumpSubmitScreen(tester);
+
+      expect(find.byType(ReceiptShopSelector), findsOneWidget);
+      expect(find.text('Select a shop…'), findsOneWidget);
+      expect(find.text('Choose a shop first'), findsOneWidget);
+      expect(find.text('Choose image'), findsNothing);
+
+      await chooseShop(tester);
+
+      expect(find.text('Choose a shop first'), findsNothing);
+      expect(find.text('Choose image'), findsOneWidget);
+    });
+
+    testWidgets('the chosen image still survives a shop change', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository();
+
+      await armed(tester, receipts: receipts);
+      await chooseShop(tester, shopName: 'Airport Kiosk');
+
+      expect(find.text('receipt.png'), findsOneWidget);
+      expect(find.text('Ready to send'), findsOneWidget);
+
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
+
+      expect(receipts.lastSubmittedShopId, shopBUuid);
+      expect(receipts.lastSubmittedFile!.fileName, 'receipt.png');
     });
   });
 
@@ -824,9 +1032,9 @@ void main() {
         ..manualSubmit = true;
 
       await armed(tester, receipts: receipts);
-      await tester.ensureVisible(find.text('Submit receipt'));
+      await tester.ensureVisible(find.text('Submit invoice / receipt'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Submit receipt'));
+      await tester.tap(find.text('Submit invoice / receipt'));
       await tester.pump();
 
       final Semantics progress = tester.widget<Semantics>(
@@ -836,7 +1044,7 @@ void main() {
         ),
       );
       expect(progress.properties.liveRegion, isTrue);
-      expect(progress.properties.value, 'Uploading receipt');
+      expect(progress.properties.value, 'Uploading invoice / receipt');
 
       receipts.completeSubmit();
       await tester.pumpAndSettle();
@@ -849,7 +1057,9 @@ void main() {
       await armed(tester);
 
       expect(
-        find.bySemanticsLabel('Preview of the selected receipt image'),
+        find.bySemanticsLabel(
+          'Preview of the selected invoice / receipt image',
+        ),
         findsOneWidget,
       );
 

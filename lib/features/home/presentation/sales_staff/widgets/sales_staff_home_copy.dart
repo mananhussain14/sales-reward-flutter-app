@@ -43,7 +43,8 @@ abstract final class SalesStaffHomeCopy {
   /// Shown instead when the seller has no running or upcoming campaign at all,
   /// so the encouragement never contradicts an empty screen below it.
   static const String greetingLineNoCampaigns =
-      'Keep submitting receipts — campaigns appear here as soon as a Vendor '
+      'Keep submitting invoices / receipts — campaigns appear here as soon '
+      'as a Vendor '
       'runs one for your Retailer.';
 
   /// The organization name is the trusted session context's, never a value read
@@ -116,7 +117,8 @@ abstract final class SalesStaffHomeCopy {
 
   static const String campaignsEmptyTitle = 'No campaigns right now';
   static const String campaignsEmptyBody =
-      'No active or upcoming campaigns are available for your shop. Receipts '
+      'No active or upcoming campaigns are available for your shop. '
+      'Invoices / receipts '
       'you submit are still recorded.';
 
   /// The campaign read failed outright. Reason-free, like every other failure
@@ -131,22 +133,23 @@ abstract final class SalesStaffHomeCopy {
 
   // -- Recent submissions ---------------------------------------------------
 
-  static const String recentTitle = 'Recent receipts';
+  static const String recentTitle = 'Recent invoices / receipts';
   static const String recentDescription = 'Your most recent submissions.';
   static const String recentAction = 'View all';
 
-  static const String recentEmptyTitle = 'No receipts yet';
+  static const String recentEmptyTitle = 'No invoices / receipts yet';
   static const String recentEmptyBody =
-      'Receipts you submit will appear here straight away.';
+      'Invoices / receipts you submit will appear here straight away.';
 
   // -- The primary action ---------------------------------------------------
 
   /// Required wording for the primary call to action.
-  static const String addReceipt = 'Add receipt';
+  static const String addReceipt = 'Add invoice / receipt';
 
   /// The accessible name, which has room for the whole phrase the four-word
   /// button does not.
-  static const String addReceiptSemanticLabel = 'Add a receipt to submit';
+  static const String addReceiptSemanticLabel =
+      'Add an invoice / receipt to submit';
 
   /// The supporting line under the action.
   ///
@@ -159,5 +162,5 @@ abstract final class SalesStaffHomeCopy {
 
   /// The single latest submission, rather than a list. The full history is one
   /// tap away and is the screen that owns it.
-  static const String latestReceiptTitle = 'Latest receipt';
+  static const String latestReceiptTitle = 'Latest invoice / receipt';
 }

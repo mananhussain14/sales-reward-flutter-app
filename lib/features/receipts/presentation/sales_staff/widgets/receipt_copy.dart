@@ -37,10 +37,10 @@ abstract final class ReceiptCopy {
     return switch (state.phase) {
       ReceiptSubmissionPhase.duplicate => const ReceiptNotice(
         tone: SrAlertTone.warning,
-        title: 'You already submitted this receipt',
+        title: 'You already submitted this invoice / receipt',
         message:
             'This exact image is already on your submissions list. Choose a '
-            'different receipt to submit.',
+            'different invoice / receipt to submit.',
       ),
 
       ReceiptSubmissionPhase.denied => const ReceiptNotice(
@@ -51,7 +51,8 @@ abstract final class ReceiptCopy {
         // one identical answer, and splitting them here would recreate the
         // existence oracle SQL is careful to deny.
         message:
-            'You can only submit a receipt for a shop you are currently '
+            'You can only submit an invoice / receipt for a shop you are '
+            'currently '
             'assigned to. Pick another shop, or ask your manager to check your '
             'assignments.',
       ),
@@ -59,12 +60,12 @@ abstract final class ReceiptCopy {
       ReceiptSubmissionPhase.unauthenticated => const ReceiptNotice(
         tone: SrAlertTone.error,
         title: 'Your session has ended',
-        message: 'Sign in again to submit this receipt.',
+        message: 'Sign in again to submit this invoice / receipt.',
       ),
 
       ReceiptSubmissionPhase.rejected => ReceiptNotice(
         tone: SrAlertTone.error,
-        title: 'This receipt was not accepted',
+        title: 'This invoice / receipt was not accepted',
         message: rejectionMessage(state.rejection),
       ),
 
@@ -72,7 +73,8 @@ abstract final class ReceiptCopy {
         tone: SrAlertTone.error,
         title: 'Upload failed',
         message:
-            'The receipt did not finish uploading. Nothing was saved, so you '
+            'The invoice / receipt did not finish uploading. Nothing was '
+            'saved, so you '
             'can send the same photo again.',
       ),
 
@@ -83,7 +85,8 @@ abstract final class ReceiptCopy {
         // receipt may already be stored, and an automatic resend could create a
         // second submission of a receipt that already landed.
         message:
-            'The connection dropped before we heard back, so this receipt may '
+            'The connection dropped before we heard back, so this '
+            'invoice / receipt may '
             'or may not have been saved. Check your recent submissions below '
             'before sending it again.',
       ),
@@ -105,12 +108,14 @@ abstract final class ReceiptCopy {
         'That image is larger than 10 MB. Take the photo again at a lower '
             'resolution, or choose a smaller file.',
       ReceiptRejectionReason.unsupportedType =>
-        'Receipts must be a JPEG, PNG or WebP image. A file can carry the '
+        'Invoices / receipts must be a JPEG, PNG or WebP image. A file can '
+            'carry the '
             'wrong extension, so this is checked against the image itself.',
       ReceiptRejectionReason.empty =>
         'That file is empty. Choose or take the photo again.',
       ReceiptRejectionReason.missing =>
-        'No image was attached. Choose or take a photo of the receipt.',
+        'No image was attached. Choose or take a photo of the '
+            'invoice / receipt.',
       ReceiptRejectionReason.invalidName =>
         'That file name cannot be used. Rename the file and try again.',
       ReceiptRejectionReason.tooManyFiles =>
@@ -120,13 +125,16 @@ abstract final class ReceiptCopy {
       ReceiptRejectionReason.malformedBody ||
       ReceiptRejectionReason.rejected ||
       ReceiptRejectionReason.unknown ||
-      null => 'The receipt was not accepted. Choose or take the photo again.',
+      null =>
+        'The invoice / receipt was not accepted. Choose or take the photo '
+            'again.',
     };
   }
 
   /// The one-line description under the page title.
   static const String submitPageDescription =
-      'Photograph a receipt, choose the shop it belongs to, and send it in.';
+      'Photograph an invoice / receipt, choose the shop it belongs to, and '
+      'send it in.';
 
   // -- The four steps -------------------------------------------------------
 
@@ -137,7 +145,7 @@ abstract final class ReceiptCopy {
   /// whether a sale qualifies is decided by verification and campaign
   /// evaluation, neither of which this screen performs or can promise.
   static const List<String> submitSteps = <String>[
-    'Choose receipt',
+    'Choose invoice / receipt',
     'Review image',
     'Submit securely',
     'Review extracted details',
@@ -150,7 +158,8 @@ abstract final class ReceiptCopy {
   /// screen, and outside approved testing there is no production extraction
   /// provider at all — so this promises a screen to check, not a result.
   static const String submitStepsNote =
-      'After a receipt is submitted you can open it to check and confirm its '
+      'After an invoice / receipt is submitted you can open it to check and '
+      'confirm its '
       'details.';
 
   /// The reference-section caption. It states plainly that nothing here is
@@ -158,5 +167,6 @@ abstract final class ReceiptCopy {
   /// selection the backend receives.
   static const String productsReferenceDescription =
       'The products your Retailer currently stocks, for reference while you '
-      'check a receipt. Products are not attached to a submission.';
+      'check an invoice / receipt. Products are not attached to a '
+      'submission.';
 }

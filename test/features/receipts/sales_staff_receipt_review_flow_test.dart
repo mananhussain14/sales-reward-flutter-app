@@ -11,6 +11,7 @@ import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmati
 import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_outcome.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_with_products_result.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_failure_code.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_line_item.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_currency_minor_unit.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_problem.dart';
@@ -108,7 +109,7 @@ void main() {
       await openReview(tester);
 
       expect(find.byType(SalesStaffReceiptReviewPage), findsOneWidget);
-      expect(find.text('Review your receipt'), findsOneWidget);
+      expect(find.text('Review your invoice / receipt'), findsOneWidget);
       // Still inside the role shell, with History still the selected tab: the
       // route is nested under it, and indexForLocation matches the longest
       // prefix.
@@ -137,7 +138,10 @@ void main() {
       // yours", which would be an existence oracle.
       expect(find.byType(ReceiptReviewForm), findsNothing);
       expect(find.byType(ReceiptReviewPreview), findsNothing);
-      expect(find.text('This receipt is not available to you'), findsOneWidget);
+      expect(
+        find.text('This invoice / receipt is not available to you'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('another role cannot type its way onto the review screen', (
@@ -183,9 +187,9 @@ void main() {
 
       // Two rows, one review control: an UPLOAD_FAILED receipt has no stored
       // object behind it, so every call the review screen makes would refuse.
-      expect(find.text('Review receipt'), findsOneWidget);
+      expect(find.text('Review invoice / receipt'), findsOneWidget);
 
-      await tapVisible(tester, find.text('Review receipt'));
+      await tapVisible(tester, find.text('Review invoice / receipt'));
       expect(find.byType(SalesStaffReceiptReviewPage), findsOneWidget);
     });
 
@@ -209,16 +213,19 @@ void main() {
       await tester.tap(find.text('Marina Mall').last);
       await tester.pumpAndSettle();
       await tapVisible(tester, find.text('Choose image'));
-      await tapVisible(tester, find.text('Submit receipt'));
+      await tapVisible(tester, find.text('Submit invoice / receipt'));
 
-      expect(find.text('Receipt submitted'), findsOneWidget);
+      expect(find.text('Invoice / receipt submitted'), findsOneWidget);
       // Offered, and NOT navigated to: somebody who has just photographed one
       // receipt is usually about to photograph the next.
       expect(find.byType(SalesStaffReceiptReviewPage), findsNothing);
-      expect(semanticsLabelled('Review this receipt'), findsOneWidget);
-      expect(find.text('Submit another receipt'), findsOneWidget);
+      expect(
+        semanticsLabelled('Review this invoice / receipt'),
+        findsOneWidget,
+      );
+      expect(find.text('Submit another invoice / receipt'), findsOneWidget);
 
-      await tapVisible(tester, find.text('Review receipt'));
+      await tapVisible(tester, find.text('Review invoice / receipt'));
       expect(find.byType(SalesStaffReceiptReviewPage), findsOneWidget);
       expect(app.receipts.submitCallCount, 1);
     });
@@ -297,7 +304,10 @@ void main() {
       );
 
       expect(find.text('No attempts left'), findsOneWidget);
-      expect(semanticsLabelled('Try reading this receipt again'), findsNothing);
+      expect(
+        semanticsLabelled('Try reading this invoice / receipt again'),
+        findsNothing,
+      );
       expect(find.byType(ReceiptReviewForm), findsOneWidget);
     });
 
@@ -316,11 +326,11 @@ void main() {
         await openReview(tester, extraction: extraction);
 
         expect(
-          find.text('That photo does not look like a receipt'),
+          find.text('That photo does not look like an invoice / receipt'),
           findsOneWidget,
         );
         expect(
-          semanticsLabelled('Try reading this receipt again'),
+          semanticsLabelled('Try reading this invoice / receipt again'),
           findsOneWidget,
         );
 
@@ -372,7 +382,10 @@ void main() {
       // could never acquire products afterwards.
       expect(extraction.confirmInputs, isEmpty);
 
-      expect(find.text('Receipt and products recorded'), findsOneWidget);
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsOneWidget,
+      );
       // No second confirmation control of any kind: the proposal is immutable.
       expect(find.text(ReceiptReviewCopy.confirmAction), findsNothing);
     });
@@ -389,7 +402,10 @@ void main() {
       await tester.pumpAndSettle();
       await confirmReceiptAndProducts(tester);
 
-      expect(find.text('Enter the total on the receipt.'), findsOneWidget);
+      expect(
+        find.text('Enter the total on the invoice / receipt.'),
+        findsOneWidget,
+      );
       expect(extraction.confirmWithProductsCalls, isEmpty);
       expect(extraction.confirmInputs, isEmpty);
       // The chosen product survives the refusal — nothing was removed for
@@ -434,10 +450,10 @@ void main() {
       await openReview(tester);
 
       for (final String label in <String>[
-        'Confirm this receipt',
-        'Choose the receipt date',
-        'Choose the receipt time',
-        'Back to my submitted receipts',
+        'Confirm this invoice / receipt',
+        'Choose the invoice / receipt date',
+        'Choose the invoice / receipt time',
+        'Back to my submitted invoices / receipts',
       ]) {
         expect(semanticsLabelled(label), findsWidgets, reason: label);
       }
@@ -585,8 +601,8 @@ void main() {
 
       expect(
         find.text(
-          'We cannot record receipts in that currency. Check the code on the '
-          'receipt.',
+          'We cannot record invoices / receipts in that currency. Check the '
+          'code on the invoice / receipt.',
         ),
         findsOneWidget,
       );
@@ -716,6 +732,152 @@ void main() {
   /// The subject here is presentation only: which lines appear, in what order,
   /// carrying which of the four figures, and under whose currency. Nothing in
   /// this group confirms, edits or matches anything.
+  /// The words the review screen uses for the document being reviewed.
+  ///
+  /// Copy only. Every behaviour these screens have — the polling, the line
+  /// items, the confirmation form — is asserted elsewhere and is unchanged.
+  group('invoice / receipt terminology', () {
+    testWidgets('the review screen says invoice / receipt', (tester) async {
+      await openReview(tester);
+
+      expect(find.text('Review your invoice / receipt'), findsOneWidget);
+      expect(find.text('Your invoice / receipt'), findsOneWidget);
+      expect(find.text('Review your receipt'), findsNothing);
+      expect(find.text('Your receipt'), findsNothing);
+    });
+
+    testWidgets('the document-number label names both documents', (
+      tester,
+    ) async {
+      await openReview(tester);
+
+      // The field caption is a Text.rich carrying the required marker, so it
+      // is read as a span rather than as a plain Text. Shorter than
+      // "Invoice / receipt number" on purpose: it sits above a text field on a
+      // phone, where the long form wraps.
+      Finder caption(String label) => find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Text && (widget.textSpan?.toPlainText() ?? '') == label,
+        description: 'field caption "$label"',
+      );
+
+      expect(caption('Invoice / receipt no. (optional)'), findsOneWidget);
+      expect(caption('Receipt number (optional)'), findsNothing);
+    });
+
+    testWidgets('the extracted-items caption names both documents', (
+      tester,
+    ) async {
+      await openReview(tester);
+
+      expect(
+        find.text(
+          'Read from the invoice / receipt. Nothing here can be changed.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a failure notice says invoice / receipt', (tester) async {
+      final FakeReceiptExtractionRepository repository =
+          FakeReceiptExtractionRepository(
+            requestResults:
+                <ReceiptExtractionResult<ReceiptExtractionRequestResult>>[
+                  ReceiptExtractionSuccess<ReceiptExtractionRequestResult>(
+                    requestResult(
+                      extraction: succeededExtraction(
+                        status: ReceiptExtractionStatus.failed,
+                        failureCode:
+                            ReceiptExtractionFailureCode.imageNotAReceipt,
+                      ),
+                    ),
+                  ),
+                ],
+            extractionResults: <ReceiptExtractionResult<ReceiptExtraction>>[
+              ReceiptExtractionSuccess<ReceiptExtraction>(
+                succeededExtraction(
+                  status: ReceiptExtractionStatus.failed,
+                  failureCode: ReceiptExtractionFailureCode.imageNotAReceipt,
+                ),
+              ),
+            ],
+          );
+
+      await openReview(tester, extraction: repository);
+
+      expect(
+        find.text('That photo does not look like an invoice / receipt'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the back action names both documents', (tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await openReview(tester);
+
+      expect(
+        find.bySemanticsLabel('Back to my submitted invoices / receipts'),
+        findsWidgets,
+      );
+
+      handle.dispose();
+    });
+  });
+
+  /// Slice 2 behaviour, re-asserted after a copy-only change.
+  ///
+  /// The terminology sweep touched the same widget file the line items live in,
+  /// so the figures it renders are checked again rather than assumed.
+  group('extracted items still behave as Slice 2 left them', () {
+    testWidgets('every figure survives the copy change', (tester) async {
+      final ReceiptExtraction extraction = succeededExtraction(
+        currencyCode: const ExtractedValue<String>(
+          value: 'AED',
+          sourceText: 'AED',
+          confidence: 0.99,
+        ),
+        currencyMinorUnit: 2,
+        lineItemCount: tenMixedLineItems.length,
+      );
+      await openReview(
+        tester,
+        extraction: FakeReceiptExtractionRepository(
+          requestResults:
+              <ReceiptExtractionResult<ReceiptExtractionRequestResult>>[
+                ReceiptExtractionSuccess<ReceiptExtractionRequestResult>(
+                  requestResult(extraction: extraction),
+                ),
+              ],
+          extractionResults: <ReceiptExtractionResult<ReceiptExtraction>>[
+            ReceiptExtractionSuccess<ReceiptExtraction>(extraction),
+          ],
+          lineItemResults:
+              <ReceiptExtractionResult<List<ReceiptExtractionLineItem>>>[
+                const ReceiptExtractionSuccess<List<ReceiptExtractionLineItem>>(
+                  tenMixedLineItems,
+                ),
+              ],
+        ),
+      );
+
+      Finder inPanel(String text) => find.descendant(
+        of: find.byType(ReceiptReviewLineItems),
+        matching: find.text(text),
+      );
+
+      // Visible without a tap, all ten counted, and the three figures intact.
+      expect(find.text('10 items detected'), findsOneWidget);
+      expect(inPanel('Chain lubricant'), findsOneWidget);
+      expect(inPanel('Disc brake pads'), findsOneWidget);
+      expect(inPanel('Qty 3'), findsOneWidget);
+      expect(inPanel('Unit AED 6.00'), findsOneWidget);
+      expect(inPanel('Amount AED 30.00'), findsOneWidget);
+      // Zero is still a figure, and nothing is still nothing.
+      expect(inPanel('Unit AED 0.00'), findsOneWidget);
+      expect(inPanel('Unit AED 15.00'), findsNothing);
+    });
+  });
+
   group('the extracted items, on screen', () {
     const ExtractedValue<String> aed = ExtractedValue<String>(
       value: 'AED',

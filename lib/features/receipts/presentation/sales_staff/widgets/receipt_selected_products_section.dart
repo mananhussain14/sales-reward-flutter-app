@@ -57,7 +57,7 @@ class ReceiptSelectedProductsSection extends StatelessWidget {
     final SrColorScheme sr = context.sr;
 
     return SrSectionCard(
-      title: 'Products on this receipt',
+      title: 'Products on this invoice / receipt',
       description: products.isEmpty
           ? null
           : '${products.length} of $maxReceiptProductLines lines · '
@@ -78,7 +78,8 @@ class ReceiptSelectedProductsSection extends StatelessWidget {
               icon: Icons.shopping_bag_outlined,
               title: 'No products chosen yet',
               description:
-                  'Add at least one product from the list above. A receipt '
+                  'Add at least one product from the list above. An '
+                  'invoice / receipt '
                   'cannot be submitted without its products.',
             )
           else
@@ -99,7 +100,8 @@ class ReceiptSelectedProductsSection extends StatelessWidget {
   }
 
   String get _noticeTitle => switch (notice) {
-    ReceiptProductSelectionNotice.alreadySelected => 'Already on this receipt',
+    ReceiptProductSelectionNotice.alreadySelected =>
+      'Already on this invoice / receipt',
     ReceiptProductSelectionNotice.limitReached => 'Line limit reached',
     null => '',
   };
@@ -111,7 +113,8 @@ class ReceiptSelectedProductsSection extends StatelessWidget {
       'That product is already listed below. Its quantity was not changed — '
           'use the + control on its line to add more.',
     ReceiptProductSelectionNotice.limitReached =>
-      'A receipt can carry at most $maxReceiptProductLines products. Remove one '
+      'An invoice / receipt can carry at most $maxReceiptProductLines '
+          'products. Remove one '
           'before adding another. Nothing was removed for you.',
     null => '',
   };
@@ -190,7 +193,8 @@ class _SelectedLine extends StatelessWidget {
               if (!isReadOnly)
                 Semantics(
                   button: true,
-                  label: 'Remove ${product.productName} from this receipt',
+                  label:
+                      'Remove ${product.productName} from this invoice / receipt',
                   child: IconButton(
                     icon: const Icon(Icons.delete_outline),
                     // 48dp minimum, so the control is reachable on a phone.
