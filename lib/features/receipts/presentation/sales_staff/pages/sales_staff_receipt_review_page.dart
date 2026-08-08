@@ -29,11 +29,14 @@ import '../widgets/receipt_review_warnings.dart';
 ///
 /// 1. **Status** — what the attempt is doing, what it has cost, and whether
 ///    another may be asked for.
-/// 2. **Your receipt** — the private image, through a capability that lives for
+/// 2. **Extracted items** — every line the provider read, expanded, and gating
+///    nothing. First among the content sections on purpose: it is what the
+///    person came to see, and what step 5 will ask them to confirm. Asking for
+///    a confirmation above the figures being confirmed had it backwards.
+/// 3. **Your receipt** — the private image, through a capability that lives for
 ///    about two minutes and is never written down.
-/// 3. **Things to check** — the reading's own warnings, as sentences.
-/// 4. **Receipt details** — the eight values a confirmation carries, editable.
-/// 5. **Line items** — informational, collapsed, and gating nothing.
+/// 4. **Things to check** — the reading's own warnings, as sentences.
+/// 5. **Receipt details** — the eight values a confirmation carries, editable.
 ///
 /// ## Why this screen is stateful
 ///
@@ -239,6 +242,28 @@ class _SalesStaffReceiptReviewPageState
         const SizedBox(height: SrSpacing.xl),
       ],
 
+      // What the provider actually read, ABOVE the image and above every
+      // control. It is the thing a person opened this screen for, and the thing
+      // the form below asks them to confirm — so it is shown before they are
+      // asked to confirm anything, and without a tap to reveal it.
+      //
+      // THE EXTRACTION'S OWN currency and width, and deliberately not the
+      // form's. These integers were written by the provider under the currency
+      // the provider read; the two fields in the form are a proposal about what
+      // the receipt should be *confirmed* as, and are not a description of
+      // anything already stored. Passing `draft.currencyCode` or
+      // `resolvedMinorUnit` here would relabel AED 12.50 as JPY 1250 the moment
+      // somebody typed JPY — rewriting what the reviewer is checking against, on
+      // the strength of an edit not yet confirmed.
+      if (state.lineItems.isNotEmpty) ...<Widget>[
+        ReceiptReviewLineItems(
+          items: state.lineItems,
+          currencyCode: state.extractionCurrencyCode,
+          minorDigits: state.extractionMinorUnit,
+        ),
+        const SizedBox(height: SrSpacing.xl),
+      ],
+
       ReceiptReviewPreview(state: state, onRefresh: cubit.loadPreview),
       const SizedBox(height: SrSpacing.xl),
 
@@ -292,23 +317,6 @@ class _SalesStaffReceiptReviewPageState
       if (state.isReceiptFinished) ...<Widget>[
         const SizedBox(height: SrSpacing.xl),
         ..._finishedProposal(state, cubit),
-      ],
-
-      if (state.lineItems.isNotEmpty) ...<Widget>[
-        const SizedBox(height: SrSpacing.xl),
-        // THE EXTRACTION'S OWN currency and width, and deliberately not the
-        // form's. These integers were written by the provider under the currency
-        // the provider read; the two fields above are a proposal about what the
-        // receipt should be *confirmed* as, and are not a description of
-        // anything already stored. Passing `draft.currencyCode` or
-        // `resolvedMinorUnit` here would relabel AED 12.50 as JPY 1250 the
-        // moment somebody typed JPY — rewriting what the reviewer is checking
-        // against, on the strength of an edit not yet confirmed.
-        ReceiptReviewLineItems(
-          items: state.lineItems,
-          currencyCode: state.extractionCurrencyCode,
-          minorDigits: state.extractionMinorUnit,
-        ),
       ],
     ];
   }

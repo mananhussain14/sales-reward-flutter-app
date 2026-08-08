@@ -12,6 +12,7 @@ import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmati
 import 'package:sale_reward/features/receipts/domain/entities/receipt_confirmation_result.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_currency_minor_unit.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction.dart';
+import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_failure_code.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_line_item.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_problem.dart';
 import 'package:sale_reward/features/receipts/domain/entities/receipt_extraction_request_outcome.dart';
@@ -1078,6 +1079,73 @@ void main() {
         await cubit.close();
       },
     );
+
+    for (final ReceiptExtractionStatus status in <ReceiptExtractionStatus>[
+      ReceiptExtractionStatus.queued,
+      ReceiptExtractionStatus.processing,
+    ]) {
+      test('an attempt still ${status.name} reads no line items', () async {
+        // The attempt never resolves, so every poll sees the same open row.
+        final FakeReceiptExtractionRepository repository =
+            FakeReceiptExtractionRepository(
+              requestResults:
+                  <ReceiptExtractionResult<ReceiptExtractionRequestResult>>[
+                    ReceiptExtractionSuccess<ReceiptExtractionRequestResult>(
+                      requestResult(
+                        outcome: ReceiptExtractionRequestOutcome.queued,
+                        extraction: openExtraction(status: status),
+                      ),
+                    ),
+                  ],
+              extractionResults: <ReceiptExtractionResult<ReceiptExtraction>>[
+                for (int i = 0; i < 60; i++)
+                  ReceiptExtractionSuccess<ReceiptExtraction>(
+                    openExtraction(status: status),
+                  ),
+              ],
+            );
+        final ReceiptReviewCubit cubit = build(repository, maxPolls: 3);
+
+        await cubit.start();
+        await settle();
+
+        // A reading is the only thing that makes line items exist. An attempt
+        // in flight carries none, so none is asked for and none is held.
+        expect(repository.lineItemIds, isEmpty);
+        expect(cubit.state.lineItems, isEmpty);
+        await cubit.close();
+      });
+    }
+
+    test('a failed attempt reads no line items', () async {
+      final ReceiptExtraction failed = succeededExtraction(
+        status: ReceiptExtractionStatus.failed,
+        failureCode: ReceiptExtractionFailureCode.imageUnusable,
+      );
+      // Both the request and the poll report the failure. Scripting only the
+      // poll would leave the fake's default SUCCEEDED answer on the request,
+      // which would load line items before the failure was ever seen.
+      final FakeReceiptExtractionRepository repository =
+          FakeReceiptExtractionRepository(
+            requestResults:
+                <ReceiptExtractionResult<ReceiptExtractionRequestResult>>[
+                  ReceiptExtractionSuccess<ReceiptExtractionRequestResult>(
+                    requestResult(extraction: failed),
+                  ),
+                ],
+            extractionResults: <ReceiptExtractionResult<ReceiptExtraction>>[
+              ReceiptExtractionSuccess<ReceiptExtraction>(failed),
+            ],
+          );
+      final ReceiptReviewCubit cubit = build(repository);
+
+      await cubit.start();
+      await settle();
+
+      expect(repository.lineItemIds, isEmpty);
+      expect(cubit.state.lineItems, isEmpty);
+      await cubit.close();
+    });
 
     test('line items are read in the backend order and gate nothing', () async {
       final FakeReceiptExtractionRepository repository =

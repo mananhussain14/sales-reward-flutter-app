@@ -666,6 +666,45 @@ void main() {
       expect(ReceiptExtractionLineItemParser.parseList(<Object?>[]), isEmpty);
     });
 
+    test('a zero amount is a reading, and survives as zero', () {
+      final ReceiptExtractionLineItem parsed =
+          ReceiptExtractionLineItemParser.parseList(<Map<String, Object?>>[
+            lineItemRow(<String, Object?>{
+              'unit_price_minor': 0,
+              'line_total_minor': 0,
+            }),
+          ]).single;
+
+      // Zero and absent are different facts and the parser keeps them apart. A
+      // free item priced at nothing is not an item whose price went unread.
+      expect(parsed.unitPriceMinor, 0);
+      expect(parsed.lineTotalMinor, 0);
+      expect(parsed.unitPriceMinor, isNot(isNull));
+      expect(parsed.lineTotalMinor, isNot(isNull));
+    });
+
+    test('a column the contract does not carry reaches nothing', () {
+      // The line-item contract has no SKU, product code, reference or barcode.
+      // Should one appear on the wire, there is no field to receive it and no
+      // display to leak it into — the parser reads an explicit set of keys.
+      final ReceiptExtractionLineItem parsed =
+          ReceiptExtractionLineItemParser.parseList(<Map<String, Object?>>[
+            lineItemRow(<String, Object?>{
+              'sku': 'SKU-100',
+              'product_code': 'PC-1',
+              'barcode': '01234567',
+              'reference': 'REF-9',
+            }),
+          ]).single;
+
+      expect(parsed.description, 'Paracetamol 500mg');
+      // Nothing on the entity holds any of them, so nothing can render one.
+      expect(
+        parsed.props.whereType<String>(),
+        isNot(contains(anyOf('SKU-100', 'PC-1', '01234567', 'REF-9'))),
+      );
+    });
+
     test('every optional column may be null', () {
       final ReceiptExtractionLineItem parsed =
           ReceiptExtractionLineItemParser.parseList(<Map<String, Object?>>[
