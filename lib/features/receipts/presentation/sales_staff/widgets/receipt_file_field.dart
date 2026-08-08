@@ -6,7 +6,7 @@ import '../../../domain/entities/receipt_file.dart';
 import '../../../domain/services/receipt_image_source.dart';
 
 /// The receipt image control: an upload target when nothing is chosen, a preview
-/// when something is.
+/// when something is, and a locked panel while the shop is still unanswered.
 ///
 /// ## What it shows about the file, and what it never shows
 ///
@@ -15,6 +15,14 @@ import '../../../domain/services/receipt_image_source.dart';
 /// photograph. It never shows a device path, a storage bucket, an object path or
 /// a hash: the first is private to the device and the other three are private to
 /// the server, which is why none of them exists in this layer to display.
+///
+/// ## Locked is a state of its own, not a disabled button
+///
+/// [locked] replaces the upload target with an explanation, rather than dimming
+/// it. The difference matters on a shop floor: a greyed-out "Take photo" reads
+/// as a fault in the app, while a panel saying which field to fill in first
+/// reads as an instruction. The buttons are gone in that state, so there is
+/// nothing to tap and nothing to be puzzled by.
 class ReceiptFileField extends StatelessWidget {
   const ReceiptFileField({
     super.key,
@@ -23,6 +31,7 @@ class ReceiptFileField extends StatelessWidget {
     required this.supportsCamera,
     required this.onChoose,
     required this.onRemove,
+    this.locked = false,
   });
 
   final ReceiptFile? file;
@@ -31,6 +40,14 @@ class ReceiptFileField extends StatelessWidget {
   /// Whether to offer capture at all. Presentation only — the operating system
   /// still decides access when the camera is opened.
   final bool supportsCamera;
+
+  /// Whether a prerequisite of this field is still unmet — in practice, an
+  /// assigned shop that has not been chosen.
+  ///
+  /// Presentation only, and never the enforcement: the state's `canChooseFile`
+  /// and the cubit's own guard both refuse a pick regardless of what this widget
+  /// happens to be rendering.
+  final bool locked;
 
   final ValueChanged<ReceiptImageOrigin> onChoose;
   final VoidCallback onRemove;
@@ -43,19 +60,45 @@ class ReceiptFileField extends StatelessWidget {
       label: 'Receipt image',
       required: true,
       hint: 'JPEG, PNG or WebP, up to 10 MB.',
-      child: selected == null
-          ? _EmptyTarget(
-              enabled: enabled,
-              supportsCamera: supportsCamera,
-              onChoose: onChoose,
-            )
-          : _Preview(
+      // A file already chosen keeps its preview even if the field re-locks —
+      // losing somebody's photograph to a state change is exactly what this
+      // feature is meant to prevent. The actions on it are disabled by
+      // [enabled], which is false in that state.
+      child: selected != null
+          ? _Preview(
               file: selected,
               enabled: enabled,
               supportsCamera: supportsCamera,
               onChoose: onChoose,
               onRemove: onRemove,
+            )
+          : locked
+          ? const _LockedTarget()
+          : _EmptyTarget(
+              enabled: enabled,
+              supportsCamera: supportsCamera,
+              onChoose: onChoose,
             ),
+    );
+  }
+}
+
+/// What stands in for the upload target until a shop has been chosen.
+///
+/// It names the field to answer and the order to answer it in, and it carries no
+/// control at all — there is nothing here that could be tapped into a state the
+/// form would then refuse.
+class _LockedTarget extends StatelessWidget {
+  const _LockedTarget();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SrEmptyState(
+      icon: Icons.lock_outline_rounded,
+      title: 'Choose a shop first',
+      description:
+          'Select the shop above first, then add the '
+          'invoice / receipt.',
     );
   }
 }

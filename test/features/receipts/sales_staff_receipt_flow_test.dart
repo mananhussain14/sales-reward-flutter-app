@@ -17,7 +17,9 @@ import 'package:sale_reward/features/receipts/domain/services/receipt_image_sour
 import 'package:sale_reward/features/receipts/presentation/sales_staff/cubit/receipt_submission_cubit.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_history_page.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/pages/sales_staff_submit_page.dart';
+import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_file_field.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_progress_panel.dart';
+import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_shop_context.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_shop_selector.dart';
 import 'package:sale_reward/features/receipts/presentation/sales_staff/widgets/receipt_submission_tile.dart';
 
@@ -76,8 +78,30 @@ Future<void> goToLocation(WidgetTester tester, String location) async {
 }
 
 void main() {
-  /// Signs in as Sales Staff, chooses a shop and picks a valid receipt.
-  Future<PumpedApp> armed(
+  /// Opens the shop sheet and picks [shopName].
+  ///
+  /// Only meaningful with two or more assigned shops — one shop is selected by
+  /// the cubit and shown read-only, so there is no sheet to open.
+  ///
+  /// The sheet is opened through the selector widget rather than through its
+  /// placeholder text, so the same helper works before a choice has been made
+  /// and after one is being changed — the field reads "Select a shop…" only in
+  /// the first of those.
+  Future<void> chooseShop(
+    WidgetTester tester, {
+    String shopName = 'Marina Mall',
+  }) async {
+    await tapVisible(tester, find.byType(ReceiptShopSelector));
+    await tester.tap(find.text(shopName).last);
+    await tester.pumpAndSettle();
+  }
+
+  /// Signs in as Sales Staff and chooses a shop, leaving the picker open.
+  ///
+  /// The default fixture carries two assigned shops, which is the case where
+  /// nothing is chosen automatically and the image control stays locked until
+  /// this runs.
+  Future<PumpedApp> withShop(
     WidgetTester tester, {
     FakeReceiptRepository? receipts,
     FakeReceiptImageSource? images,
@@ -89,10 +113,23 @@ void main() {
       images: images,
       surface: surface,
     );
+    await chooseShop(tester);
+    return app;
+  }
 
-    await tapVisible(tester, find.text('Select a shop…'));
-    await tester.tap(find.text('Marina Mall').last);
-    await tester.pumpAndSettle();
+  /// Signs in as Sales Staff, chooses a shop and picks a valid receipt.
+  Future<PumpedApp> armed(
+    WidgetTester tester, {
+    FakeReceiptRepository? receipts,
+    FakeReceiptImageSource? images,
+    Size surface = phoneSurface,
+  }) async {
+    final PumpedApp app = await withShop(
+      tester,
+      receipts: receipts,
+      images: images,
+      surface: surface,
+    );
 
     await tapVisible(tester, find.text('Choose image'));
 
@@ -176,13 +213,37 @@ void main() {
       tester,
     ) async {
       final FakeReceiptRepository receipts = FakeReceiptRepository()
-        ..shopsResult = const ReceiptReadSuccess<List<ReceiptShop>>(
-          <ReceiptShop>[],
-        );
+        ..shopsResult = noShopsAssigned();
 
       await pumpSubmitScreen(tester, receipts: receipts);
 
       expect(find.text('No shops assigned yet'), findsOneWidget);
+      expect(
+        find.textContaining('Ask your manager to assign you'),
+        findsOneWidget,
+      );
+      expect(find.text('Submit receipt'), findsNothing);
+      // Nothing about this reads as a refusal — it is an assignment that has
+      // not happened yet, not permission that was withheld.
+      expect(find.text('Not available to this account'), findsNothing);
+    });
+
+    testWidgets('no assigned shops offers no control of any kind', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository()
+        ..shopsResult = noShopsAssigned();
+
+      await pumpSubmitScreen(tester, receipts: receipts);
+
+      // Every one of the three is ABSENT rather than disabled: a control that
+      // could never lead anywhere is worse than no control.
+      expect(find.byType(ReceiptShopSelector), findsNothing);
+      expect(find.byType(ReceiptShopContext), findsNothing);
+      expect(find.byType(ReceiptFileField), findsNothing);
+      expect(find.text('Select a shop…'), findsNothing);
+      expect(find.text('Take photo'), findsNothing);
+      expect(find.text('Choose image'), findsNothing);
       expect(find.text('Submit receipt'), findsNothing);
     });
 
@@ -220,11 +281,168 @@ void main() {
     });
   });
 
+  group('exactly one assigned shop', () {
+    FakeReceiptRepository singleShop() =>
+        FakeReceiptRepository()..shopsResult = oneShopAssigned();
+
+    testWidgets('is shown as read-only context, never as a picker', (
+      tester,
+    ) async {
+      await pumpSubmitScreen(tester, receipts: singleShop());
+
+      expect(find.byType(ReceiptShopContext), findsOneWidget);
+      expect(find.text('Submitting for'), findsOneWidget);
+      expect(find.text('Marina Mall · MM-01'), findsOneWidget);
+
+      // No selector, and therefore no sheet to open and no unanswered field.
+      expect(find.byType(ReceiptShopSelector), findsNothing);
+      expect(find.text('Select a shop…'), findsNothing);
+    });
+
+    testWidgets('reaches the image picker in one step', (tester) async {
+      await pumpSubmitScreen(tester, receipts: singleShop());
+
+      // No lock, and no shop to choose first.
+      expect(find.text('Choose a shop first'), findsNothing);
+      expect(find.text('Take photo'), findsOneWidget);
+      expect(find.text('Choose image'), findsOneWidget);
+
+      await tapVisible(tester, find.text('Choose image'));
+
+      expect(find.text('receipt.png'), findsOneWidget);
+    });
+
+    testWidgets('submits the shop nobody had to choose', (tester) async {
+      final FakeReceiptRepository receipts = singleShop();
+
+      await pumpSubmitScreen(tester, receipts: receipts);
+      await tapVisible(tester, find.text('Choose image'));
+      await tapVisible(tester, find.text('Submit receipt'));
+
+      expect(receipts.submitCallCount, 1);
+      expect(receipts.lastSubmittedShopId, shopAUuid);
+      expect(find.text('Receipt submitted'), findsOneWidget);
+    });
+
+    testWidgets('the read-only shop is announced as one statement', (
+      tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpSubmitScreen(tester, receipts: singleShop());
+
+      expect(
+        find.bySemanticsLabel('Submitting for Marina Mall · MM-01'),
+        findsOneWidget,
+      );
+
+      handle.dispose();
+    });
+  });
+
+  group('several assigned shops', () {
+    testWidgets('the shop is required and nothing is preselected', (
+      tester,
+    ) async {
+      await pumpSubmitScreen(tester);
+
+      expect(find.byType(ReceiptShopSelector), findsOneWidget);
+      expect(find.byType(ReceiptShopContext), findsNothing);
+      expect(find.text('Select a shop…'), findsOneWidget);
+
+      // The required marker the design system renders for `required: true`.
+      final Finder shopLabel = find.descendant(
+        of: find.byType(ReceiptShopSelector),
+        matching: find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Text &&
+              (widget.textSpan?.toPlainText() ?? '') == 'Shop *',
+        ),
+      );
+      expect(shopLabel, findsOneWidget);
+
+      expect(
+        find.textContaining(
+          'Select the shop where this sale happened before adding the '
+          'invoice / receipt.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the picker is locked and explains itself', (tester) async {
+      await pumpSubmitScreen(tester);
+
+      expect(find.text('Choose a shop first'), findsOneWidget);
+      expect(
+        find.text(
+          'Select the shop above first, then add the invoice / receipt.',
+        ),
+        findsOneWidget,
+      );
+
+      // Locked means there is nothing to tap, not a dimmed button.
+      expect(find.text('Take photo'), findsNothing);
+      expect(find.text('Choose image'), findsNothing);
+      expect(find.text('Add the receipt'), findsNothing);
+    });
+
+    testWidgets('the submit button cannot fire before a shop is chosen', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository();
+
+      await pumpSubmitScreen(tester, receipts: receipts);
+      await tapVisible(tester, find.text('Submit receipt'));
+
+      expect(receipts.submitCallCount, 0);
+    });
+
+    testWidgets('choosing a shop unlocks the picker', (tester) async {
+      await pumpSubmitScreen(tester);
+      await chooseShop(tester);
+
+      expect(find.text('Choose a shop first'), findsNothing);
+      expect(find.text('Add the receipt'), findsOneWidget);
+      expect(find.text('Choose image'), findsOneWidget);
+
+      await tapVisible(tester, find.text('Choose image'));
+
+      expect(find.text('receipt.png'), findsOneWidget);
+    });
+
+    testWidgets('changing shop after choosing an image keeps the image', (
+      tester,
+    ) async {
+      final FakeReceiptRepository receipts = FakeReceiptRepository();
+      final FakeReceiptImageSource images = FakeReceiptImageSource();
+
+      await armed(tester, receipts: receipts, images: images);
+      expect(find.text('receipt.png'), findsOneWidget);
+
+      await chooseShop(tester, shopName: 'Airport Kiosk');
+
+      // The preview, the file facts and the ready badge all survive the change.
+      expect(find.text('Airport Kiosk'), findsWidgets);
+      expect(find.text('receipt.png'), findsOneWidget);
+      expect(find.text('PNG · 64 B'), findsOneWidget);
+      expect(find.text('Ready to send'), findsOneWidget);
+      // The picker was not re-opened to get it back.
+      expect(images.pickCallCount, 1);
+
+      await tapVisible(tester, find.text('Submit receipt'));
+
+      // Sent against the shop chosen LAST, with the photograph chosen first.
+      expect(receipts.submitCallCount, 1);
+      expect(receipts.lastSubmittedShopId, shopBUuid);
+      expect(receipts.lastSubmittedFile!.fileName, 'receipt.png');
+    });
+  });
+
   group('choosing a receipt', () {
     testWidgets('camera and gallery are both offered where supported', (
       tester,
     ) async {
-      await pumpSubmitScreen(tester);
+      await withShop(tester);
 
       expect(find.text('Take photo'), findsOneWidget);
       expect(find.text('Choose image'), findsOneWidget);
@@ -233,7 +451,7 @@ void main() {
     testWidgets('capture is hidden where the platform has no camera', (
       tester,
     ) async {
-      await pumpSubmitScreen(
+      await withShop(
         tester,
         images: FakeReceiptImageSource(supportsCamera: false),
       );
@@ -269,7 +487,7 @@ void main() {
           bytes: pdfBytes(),
         );
 
-      await pumpSubmitScreen(tester, images: images);
+      await withShop(tester, images: images);
       await tapVisible(tester, find.text('Choose image'));
 
       expect(find.text('This receipt was not accepted'), findsOneWidget);
@@ -499,9 +717,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SalesStaffSubmitPage), findsOneWidget);
-      // No trace of the previous person's chosen receipt.
+      // No trace of the previous person's chosen receipt, and no trace of the
+      // shop they had chosen either — this account's form starts unanswered,
+      // which for two assigned shops means the picker is locked again.
       expect(find.text('receipt.png'), findsNothing);
-      expect(find.text('Add the receipt'), findsOneWidget);
+      expect(find.text('Select a shop…'), findsOneWidget);
+      expect(find.text('Choose a shop first'), findsOneWidget);
     });
   });
 
@@ -515,6 +736,28 @@ void main() {
       testWidgets('the submit screen does not overflow at '
           '${surface.width}×${surface.height}', (tester) async {
         await armed(tester, surface: surface);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final Size surface in <Size>[smallPhoneSurface, phoneSurface]) {
+      testWidgets('the single-shop form does not overflow at '
+          '${surface.width}×${surface.height}', (tester) async {
+        await pumpSubmitScreen(
+          tester,
+          receipts: FakeReceiptRepository()..shopsResult = oneShopAssigned(),
+          surface: surface,
+        );
+
+        expect(find.byType(ReceiptShopContext), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the locked form does not overflow at '
+          '${surface.width}×${surface.height}', (tester) async {
+        await pumpSubmitScreen(tester, surface: surface);
+
+        expect(find.text('Choose a shop first'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

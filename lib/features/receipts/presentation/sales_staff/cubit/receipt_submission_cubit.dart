@@ -20,8 +20,11 @@ part 'receipt_submission_state.dart';
 ///
 /// 1. `list_my_assigned_receipt_shops()` and `list_my_receipt_products()`, in
 ///    parallel. Both take zero arguments.
-/// 2. The person picks a shop and a receipt image. The image is checked
-///    client-side for immediate feedback only.
+/// 2. The shop is settled **before** the image, and how depends on the answer to
+///    the first call: no assigned shop blocks the form, exactly one is selected
+///    here without asking, and several are chosen from. Only then may an image
+///    be picked — see [ReceiptSubmissionState.canChooseFile]. The image is
+///    checked client-side for immediate feedback only.
 /// 3. `POST submit-receipt` with `shop_id` and one file, and nothing else.
 /// 4. On `200`, `get_my_receipt_submission(<the returned id>)` — so the status
 ///    shown is one the **database** returned, not one this client assumed from a
@@ -68,6 +71,10 @@ final class ReceiptSubmissionCubit extends Cubit<ReceiptSubmissionState> {
   /// The two are independent: a product failure degrades one section, while a
   /// shop failure blocks the form, because a receipt is always submitted against
   /// one assigned shop.
+  ///
+  /// A list of exactly one shop is selected here. Nothing is preselected for a
+  /// longer list: which of several shops a sale happened at is a fact only the
+  /// person knows, and a default would be a guess this screen then submitted.
   Future<void> load() async {
     emit(
       state.copyWith(
@@ -118,6 +125,20 @@ final class ReceiptSubmissionCubit extends Cubit<ReceiptSubmissionState> {
           ReceiptReadSuccess<List<ReceiptProduct>>() => null,
         };
 
+        // Exactly one assigned shop is not a choice, so the person is not asked
+        // to make one. The id still comes from this authenticated list and
+        // nowhere else, and `reserve_receipt_submission` re-proves the
+        // assignment under the caller's own token before a byte is uploaded —
+        // selecting it here changes what the screen asks for, not what the
+        // server checks.
+        //
+        // Recomputed on every load rather than done once: a person who drops
+        // from two assigned shops to one must end up on the remaining shop, not
+        // on whichever of the two they happened to have picked.
+        final String? autoSelected = value.length == 1
+            ? value.single.shopId
+            : null;
+
         emit(
           state.copyWith(
             phase: ReceiptSubmissionPhase.ready,
@@ -126,9 +147,13 @@ final class ReceiptSubmissionCubit extends Cubit<ReceiptSubmissionState> {
             clearLoadFailure: true,
             productsFailure: productsFailure,
             clearProductsFailure: productsFailure == null,
+            selectedShopId: autoSelected,
             // A shop that vanished from the list between loads must not stay
-            // selected — it would be submitted and refused.
+            // selected — it would be submitted and refused. Never applied to an
+            // auto-selection, which is by construction a shop that is in the
+            // list this very moment.
             clearSelectedShop:
+                autoSelected == null &&
                 state.selectedShopId != null &&
                 !value.any(
                   (ReceiptShop shop) => shop.shopId == state.selectedShopId,

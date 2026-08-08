@@ -144,6 +144,7 @@ class FakeReceiptImageSource implements ReceiptImageSource {
 
 const String shopAUuid = '11111111-2222-3333-4444-555555555555';
 const String shopBUuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const String shopCUuid = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
 const String submissionUuid = '99999999-8888-7777-6666-555555555555';
 const String productAUuid = '12121212-3434-5656-7878-909090909090';
 const String productBUuid = '21212121-4343-6565-8787-090909090909';
@@ -160,6 +161,30 @@ const ReceiptShop shopB = ReceiptShop(
   shopId: shopBUuid,
   shopName: 'Airport Kiosk',
 );
+
+/// A third shop, so a test can shorten an assignment list **without** landing on
+/// exactly one — which is now its own behaviour and would mask the one being
+/// asserted.
+const ReceiptShop shopC = ReceiptShop(
+  shopId: shopCUuid,
+  shopName: 'Souk Branch',
+  shopCode: 'SB-03',
+);
+
+/// A `list_my_assigned_receipt_shops()` result carrying exactly one shop.
+///
+/// The single-shop path is a distinct behaviour — the shop is selected for the
+/// person and never offered as a choice — so it gets a named fixture rather than
+/// an inline one-element list at every call site.
+ReceiptResult<List<ReceiptShop>> oneShopAssigned([ReceiptShop shop = shopA]) =>
+    ReceiptReadSuccess<List<ReceiptShop>>(<ReceiptShop>[shop]);
+
+/// A `list_my_assigned_receipt_shops()` result carrying no shops at all.
+///
+/// A legitimate answer, and never a denial: the person is simply not assigned
+/// anywhere yet.
+ReceiptResult<List<ReceiptShop>> noShopsAssigned() =>
+    const ReceiptReadSuccess<List<ReceiptShop>>(<ReceiptShop>[]);
 
 const ReceiptProduct productA = ReceiptProduct(
   productId: productAUuid,

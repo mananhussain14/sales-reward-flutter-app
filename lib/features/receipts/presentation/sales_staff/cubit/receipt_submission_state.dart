@@ -170,6 +170,35 @@ final class ReceiptSubmissionState extends Equatable {
     return null;
   }
 
+  /// Whether this person may submit at all.
+  ///
+  /// Zero assigned shops is a legitimate answer, not a denial — see [shops] —
+  /// and it is the one case where the whole form is replaced by an explanation.
+  bool get hasShops => shops.isNotEmpty;
+
+  /// Whether there is exactly one assigned shop, so there is nothing to choose.
+  ///
+  /// The cubit selects that shop when the list loads, and the screen shows it as
+  /// read-only context rather than as a picker: a control whose only option is
+  /// already its answer asks a question that has no second answer.
+  bool get hasSingleShop => shops.length == 1;
+
+  /// Whether a choice genuinely exists and must be made.
+  ///
+  /// Only this case renders an editable selector. Nothing is preselected for it:
+  /// guessing which of several shops a sale happened at would be this client
+  /// inventing a fact about the world.
+  bool get requiresShopChoice => shops.length > 1;
+
+  /// Whether the person has shops but has not settled on one yet.
+  ///
+  /// This is what locks the invoice / receipt picker. It is deliberately phrased
+  /// against [selectedShop] — the selection *resolved against the loaded list* —
+  /// rather than against [selectedShopId], so a shop that disappeared between
+  /// loads re-locks the picker instead of leaving a stale id standing in for a
+  /// choice the person no longer has.
+  bool get isShopSelectionPending => hasShops && selectedShop == null;
+
   /// Whether the screen is doing something the user must not interrupt.
   bool get isBusy =>
       phase == ReceiptSubmissionPhase.initialLoading ||
@@ -206,8 +235,19 @@ final class ReceiptSubmissionState extends Equatable {
   }
 
   /// Whether the person may choose or replace a receipt right now.
+  ///
+  /// A shop is a prerequisite, not a parallel field. The image is the expensive
+  /// half of this form — a photograph taken on a shop floor — and offering it
+  /// before the receipt has somewhere to go invites the person to spend that
+  /// effort on a submission that cannot be sent. With one assigned shop the
+  /// prerequisite is met the moment the list loads, because the cubit selects
+  /// it; with several it is met when the person chooses.
+  ///
+  /// The cubit enforces this again in [ReceiptSubmissionCubit.chooseImage], so a
+  /// stale frame cannot open a picker this getter has already closed.
   bool get canChooseFile =>
       !isBusy &&
+      selectedShop != null &&
       phase != ReceiptSubmissionPhase.initialLoading &&
       phase != ReceiptSubmissionPhase.loadFailed &&
       phase != ReceiptSubmissionPhase.success;

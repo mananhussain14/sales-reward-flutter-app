@@ -12,6 +12,17 @@ import '../../../domain/entities/receipt_shop.dart';
 /// a sheet gives every option a full-width row, a checkmark for the current
 /// choice, and a target big enough for a thumb on a shop floor.
 ///
+/// ## It is shown only when there is genuinely something to choose
+///
+/// Two or more assigned shops. One shop is rendered by `ReceiptShopContext`
+/// instead, and none replaces the whole form with an explanation — so this
+/// widget never has to describe an empty list or a foregone conclusion, and its
+/// copy can say the one thing it is for: choose first, then add the image.
+///
+/// Nothing here is preselected. The field is marked required and reads
+/// "Select a shop…" until the person answers, because which shop a sale happened
+/// at is a fact only they have.
+///
 /// ## Accessibility
 ///
 /// The field is an [InkWell], so it takes keyboard focus and activates with
@@ -46,9 +57,13 @@ class ReceiptShopSelector extends StatelessWidget {
       label: 'Shop',
       required: true,
       errorText: errorText,
+      // States the order the form is meant to be filled in, not just what the
+      // field holds — the picker below is locked until this is answered, and a
+      // person who cannot see why would read the lock as a fault.
       hint: shops.isEmpty
           ? null
-          : 'A receipt is always submitted against one assigned shop.',
+          : 'Select the shop where this sale happened before adding the '
+                'invoice / receipt.',
       child: Semantics(
         button: true,
         container: true,
