@@ -108,7 +108,9 @@ void main() {
       // still fires.
       expect(confirmButton(tester).onPressed, isNull);
       expect(
-        find.text('Choose at least one product to confirm this receipt.'),
+        find.text(
+          'Choose at least one product to confirm this invoice / receipt.',
+        ),
         findsOneWidget,
       );
 
@@ -221,7 +223,7 @@ void main() {
       expect(find.byIcon(Icons.remove_circle_outline), findsNothing);
       expect(find.byIcon(Icons.delete_outline), findsNothing);
       // The chosen quantity is still readable — frozen, not thrown away.
-      expect(find.text('Products on this receipt'), findsOneWidget);
+      expect(find.text('Products on this invoice / receipt'), findsOneWidget);
 
       await finish(tester);
     });
@@ -272,7 +274,10 @@ void main() {
       await chooseFirstProduct(tester);
       await confirm(tester);
 
-      expect(find.text('Receipt and products recorded'), findsOneWidget);
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining('This proposal is final and cannot be changed.'),
         findsOneWidget,
@@ -308,8 +313,14 @@ void main() {
       await chooseFirstProduct(tester);
       await confirm(tester);
 
-      expect(find.text('This receipt was already recorded'), findsOneWidget);
-      expect(find.text('Receipt and products recorded'), findsNothing);
+      expect(
+        find.text('This invoice / receipt was already recorded'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsNothing,
+      );
       expect(find.textContaining('nothing was duplicated'), findsOneWidget);
     });
   });
@@ -339,7 +350,9 @@ void main() {
       );
 
       expect(
-        find.text('This receipt already has a different confirmation'),
+        find.text(
+          'This invoice / receipt already has a different confirmation',
+        ),
         findsOneWidget,
       );
       expect(find.text(ReceiptReviewCopy.statusCheckAction), findsOneWidget);
@@ -401,7 +414,10 @@ void main() {
       await uncertain(tester);
 
       expect(find.text(ReceiptReviewCopy.confirmUnverified), findsOneWidget);
-      expect(find.text('Receipt and products recorded'), findsNothing);
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsNothing,
+      );
       expect(find.text(ReceiptReviewCopy.confirmAction), findsNothing);
       expect(find.text(ReceiptReviewCopy.statusCheckAction), findsOneWidget);
     });
@@ -418,7 +434,10 @@ void main() {
       );
 
       expect(find.text(ReceiptReviewCopy.confirmUnverified), findsOneWidget);
-      expect(find.text('Receipt and products recorded'), findsNothing);
+      expect(
+        find.text('Invoice / receipt and products recorded'),
+        findsNothing,
+      );
       expect(find.text(ReceiptReviewCopy.statusCheckAction), findsOneWidget);
     });
 
@@ -459,7 +478,10 @@ void main() {
       await confirm(tester);
       await tapVisible(tester, find.text(ReceiptReviewCopy.statusCheckAction));
 
-      expect(find.text('Nothing was stored for this receipt'), findsOneWidget);
+      expect(
+        find.text('Nothing was stored for this invoice / receipt'),
+        findsOneWidget,
+      );
       // Editable again, with the chosen product exactly where it was left —
       // and still no second write.
       expect(find.text(ReceiptReviewCopy.confirmAction), findsOneWidget);
@@ -489,7 +511,7 @@ void main() {
       await tapVisible(tester, find.text(ReceiptReviewCopy.statusCheckAction));
 
       expect(
-        find.text('This receipt was confirmed without products'),
+        find.text('This invoice / receipt was confirmed without products'),
         findsOneWidget,
       );
       expect(find.text(ReceiptReviewCopy.confirmAction), findsNothing);
@@ -620,11 +642,11 @@ void main() {
       await open(tester, extraction);
       await chooseFirstProduct(tester);
 
-      expect(semanticsLabelled('Confirm this receipt'), findsWidgets);
+      expect(semanticsLabelled('Confirm this invoice / receipt'), findsWidgets);
 
       await confirm(tester);
       expect(
-        semanticsLabelled('Check what is stored for this receipt'),
+        semanticsLabelled('Check what is stored for this invoice / receipt'),
         findsWidgets,
       );
     });

@@ -1106,6 +1106,20 @@ void main() {
   });
 
   // =========================================================================
+  /// The earnings screen names the document the same way the rest of the app
+  /// does. Asserted on the constants themselves — they are what the widgets
+  /// render, and a value check cannot drift from a label check.
+  group('invoice / receipt terminology', () {
+    test('the earnings copy names both documents', () {
+      expect(EarningsCopy.historyEmptyAction, 'Add invoice / receipt');
+      expect(EarningsCopy.receiptLabel, 'Invoice / receipt');
+      expect(
+        EarningsCopy.historyEmptyHint,
+        contains('Not every invoice / receipt qualifies.'),
+      );
+    });
+  });
+
   group('session isolation', () {
     testWidgets('a user switch empties the earnings screen', (
       WidgetTester tester,

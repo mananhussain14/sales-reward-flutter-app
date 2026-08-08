@@ -104,9 +104,10 @@ class ReceiptSubmissionTile extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Semantics(
                 button: true,
-                label: 'Review the receipt from ${submission.shopName}',
+                label:
+                    'Review the invoice / receipt from ${submission.shopName}',
                 child: SrButton(
-                  label: 'Review receipt',
+                  label: 'Review invoice / receipt',
                   variant: SrButtonVariant.outline,
                   size: SrButtonSize.sm,
                   icon: Icons.fact_check_outlined,

@@ -333,7 +333,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('My receipts'), findsOneWidget);
+      expect(find.text('My invoices / receipts'), findsOneWidget);
       expect(find.byType(SalesStaffShell), findsOneWidget);
     });
   });

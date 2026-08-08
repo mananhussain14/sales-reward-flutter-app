@@ -76,7 +76,8 @@ class ReceiptProductCatalogueSection extends StatelessWidget {
     return SrSectionCard(
       title: 'Choose products',
       description:
-          'Pick every product on this receipt, then set how many of each. '
+          'Pick every product on this invoice / receipt, then set how many of '
+          'each. '
           'Only products your Retailer is assigned appear here.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,7 +118,8 @@ class ReceiptProductCatalogueSection extends StatelessWidget {
             ? 'No products are assigned to your Retailer'
             : 'No products match “${query.trim()}”',
         description: query.trim().isEmpty
-            ? 'Ask your manager to assign products before submitting a receipt.'
+            ? 'Ask your manager to assign products before submitting an '
+                  'invoice / receipt.'
             : 'Try part of the product name, its code, or the barcode.',
       );
     }
@@ -205,7 +207,7 @@ class _CatalogueRow extends StatelessWidget {
             enabled: enabled && !selected && !isFull,
             label: selected
                 ? '${product.productName} is already selected'
-                : 'Add ${product.productName} to this receipt',
+                : 'Add ${product.productName} to this invoice / receipt',
             child: SrButton(
               label: selected ? 'Selected' : 'Add',
               variant: selected

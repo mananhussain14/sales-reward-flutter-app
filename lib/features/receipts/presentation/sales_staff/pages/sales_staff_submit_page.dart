@@ -102,7 +102,7 @@ class SalesStaffSubmitPage extends StatelessWidget {
                               ),
                               const SizedBox(height: SrSpacing.xxs),
                               Text(
-                                'Submit a receipt',
+                                'Submit an invoice / receipt',
                                 style: SrTypography.pageTitle.copyWith(
                                   color: context.sr.foreground,
                                 ),
@@ -217,8 +217,10 @@ class _SubmitForm extends StatelessWidget {
         : null;
 
     return SrSectionCard(
-      title: 'Receipt details',
-      description: 'A receipt is always submitted against one assigned shop.',
+      title: 'Invoice / receipt details',
+      description:
+          'An invoice / receipt is always submitted against one assigned '
+          'shop.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -237,7 +239,7 @@ class _SubmitForm extends StatelessWidget {
               title: 'No shops assigned yet',
               description:
                   'You need to be assigned to at least one shop before you can '
-                  'submit a receipt. Ask your manager to assign you.',
+                  'submit an invoice / receipt. Ask your manager to assign you.',
             )
           else ...<Widget>[
             // One shop is stated; several are chosen from. The cubit has
@@ -274,7 +276,7 @@ class _SubmitForm extends StatelessWidget {
 
             const SizedBox(height: SrSpacing.xl),
             SrButton(
-              label: 'Submit receipt',
+              label: 'Submit invoice / receipt',
               icon: Icons.cloud_upload_outlined,
               size: SrButtonSize.lg,
               fullWidth: true,
@@ -306,7 +308,7 @@ class _RecentSubmissions extends StatelessWidget {
       builder: (BuildContext context, ReceiptHistoryState state) {
         return SrSectionCard(
           title: 'Recent submissions',
-          description: 'Your most recent receipts.',
+          description: 'Your most recent invoices / receipts.',
           action: SrButton(
             label: 'View all',
             variant: SrButtonVariant.ghost,
@@ -344,8 +346,9 @@ class _RecentSubmissions extends StatelessWidget {
     if (recent.isEmpty) {
       return const SrEmptyState(
         icon: Icons.inbox_outlined,
-        title: 'No receipts yet',
-        description: 'Receipts you submit will appear here straight away.',
+        title: 'No invoices / receipts yet',
+        description:
+            'Invoices / receipts you submit will appear here straight away.',
       );
     }
 

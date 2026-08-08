@@ -76,8 +76,8 @@ enum ReceiptUploadStage {
 
   /// The label shown beside the progress indicator.
   String get label => switch (this) {
-    preparing => 'Preparing receipt',
-    uploading => 'Uploading receipt',
+    preparing => 'Preparing invoice / receipt',
+    uploading => 'Uploading invoice / receipt',
     confirming => 'Confirming submission',
     complete => 'Complete',
   };

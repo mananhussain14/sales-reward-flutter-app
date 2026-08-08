@@ -415,7 +415,7 @@ void main() {
       );
       expect(
         find.bySemanticsLabel(
-          RegExp('Remove ${productA.productName} from this receipt'),
+          RegExp('Remove ${productA.productName} from this invoice / receipt'),
         ),
         findsOneWidget,
       );
@@ -492,7 +492,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Already on this receipt'), findsOneWidget);
+      expect(find.text('Already on this invoice / receipt'), findsOneWidget);
       expect(find.textContaining('was not changed'), findsOneWidget);
     });
 

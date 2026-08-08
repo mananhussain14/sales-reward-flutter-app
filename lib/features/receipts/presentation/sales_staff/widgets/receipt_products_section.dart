@@ -97,7 +97,7 @@ class _ReceiptProductsSectionState extends State<ReceiptProductsSection> {
         title: 'No products listed yet',
         description:
             'Your Retailer has no products assigned right now. You can still '
-            'submit a receipt.',
+            'submit an invoice / receipt.',
       );
     }
 

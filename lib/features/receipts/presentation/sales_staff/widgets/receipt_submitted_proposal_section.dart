@@ -87,7 +87,7 @@ class ReceiptSubmittedProposalSection extends StatelessWidget {
           const SizedBox(height: SrSpacing.lg),
           Semantics(
             button: true,
-            label: 'Check what is stored for this receipt',
+            label: 'Check what is stored for this invoice / receipt',
             child: SrButton(
               label: ReceiptReviewCopy.statusCheckAction,
               icon: Icons.search_rounded,

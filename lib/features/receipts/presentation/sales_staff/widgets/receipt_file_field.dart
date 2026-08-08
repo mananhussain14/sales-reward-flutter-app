@@ -57,7 +57,7 @@ class ReceiptFileField extends StatelessWidget {
     final ReceiptFile? selected = file;
 
     return SrField(
-      label: 'Receipt image',
+      label: 'Invoice / receipt image',
       required: true,
       hint: 'JPEG, PNG or WebP, up to 10 MB.',
       // A file already chosen keeps its preview even if the field re-locks —
@@ -126,11 +126,13 @@ class _EmptyTarget extends StatelessWidget {
       // on a shop floor.
       icon: Icons.receipt_long_rounded,
       tone: SrTone.indigo,
-      title: 'Add the receipt',
+      title: 'Add the invoice / receipt',
       description: supportsCamera
-          ? 'Take a photo of the receipt, or choose one you already have. '
+          ? 'Take a photo of the invoice / receipt, or choose one you already '
+                'have. '
                 'JPEG, PNG or WebP, up to 10 MB.'
-          : 'Choose a photo of the receipt from this device. JPEG, PNG or '
+          : 'Choose a photo of the invoice / receipt from this device. JPEG, '
+                'PNG or '
                 'WebP, up to 10 MB.',
       action: Wrap(
         spacing: SrSpacing.sm,
@@ -199,7 +201,7 @@ class _Preview extends StatelessWidget {
             // On the wrapper rather than on Image.memory, so the description
             // survives a file the platform decoder cannot render — the file
             // facts below are still correct, and still enough to submit with.
-            label: 'Preview of the selected receipt image',
+            label: 'Preview of the selected invoice / receipt image',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(SrRadii.control),
               child: ConstrainedBox(

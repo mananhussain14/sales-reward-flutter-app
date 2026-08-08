@@ -73,7 +73,7 @@ class ReceiptReviewConfirmedCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'Receipt confirmed',
+                      'Invoice / receipt confirmed',
                       style: SrTypography.sectionTitle.copyWith(
                         color: sr.foreground,
                       ),
@@ -134,7 +134,7 @@ class ReceiptReviewConfirmedCard extends StatelessWidget {
             if (row.merchantName != null)
               _Row(label: 'Shop name', value: row.merchantName!),
             if (row.documentNumber != null)
-              _Row(label: 'Receipt number', value: row.documentNumber!),
+              _Row(label: 'Invoice / receipt no.', value: row.documentNumber!),
             _Row(
               label: 'Confirmed',
               value: formatReceiptTimestamp(row.confirmedAt),
@@ -152,7 +152,7 @@ class ReceiptReviewConfirmedCard extends StatelessWidget {
             const SizedBox(height: SrSpacing.xl),
             Semantics(
               button: true,
-              label: 'Back to my submitted receipts',
+              label: 'Back to my submitted invoices / receipts',
               child: SrButton(
                 label: 'Back to my submissions',
                 icon: Icons.arrow_back_rounded,

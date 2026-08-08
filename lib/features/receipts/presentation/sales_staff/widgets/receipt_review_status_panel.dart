@@ -80,7 +80,7 @@ class ReceiptReviewStatusPanel extends StatelessWidget {
                 if (state.canRetry)
                   Semantics(
                     button: true,
-                    label: 'Try reading this receipt again',
+                    label: 'Try reading this invoice / receipt again',
                     child: SrButton(
                       label: 'Try reading again',
                       icon: Icons.restart_alt_rounded,

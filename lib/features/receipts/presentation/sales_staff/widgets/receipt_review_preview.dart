@@ -38,7 +38,7 @@ class ReceiptReviewPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SrSectionCard(
-      title: 'Your receipt',
+      title: 'Your invoice / receipt',
       description: 'The photo you submitted. Check every value against it.',
       child: AspectRatio(aspectRatio: 3 / 4, child: _body(context)),
     );
@@ -54,7 +54,7 @@ class ReceiptReviewPreview extends StatelessWidget {
           child: SrLoadingView(
             showHeader: false,
             rows: 3,
-            label: 'Loading your receipt image',
+            label: 'Loading your invoice / receipt image',
           ),
         );
 
@@ -63,7 +63,7 @@ class ReceiptReviewPreview extends StatelessWidget {
           child: SrEmptyState(
             icon: Icons.image_not_supported_outlined,
             tone: SrTone.amber,
-            title: 'We could not show your receipt',
+            title: 'We could not show your invoice / receipt',
             description:
                 'The image is still stored safely. You can carry on checking '
                 'the values, or try loading it again.',
@@ -86,7 +86,7 @@ class ReceiptReviewPreview extends StatelessWidget {
           child: Semantics(
             // The label describes the image; it deliberately carries no URL,
             // no id and nothing else that outlives the screen.
-            label: 'Your submitted receipt image',
+            label: 'Your submitted invoice / receipt image',
             image: true,
             child: Image.network(
               url,
